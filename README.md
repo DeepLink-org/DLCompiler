@@ -39,11 +39,9 @@ make check -j16
 make install
 ```
 
-# 编译 triton
+## 编译 triton && triton
 ```
-set(PYBIND11_INCLUDE_DIR /home/sheng.yuan/workspace/pybind11/include)
-set(MLIR_DIR /home/sheng.yuan/workspace/llvm-project/build/lib/cmake/mlir)
-
+cd triton
 // cmake 命令
 cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/sheng.yuan/workspace/triton/python/triton/_C -DTRITON_BUILD_TUTORIALS=OFF -DTRITON_BUILD_PYTHON_MODULE=ON -DPython3_EXECUTABLE:FILEPATH=/usr/bin/python3 -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DPYTHON_INCLUDE_DIRS=/usr/include/python3.10 -DTRITON_CODEGEN_BACKENDS="nvidia;amd" -DTRITON_PLUGIN_DIRS=/home/sheng.yuan/workspace/Triton -DLLVM_INCLUDE_DIRS=/home/sheng.yuan/workspace/llvm-project/build/include -DLLVM_LIBRARY_DIR=/home/sheng.yuan/workspace/llvm-project/build/lib -DPYBIND11_INCLUDE_DIR=/home/sheng.yuan/workspace/pybind11/include -DCMAKE_BUILD_TYPE=TritonRelBuildWithAsserts -DMLIR_DIR=/home/sheng.yuan/workspace/llvm-project/build/lib/cmake/mlir
 

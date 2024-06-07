@@ -1,0 +1,1 @@
+add_subdirectory(dicp_triton_opt)

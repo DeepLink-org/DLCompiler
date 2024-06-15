@@ -48,3 +48,8 @@ cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON -DC
 
 ninja -j64
 ```
+
+## 设置环境变量
+```
+export PYTHONPATH=/home/sheng.yuan/workspace/deeplink_triton/Triton/third_party/triton_linalg/triton/python
+```

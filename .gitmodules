@@ -1,3 +1,6 @@
 [submodule "third_party/triton_linalg"]
 	path = third_party/triton_linalg
 	url = git@github.com:Cambricon/triton-linalg.git
+[submodule "third_party/triton"]
+	path = third_party/triton
+	url = git@github.com:triton-lang/triton.git

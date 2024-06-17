@@ -9,13 +9,20 @@ import re
 import subprocess
 import functools
 from pathlib import Path
-from backend.driver import DICPDriver
+from backend import DICPDriver
+from typing import Any, Tuple
 
 def _get_dicp_triton_opt_path() -> str:
     path = os.getenv("DICP_TRITON_OPT_PATH", "")
     if path == "":
         raise Exception("DICP_TRITON_OPT_PATH is not set.")
     return path
+
+def _get_llvm_bin_path(bin_name: str) -> str:
+    path = os.getenv("LLVM_BINARY_DIR", "")
+    if path == "":
+        raise Exception("LLVM_BINARY_DIR is not set.")
+    return os.path.join(path, bin_name)
 
 def _get_triton_linalg_opt_path() -> str:
     # path = os.getenv("TRITON_LINALG_OPT_PATH", "")
@@ -31,21 +38,37 @@ def _ttir_to_linalgdir(mod):
         dst_path = os.path.join(tmpdir, "triton_linalg.mlir")
         Path(src_path).write_text(ttir_code)
         triton_linalg_opt_path = _get_triton_linalg_opt_path()
-        import pdb
-        pdb.set_trace()
         subprocess.check_call([triton_linalg_opt_path, src_path, "--triton-to-linalg", "-o", dst_path])
-        print (Path(dst_path).read_text())
         return Path(dst_path).read_text()
 
 def _optimize_ttlinalgdir(ttlinalgdir: str):
     # We don't apply any optimizations now, but we can add passes if needed.
     return ttlinalgdir
 
-def _linalg_to_fatbin(ttlinalgdir: str):
-    return ttlinalgdir
+# get kernel name to recompile kernel
+def _linalgir_get_kernel_name(ttir: str) -> str:
+    '''
+    Get kernel name from ttir.
+    This Kernel name is required when launching the kernel.
+    '''
+    for line in ttir.split('\n'):
+        line = line.strip()
+        if line.startswith('func.func'):
+            return line.split('@')[1].split("(")[0]
+    raise RuntimeError("can not get kernel name from ttir")
 
-def _optimize_fatbin(ttlinalgdir: str):
-    return ttlinalgdir
+# call llvm compiler to generate bin file
+def _linalg_to_fatbin(ttlinalgdir: str, metadata):
+    metadata["name"] = _linalgir_get_kernel_name(ttlinalgdir)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "temp_linalg.mlir")
+        dst_path = os.path.join(tmpdir, "kernel.o")
+        Path(src_path).write_text(ttlinalgdir)
+        llc_path = _get_llvm_bin_path("llc")
+        # subprocess.check_call([llc_path, src_path, "-o", dst_path])
+        # Actually it's text-format assembly.  Use read_text().
+        return ttlinalgdir   
+
 
 @dataclass(frozen=True)
 class DICPOptions:
@@ -59,7 +82,9 @@ class DICPOptions:
     extern_libs = None
     cluster_dims: tuple = (1, 1, 1)
     shared: bool = False
-    allow_fp8e4nv: bool = False    
+    allow_fp8e4nv: bool = False
+    default_dot_input_precision: str = "tf32"
+    allowed_dot_input_precisions: Tuple[str] = ("tf32", "tf32x3", "ieee")      
     def __post_init__(self):
         pass
 
@@ -68,6 +93,7 @@ class DICPOptions:
         return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 class DICPBackend(BaseBackend):
+    binary_ext = "ttlinalgdir"
     def __init__(self, target:str) -> None:
         # if target is "mlu":
         #     device_type = "370"
@@ -97,7 +123,7 @@ class DICPBackend(BaseBackend):
     def add_stages(self, stages, options):
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
-        stages["fatbin"] = lambda src, metadata: _optimize_fatbin(_linalg_to_fatbin(src))
+        stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
 
     def load_dialects(self, ctx):
         return

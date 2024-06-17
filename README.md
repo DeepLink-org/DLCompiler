@@ -7,6 +7,7 @@ triton for dsa
 ```
 apt-get update
 apt-get install clang
+apt-get install python3.10
 ```
 
 ## 下载 triton
@@ -41,9 +42,10 @@ make install
 
 ## 编译 triton && triton
 ```
-cd triton
+cd dicp_triton/third_party/triton
+mkdir build
 // cmake 命令
-cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/sheng.yuan/workspace/triton/python/triton/_C -DTRITON_BUILD_TUTORIALS=OFF -DTRITON_BUILD_PYTHON_MODULE=ON -DPython3_EXECUTABLE:FILEPATH=/usr/bin/python3 -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DPYTHON_INCLUDE_DIRS=/usr/include/python3.10 -DTRITON_CODEGEN_BACKENDS="nvidia;amd" -DTRITON_PLUGIN_DIRS=/home/sheng.yuan/workspace/Triton -DLLVM_INCLUDE_DIRS=/home/sheng.yuan/workspace/llvm-project/build/include -DLLVM_LIBRARY_DIR=/home/sheng.yuan/workspace/llvm-project/build/lib -DPYBIND11_INCLUDE_DIR=/home/sheng.yuan/workspace/pybind11/include -DCMAKE_BUILD_TYPE=TritonRelBuildWithAsserts -DMLIR_DIR=/home/sheng.yuan/workspace/llvm-project/build/lib/cmake/mlir
+/home/yuansheng/software/cmake-3.28.0-linux-x86_64/bin/cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/home/yuansheng/workspace/dicp/dicp_triton/_C -DTRITON_BUILD_TUTORIALS=OFF -DTRITON_BUILD_PYTHON_MODULE=ON -DPython3_EXECUTABLE:FILEPATH=/usr/bin/python3 -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DPYTHON_INCLUDE_DIRS=/usr/local/include/python3.10 -DTRITON_CODEGEN_BACKENDS="nvidia;amd" -DTRITON_PLUGIN_DIRS=/home/yuansheng/workspace/dicp/dicp_triton  -DLLVM_INCLUDE_DIRS=/nvme/nvme2/share/share_data/yuansheng/llvm-project/build/include -DLLVM_LIBRARY_DIR=/nvme/nvme2/share/share_data/yuansheng/llvm-project/build/lib -DCMAKE_BUILD_TYPE=TritonRelBuildWithAsserts -DMLIR_DIR=/nvme/nvme2/share/share_data/yuansheng/llvm-project/build/lib/cmake/mlir -DCUPTI_INCLUDE_DIR=/usr/local/cuda/include -DJSON_INCLUDE_DIR=/home/yuansheng/workspace/dicp/dicp_triton/third_party/json/include
 
 
 ninja -j64
@@ -51,5 +53,5 @@ ninja -j64
 
 ## 设置环境变量
 ```
-export PYTHONPATH=/home/sheng.yuan/workspace/deeplink_triton/Triton/third_party/triton_linalg/triton/python
+export PYTHONPATH=/home/yuansheng/workspace/dicp/dicp_triton/third_party/triton/python:/home/yuansheng/workspace/dicp/dicp_triton
 ```

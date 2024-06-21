@@ -9,7 +9,7 @@ import re
 import subprocess
 import functools
 from pathlib import Path
-from backend import DICPDriver
+from triton.backends.dicp_triton.driver import DICPDriver
 from typing import Any, Tuple
 
 def _get_dicp_triton_opt_path() -> str:
@@ -26,7 +26,7 @@ def _get_llvm_bin_path(bin_name: str) -> str:
 
 def _get_triton_linalg_opt_path() -> str:
     # path = os.getenv("TRITON_LINALG_OPT_PATH", "")
-    path = "/home/sheng.yuan/workspace/deeplink_triton/Triton/third_party/triton_linalg/triton/build/third_party/dicp_triton/third_party/triton_linalg/bin/triton-linalg-opt"
+    path = "triton-linalg-opt"
     if path == "":
         raise Exception("TRITON_LINALG_OPT_PATH is not set.")
     return path 

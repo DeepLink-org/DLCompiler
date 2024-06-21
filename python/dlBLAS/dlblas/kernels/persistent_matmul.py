@@ -14,6 +14,9 @@ import torch
 import triton
 import triton.language as tl
 
+# register
+from dlblas.op_registry import OpParams, OpImpl, op_registry
+
 # yapf: disable
 
 def is_cuda():
@@ -125,8 +128,9 @@ def matmul_kernel_persistent(
                                    dtype=tl.float32)
 
 
-# NOTE: each kernel file must consist a call function which wrap the invoke of the kernel
-def call(a, b):
+def call(params: OpParams, a, b):
+    # TODO add check to params
+
     configs = {
         torch.float8_e4m3fn: {
             "BLOCK_SIZE_M": 128,
@@ -174,3 +178,9 @@ def call(a, b):
         num_warps=configs[dtype]["num_warps"],  #
     )
     return c
+
+# register
+name = 'matmul'
+params = OpParams(shapes=('m', 'n', 'k'), rank=3)
+impl = OpImpl(params, call)
+op_registry.register(name, impl)

@@ -1,19 +1,4 @@
-from dataclasses import dataclass
-from typing import Any
-
-
-@dataclass
-class OpParams:
-    name: str
-    shapes: list
-
-
-@dataclass
-class OpImpl:
-    name: str
-
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
-        pass
+from dlblas.op_registry import OpParams, OpImpl
 
 
 def get_list_op_names() -> list[str]:

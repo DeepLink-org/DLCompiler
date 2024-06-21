@@ -13,16 +13,8 @@ import time
 import torch
 import triton
 import triton.language as tl
-import triton.tools.experimental_descriptor
-import triton.profiler as proton
 
-if torch.cuda.is_available():
-    from triton._C.libtriton import nvidia
-    cublas_workspace = torch.empty(32 * 1024 * 1024, device="cuda", dtype=torch.uint8)
-    cublas = nvidia.cublas.CublasLt(cublas_workspace)
-else:
-    cublas = None
-
+# yapf: disable
 
 def is_cuda():
     return triton.runtime.driver.active.get_current_target().backend == "cuda"
@@ -45,18 +37,20 @@ def _matmul_launch_metadata(grid, kernel, args):
     return ret
 
 
-@triton.jit(launch_metadata=_matmul_launch_metadata)
-def matmul_kernel_persistent(a_ptr, b_ptr, c_ptr,  #
-                             M, N, K,  #
-                             stride_am, stride_ak,  #
-                             stride_bk, stride_bn,  #
-                             stride_cm, stride_cn,  #
-                             BLOCK_SIZE_M: tl.constexpr,  #
-                             BLOCK_SIZE_N: tl.constexpr,  #
-                             BLOCK_SIZE_K: tl.constexpr,  #
-                             GROUP_SIZE_M: tl.constexpr,  #
-                             NUM_SMS: tl.constexpr,  #
-                             ):
+# @triton.jit(launch_metadata=_matmul_launch_metadata)
+@triton.jit
+def matmul_kernel_persistent(
+        a_ptr, b_ptr, c_ptr,  #
+        M, N, K,  #
+        stride_am, stride_ak,  #
+        stride_bk, stride_bn,  #
+        stride_cm, stride_cn,  #
+        BLOCK_SIZE_M: tl.constexpr,  #
+        BLOCK_SIZE_N: tl.constexpr,  #
+        BLOCK_SIZE_K: tl.constexpr,  #
+        GROUP_SIZE_M: tl.constexpr,  #
+        NUM_SMS: tl.constexpr,  #
+):
     start_pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -97,36 +91,57 @@ def matmul_kernel_persistent(a_ptr, b_ptr, c_ptr,  #
             offs_bn = tl.arange(0, BLOCK_SIZE_N)
             offs_am = tl.where(offs_am < M - start_m, offs_am, 0)
             offs_bn = tl.where(offs_bn < N - start_n, offs_bn, 0)
-            offs_am = tl.max_contiguous(tl.multiple_of(offs_am, BLOCK_SIZE_M), BLOCK_SIZE_M)
-            offs_bn = tl.max_contiguous(tl.multiple_of(offs_bn, BLOCK_SIZE_N), BLOCK_SIZE_N)
+            offs_am = tl.max_contiguous(tl.multiple_of(offs_am, BLOCK_SIZE_M),
+                                        BLOCK_SIZE_M)
+            offs_bn = tl.max_contiguous(tl.multiple_of(offs_bn, BLOCK_SIZE_N),
+                                        BLOCK_SIZE_N)
         offs_k = ki * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
-        a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-        b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+        a_ptrs = a_ptr + (offs_am[:, None] * stride_am +
+                          offs_k[None, :] * stride_ak)
+        b_ptrs = b_ptr + (offs_k[:, None] * stride_bk +
+                          offs_bn[None, :] * stride_bn)
 
-        a = tl.load(a_ptrs, mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k_for_mask[:, None] < K - ki * BLOCK_SIZE_K, other=0.0)
+        a = tl.load(a_ptrs,
+                    mask=offs_k_for_mask[None, :] < K - ki * BLOCK_SIZE_K,
+                    other=0.0)
+        b = tl.load(b_ptrs,
+                    mask=offs_k_for_mask[:, None] < K - ki * BLOCK_SIZE_K,
+                    other=0.0)
         accumulator = tl.dot(a, b, accumulator)
 
         if ki == k_tiles - 1:
             offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
             offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-            c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+            c_ptrs = c_ptr + stride_cm * offs_cm[:,
+                                                 None] + stride_cn * offs_cn[
+                                                     None, :]
             c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
             if (c_ptr.dtype == tl.float8e4nv):
                 c = accumulator.to(tl.float8e4nv)
             else:
                 c = accumulator.to(tl.float16)
             tl.store(c_ptrs, c, mask=c_mask)
-            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+            accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N),
+                                   dtype=tl.float32)
 
 
-def matmul_persistent(a, b):
+# NOTE: each kernel file must consist a call function which wrap the invoke of the kernel
+def call(a, b):
     configs = {
         torch.float8_e4m3fn: {
-            "BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 128, "GROUP_SIZE_M": 8, "num_stages": 4,
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 8,
+            "num_stages": 4,
             "num_warps": 8
-        }, torch.float16: {
-            "BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64, "GROUP_SIZE_M": 8, "num_stages": 3,
+        },
+        torch.float16: {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 8,
+            "num_stages": 3,
             "num_warps": 8
         }
     }
@@ -140,7 +155,10 @@ def matmul_persistent(a, b):
     # Allocates output.
     c = torch.empty((M, N), device=a.device, dtype=dtype)
     # 1D launch kernel where each block gets its own program.
-    grid = lambda META: (min(NUM_SMS, triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"])), )
+    grid = lambda META: (min(
+        NUM_SMS,
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(
+            N, META["BLOCK_SIZE_N"])), )
     matmul_kernel_persistent[grid](
         a, b, c,  #
         M, N, K,  #
@@ -156,7 +174,3 @@ def matmul_persistent(a, b):
         num_warps=configs[dtype]["num_warps"],  #
     )
     return c
-
-
-if __name__ == '__main__':
-    pass

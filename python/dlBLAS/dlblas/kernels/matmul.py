@@ -149,6 +149,8 @@ You will specifically learn about:
 # Final Result
 # ------------
 
+# yapf: disable
+
 import torch
 
 import triton

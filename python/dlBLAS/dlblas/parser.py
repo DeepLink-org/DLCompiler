@@ -1,3 +1,5 @@
+EXTRA_HASH = 'dlBLAS'
+
 
 class TritonJITFunctionParser:
     '''
@@ -6,6 +8,7 @@ class TritonJITFunctionParser:
 
     def __init__(self) -> None:
         pass
+
 
 if __name__ == "__main__":
     import os
@@ -19,8 +22,13 @@ if __name__ == "__main__":
     dir_path = os.path.dirname(os.path.realpath(__file__))
     print(dir_path)
 
+    with open(os.path.join(dir_path, "kernels/persistent_matmul.py"),
+              "r") as f:
+        code = f.read()
 
-    with open(os.path.join(dir_path, "kernels/persistent_matmul.py"), "r") as f:
-        data = f.read()
-    
-    
+    key, path = PyCodeCache.write(code, extra=EXTRA_HASH)
+    mod = PyCodeCache.load_by_key_path(
+        key,
+        path,
+    )
+    print(dir(mod))

@@ -1,2 +1,4 @@
 # virtual env
 venv/
+
+*egg-info

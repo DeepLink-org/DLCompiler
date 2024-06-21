@@ -2,3 +2,6 @@
 venv/
 
 *egg-info
+.vscode/
+__pycache__/
+.pytest*

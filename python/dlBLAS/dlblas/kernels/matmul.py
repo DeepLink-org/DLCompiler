@@ -199,11 +199,33 @@ def call(a, b, activation=""):
     )
     return c
 
+def bench_fn(a, b, activation=""):
+    # Check constraints.
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.is_contiguous(), "Matrix A must be contiguous"
+    M, K = a.shape
+    K, N = b.shape
+    # Allocates output.
+    c = torch.empty((M, N), device=a.device, dtype=torch.float16)
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
+    fn = lambda: matmul_kernel[grid](
+        a, b, c,  #
+        M, N, K,  #
+        a.stride(0), a.stride(1),  #
+        b.stride(0), b.stride(1),  #
+        c.stride(0), c.stride(1),  #
+        ACTIVATION=activation  #
+    )
+    ms = triton.testing.do_bench(fn, warmup=100, rep=100)
+    return ms
+
 # register
 name = 'matmul'
 params = OpParams(
     n_args=3,
     args_names=['a', 'b', 'activation'],
+    args_types=[torch.Tensor, torch.Tensor, str],
     shapes={
         'a': ('m', 'k'),
         'b': ('k', 'n'),
@@ -220,5 +242,5 @@ params = OpParams(
         'activation': None,
     },
 )
-impl = OpImpl(params, call)
+impl = OpImpl(params, call, bench_fn)
 op_registry.register(name, impl)

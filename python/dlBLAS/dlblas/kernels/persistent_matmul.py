@@ -177,11 +177,63 @@ def call(a, b):
     )
     return c
 
+def bench_fn(a, b):
+    configs = {
+        torch.float8_e4m3fn: {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 128,
+            "GROUP_SIZE_M": 8,
+            "num_stages": 4,
+            "num_warps": 8
+        },
+        torch.float16: {
+            "BLOCK_SIZE_M": 128,
+            "BLOCK_SIZE_N": 256,
+            "BLOCK_SIZE_K": 64,
+            "GROUP_SIZE_M": 8,
+            "num_stages": 3,
+            "num_warps": 8
+        }
+    }
+    # Check constraints.
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.dtype == b.dtype, "Incompatible dtypes"
+    NUM_SMS = torch.cuda.get_device_properties("cuda").multi_processor_count
+    M, K = a.shape
+    K, N = b.shape
+    dtype = a.dtype
+    # Allocates output.
+    c = torch.empty((M, N), device=a.device, dtype=dtype)
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (min(
+        NUM_SMS,
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(
+            N, META["BLOCK_SIZE_N"])), )
+    fn = lambda: matmul_kernel_persistent[grid](
+        a, b, c,  #
+        M, N, K,  #
+        a.stride(0), a.stride(1),  #
+        b.stride(0), b.stride(1),  #
+        c.stride(0), c.stride(1),  #
+        BLOCK_SIZE_M=configs[dtype]["BLOCK_SIZE_M"],  #
+        BLOCK_SIZE_N=configs[dtype]["BLOCK_SIZE_N"],  #
+        BLOCK_SIZE_K=configs[dtype]["BLOCK_SIZE_K"],  #
+        GROUP_SIZE_M=configs[dtype]["GROUP_SIZE_M"],  #
+        NUM_SMS=NUM_SMS,  #
+        num_stages=configs[dtype]["num_stages"],  #
+        num_warps=configs[dtype]["num_warps"],  #
+    )
+    ms = triton.testing.do_bench(fn, warmup=100, rep=100)
+    return ms
+
+
 # register
 name = 'matmul'
 params = OpParams(
     n_args=2,
     args_names=['a', 'b'],
+    args_types=[torch.Tensor, torch.Tensor],
     shapes={
         'a': ('m', 'k'),
         'b': ('k', 'n'),
@@ -195,5 +247,5 @@ params = OpParams(
         'b': 'cuda',
     },
 )
-impl = OpImpl(params, call)
+impl = OpImpl(params, call, bench_fn)
 op_registry.register(name, impl)

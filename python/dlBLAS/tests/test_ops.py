@@ -31,6 +31,7 @@ def test_mm(m, n, k, dtype, device):
     args = OpParams(
         n_args=2,
         args_names=['a', 'b'],
+        args_types=[torch.Tensor, torch.Tensor],
         shapes={
             'a': ('m', 'k'),
             'b': ('k', 'n'),

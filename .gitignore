@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 # Triton-Linalg
 /*.mlir
 *.o
@@ -62,6 +64,7 @@ compile_commands.json
 .python-version
 *.venv
 .venv
+venv/
 
 # Python deployment artifacts
 *.whl
@@ -84,3 +87,7 @@ genhtml
 # cscope files
 cscope.*
 tags
+
+*egg-info
+.pytest*
+>>>>>>> main

@@ -6,7 +6,7 @@ import triton.compiler as tc
 
 # from triton.backends.triton.driver import DICPDriver
 # from triton.common.backend import register_backend
-import triton.backends.dicp.driver as dicp
+import triton.backends.dicp_triton.driver as dicp
 import triton.compiler as tc
 from pathlib import Path
 # import backend.driver as bd

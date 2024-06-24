@@ -128,9 +128,7 @@ def matmul_kernel_persistent(
                                    dtype=tl.float32)
 
 
-def call(params: OpParams, a, b):
-    # TODO add check to params
-
+def call(a, b):
     configs = {
         torch.float8_e4m3fn: {
             "BLOCK_SIZE_M": 128,
@@ -181,6 +179,21 @@ def call(params: OpParams, a, b):
 
 # register
 name = 'matmul'
-params = OpParams(shapes=('m', 'n', 'k'), rank=3)
+params = OpParams(
+    n_args=2,
+    args_names=['a', 'b'],
+    shapes={
+        'a': ('m', 'k'),
+        'b': ('k', 'n'),
+    },
+    dtypes={
+        'a': torch.float16,
+        'b': torch.float16,
+    },
+    device={
+        'a': 'cuda',
+        'b': 'cuda',
+    },
+)
 impl = OpImpl(params, call)
 op_registry.register(name, impl)

@@ -1,18 +1,17 @@
-from dlblas.op_registry import OpParams, OpImpl
+from dlblas.op_registry import OpParams, OpImpl, op_registry
 
 
 def get_list_op_names() -> list[str]:
-    return ['matmul']
+    return op_registry.get_list_op_names()
 
 
-def get_args_from_op_name(name: str) -> OpParams:
-    return
+def get_args_from_op_name(name: str) -> list[OpParams]:
+    return op_registry.get_args_from_op_name(name)
 
 
 def get_op(name: str, params: OpParams) -> OpImpl:
     '''
-    entrypoint of dlBLAS 
-        based on name and params,
-        return OpImpl
+    based on name and params,
+    return OpImpl
     '''
-    return
+    return op_registry.get_op(name, params)

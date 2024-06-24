@@ -179,7 +179,7 @@ def leaky_relu(x):
 
 
 
-def call(params: OpParams, a, b, activation=""):
+def call(a, b, activation=""):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     assert a.is_contiguous(), "Matrix A must be contiguous"
@@ -201,6 +201,24 @@ def call(params: OpParams, a, b, activation=""):
 
 # register
 name = 'matmul'
-params = OpParams(shapes=('m', 'n', 'k'), rank=3)
+params = OpParams(
+    n_args=3,
+    args_names=['a', 'b', 'activation'],
+    shapes={
+        'a': ('m', 'k'),
+        'b': ('k', 'n'),
+        'activation': None,
+    },
+    dtypes={
+        'a': torch.float16,
+        'b': torch.float16,
+        'activation': None,
+    },
+    device={
+        'a': 'cuda',
+        'b': 'cuda',
+        'activation': None,
+    },
+)
 impl = OpImpl(params, call)
 op_registry.register(name, impl)

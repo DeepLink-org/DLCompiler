@@ -10,12 +10,14 @@ from dlblas.op_registry import OpParams, OpImpl, op_registry
 
 
 def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
+    # return triton.runtime.driver.active.get_current_target().backend == "cuda"
+    return True
 
 
 def is_hip_mi200():
-    target = triton.runtime.driver.active.get_current_target()
-    return target.backend == 'hip' and target.arch == 'gfx90a'
+    # target = triton.runtime.driver.active.get_current_target()
+    # return target.backend == 'hip' and target.arch == 'gfx90a'
+    return False
 
 
 def get_cuda_autotune_config():

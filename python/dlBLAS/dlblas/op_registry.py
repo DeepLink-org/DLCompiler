@@ -25,7 +25,8 @@ class OpImpl:
 
 @dataclass
 class OpRegistry:
-    ops: dict  # name -> list[Impl]
+    # ops: name -> list[OpImpl]
+    ops: dict = field(default_factory=lambda: {})
 
     def register(self, name, impl: OpImpl):
         if name in self.ops:

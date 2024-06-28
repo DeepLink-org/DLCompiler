@@ -61,6 +61,8 @@ def match(user_args, op_params: OpParams):
     if len(user_args) != op_params.n_args:
         return False
 
+    concrete_shapes = []
+    sym_shapes = []
     for i, arg in enumerate(user_args):
         # type check
         if op_params.args_types[i] == 'tensor' and not isinstance(
@@ -91,9 +93,41 @@ def match(user_args, op_params: OpParams):
             if not dev_str.startswith(op_dev_str):
                 return False
 
-            # shape check
+            # appending shape for check
             sym_shape = op_params.args[i].shape
             concrete_shape = arg.shape
-            # TODO check shape
+
+            sym_shapes.append(sym_shape)
+            concrete_shapes.append(concrete_shape)
+
+    # shape check
+    if violate_symbolic_constraints(concrete_shapes, sym_shapes):
+        return False
 
     return True
+
+
+def violate_symbolic_constraints(concrete_shapes, sym_shapes):
+    # NOTE this could be expensive,
+    # we should probably improve if noticable slowdown
+
+    # for now, we just check when symbolic variables are the same
+    # whether the corresponding concrete values are the same
+    sym2loc = {}
+    for i in range(len(sym_shapes)):
+        for j in range(len(sym_shapes[i])):
+            symbol = sym_shapes[i][j]
+            if symbol in sym2loc:
+                sym2loc[symbol].append((i, j))
+            else:
+                sym2loc[symbol] = [(i, j)]
+
+    for sym, locs in sym2loc.items():
+        first_loc = locs[0]
+        first_val = concrete_shapes[first_loc[0]][first_loc[1]]
+
+        for loc in locs:
+            if concrete_shapes[loc[0]][loc[1]] != first_val:
+                return True
+
+    return False

@@ -135,12 +135,16 @@ class SymVar:
     '''
 
     def __init__(self, name):
+        assert isinstance(name, str)
         self.name = name
 
     def __eq__(self, value) -> bool:
         if not isinstance(value, SymVar):
             return False
         return self.name == value.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
 
 
 class Tensor:

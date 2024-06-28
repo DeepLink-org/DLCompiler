@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field, astuple
 from typing import Any
 
+import torch
+
 from dlblas.symbolic_var import Tensor
 
 
@@ -55,7 +57,9 @@ def match(user_args, op_params: OpParams):
 
     for i, arg in enumerate(user_args):
         # type check
-        if op_params.args_types[i] == 'tensor' and not isinstance(arg, Tensor):
+        if op_params.args_types[i] == 'tensor' and not isinstance(
+                arg, torch.Tensor):
+            # user would want to pass with torch.Tensor
             return False
         if op_params.args_types[i] == 'str' and not isinstance(arg, str):
             return False
@@ -71,10 +75,14 @@ def match(user_args, op_params: OpParams):
                 return False
 
         # tensor check
-        if isinstance(arg, Tensor):
-            if arg.device != op_params.args[i].device:
-                return False
+        if isinstance(arg, torch.Tensor):
             if arg.dtype != op_params.args[i].dtype:
+                return False
+
+            # TODO consider add a logging for this
+            dev_str = str(arg.device)
+            op_dev_str = op_params.args[i].device
+            if not dev_str.startswith(op_dev_str):
                 return False
 
             # shape check

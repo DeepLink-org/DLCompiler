@@ -39,7 +39,7 @@ class OpRegistry:
         # fetch candidates
         candidates = []
         for op in self.ops[op_name]:
-            # NOTE: we don't expect too much time waste look up here,
+            # we don't expect too much time waste look up here,
             # we can always improve this look up time
             if match(args, op.params):
                 candidates.append(op)

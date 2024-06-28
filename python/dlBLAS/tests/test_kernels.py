@@ -30,6 +30,7 @@ def test_mm(m, n, k, dtype, device):
     )
     args = (a, b)
 
+    # import pdb; pdb.set_trace()
     dlblas_op = get_op('matmul', args)
     assert isinstance(dlblas_op, OpImpl)
 

@@ -9,9 +9,8 @@ def get_args_from_op_name(name: str):
     return op_registry.get_args_from_op_name(name)
 
 
-def get_op(name: str, params):
-    '''
-    based on name and params,
+def get_op(name: str, args):
+    '''based on name and args,
     return OpImpl
     '''
-    return op_registry.get_op(name, params)
+    return op_registry.get_op(name, args)

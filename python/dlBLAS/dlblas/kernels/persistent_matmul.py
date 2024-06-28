@@ -15,7 +15,8 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas.op_registry import OpParams, OpImpl, op_registry
+from dlblas.op_registry import op_registry
+from dlblas.symbolic_var import SymVar, Tensor
 
 # yapf: disable
 
@@ -230,22 +231,12 @@ def bench_fn(a, b):
 
 # register
 name = 'matmul'
-params = OpParams(
-    n_args=2,
-    args_names=['a', 'b'],
-    args_types=[torch.Tensor, torch.Tensor],
-    shapes={
-        'a': ('m', 'k'),
-        'b': ('k', 'n'),
-    },
-    dtypes={
-        'a': torch.float16,
-        'b': torch.float16,
-    },
-    device={
-        'a': 'cuda',
-        'b': 'cuda',
-    },
-)
-impl = OpImpl(params, call, bench_fn)
-op_registry.register(name, impl)
+for dtype in [torch.float16, torch.float32]:
+    for device in ['cuda']:
+        m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
+        # we dont' actually allocate tensor
+        a = Tensor((m, k), dtype=dtype, device=device)
+        b = Tensor((k, n), dtype=dtype, device=device)
+
+        # name, args, call, bench_fn
+        op_registry.register(name, (a, b), call, bench_fn)

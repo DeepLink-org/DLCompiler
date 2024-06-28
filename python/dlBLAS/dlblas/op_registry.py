@@ -1,64 +1,10 @@
-from dataclasses import dataclass, field, astuple
-from typing import Any
+from dataclasses import dataclass, field
 
 import multiprocessing
 
 import numpy as np
 
-
-@dataclass(eq=False)
-class OpParams:
-    n_args: int
-    args_names: list
-    args_types: list
-
-    shapes: dict  # args_name -> shape
-    dtypes: dict  # args_name -> dtype
-    device: dict  # args_name -> device
-
-    def __eq__(self, other):
-        if not isinstance(other, OpParams):
-            return False
-        if self.n_args != other.n_args:
-            return False
-        if len(self.args_names) != len(other.args_names):
-            return False
-        if len(self.args_types) != len(other.args_types):
-            return False
-        if len(self.shapes) != len(other.shapes):
-            return False
-        if len(self.dtypes) != len(other.dtypes):
-            return False
-        if len(self.device) != len(other.device):
-            return False
-
-        for i in range(self.n_args):
-            if self.args_names[i] != other.args_names[i]:
-                return False
-            if self.args_types[i] != other.args_types[i]:
-                # FIXME type comp?
-                return False
-            if self.shapes[self.args_names[i]] != other.shapes[
-                    self.args_names[i]]:
-                return False
-            if self.dtypes[self.args_names[i]] != other.dtypes[
-                    self.args_names[i]]:
-                return False
-            if self.device[self.args_names[i]] != other.device[
-                    self.args_names[i]]:
-                return False
-
-        return True
-
-
-@dataclass
-class OpImpl:
-    params: OpParams
-    kernel: callable
-    bench_fn: callable
-
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
-        return self.kernel(*args, **kwds)
+from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 
 
 @dataclass
@@ -70,7 +16,11 @@ class OpRegistry:
         # XXX? To use CUDA with multiprocessing, you must use the 'spawn' start method
         multiprocessing.set_start_method('spawn')
 
-    def register(self, name, impl: OpImpl):
+    def register(self, name, args: tuple, call, bench_fn):
+        params = parse_args(args)
+        impl = OpImpl(params, call, bench_fn)
+
+        # FIXME what if a kernel register twice? de-duplication check
         if name in self.ops:
             self.ops[name].append(impl)
         else:
@@ -82,20 +32,21 @@ class OpRegistry:
     def get_args_from_op_name(self, op_name: str):
         return [i.params for i in self.ops[op_name]]
 
-    def get_op(self, op_name: str, params: OpParams):
+    def get_op(self, op_name: str, args: tuple):
         if op_name not in self.ops:
             raise NameError(f"op {op_name} not found")
 
         # fetch candidates
         candidates = []
         for op in self.ops[op_name]:
-            if op.params == params:
+            # NOTE: we don't expect too much time waste look up here,
+            # we can always improve this look up time
+            if match(args, op.params):
                 candidates.append(op)
 
         if len(candidates) == 0:
             raise LookupError(
-                f"no candidates for op {op_name} with params {astuple(params)}"
-            )
+                f"no candidates for op {op_name} with args {args}")
 
         # run selection
         best_idx, _ = self._selection(candidates)

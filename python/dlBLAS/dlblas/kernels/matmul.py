@@ -6,7 +6,8 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas.op_registry import OpParams, OpImpl, op_registry
+from dlblas.op_registry import op_registry
+from dlblas.symbolic_var import SymVar, Tensor
 
 
 def is_cuda():
@@ -222,25 +223,13 @@ def bench_fn(a, b, activation=""):
 
 # register
 name = 'matmul'
-params = OpParams(
-    n_args=3,
-    args_names=['a', 'b', 'activation'],
-    args_types=[torch.Tensor, torch.Tensor, str],
-    shapes={
-        'a': ('m', 'k'),
-        'b': ('k', 'n'),
-        'activation': None,
-    },
-    dtypes={
-        'a': torch.float16,
-        'b': torch.float16,
-        'activation': None,
-    },
-    device={
-        'a': 'cuda',
-        'b': 'cuda',
-        'activation': None,
-    },
-)
-impl = OpImpl(params, call, bench_fn)
-op_registry.register(name, impl)
+for dtype in [torch.float16, torch.float32]:
+    for activation in ["", "leaky_relu"]:
+        for device in ['cuda']:
+            m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
+            # we dont' actually allocate tensor
+            a = Tensor((m, k), dtype=dtype, device=device)
+            b = Tensor((k, n), dtype=dtype, device=device)
+
+            # name, args, call, bench_fn
+            op_registry.register(name, (a, b, activation), call, bench_fn)

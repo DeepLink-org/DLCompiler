@@ -28,23 +28,7 @@ def test_mm(m, n, k, dtype, device):
         dtype=dtype,
         device=device,
     )
-    args = OpParams(
-        n_args=2,
-        args_names=['a', 'b'],
-        args_types=[torch.Tensor, torch.Tensor],
-        shapes={
-            'a': ('m', 'k'),
-            'b': ('k', 'n'),
-        },
-        dtypes={
-            'a': torch.float16,
-            'b': torch.float16,
-        },
-        device={
-            'a': 'cuda',
-            'b': 'cuda',
-        },
-    )
+    args = (a, b)
 
     dlblas_op = get_op('matmul', args)
     assert isinstance(dlblas_op, OpImpl)

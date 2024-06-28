@@ -6,7 +6,8 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas.op_registry import OpParams, OpImpl, op_registry
+from dlblas.op_registry import op_registry
+from dlblas.symbolic_var import SymVar, Tensor
 
 
 def is_cuda():
@@ -199,26 +200,39 @@ def call(a, b, activation=""):
     )
     return c
 
+def bench_fn(a, b, activation=""):
+    # Check constraints.
+    assert a.shape[1] == b.shape[0], "Incompatible dimensions"
+    assert a.is_contiguous(), "Matrix A must be contiguous"
+    M, K = a.shape
+    K, N = b.shape
+    # Allocates output.
+    c = torch.empty((M, N), device=a.device, dtype=torch.float16)
+    # 1D launch kernel where each block gets its own program.
+    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']), )
+    fn = lambda: matmul_kernel[grid](
+        a, b, c,  #
+        M, N, K,  #
+        a.stride(0), a.stride(1),  #
+        b.stride(0), b.stride(1),  #
+        c.stride(0), c.stride(1),  #
+        ACTIVATION=activation  #
+    )
+    ms = triton.testing.do_bench(fn, warmup=100, rep=100)
+    return ms
+
 # register
 name = 'matmul'
-params = OpParams(
-    n_args=3,
-    args_names=['a', 'b', 'activation'],
-    shapes={
-        'a': ('m', 'k'),
-        'b': ('k', 'n'),
-        'activation': None,
-    },
-    dtypes={
-        'a': torch.float16,
-        'b': torch.float16,
-        'activation': None,
-    },
-    device={
-        'a': 'cuda',
-        'b': 'cuda',
-        'activation': None,
-    },
-)
-impl = OpImpl(params, call)
-op_registry.register(name, impl)
+for dtype in [torch.float16, torch.float32]:
+    for activation in ["", "leaky_relu"]:
+        # for now, epilogue is not added to op name
+        for device in ['cuda']:
+            m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
+            # we dont' actually allocate tensor
+            a = Tensor((m, k), dtype=dtype, device=device)
+            b = Tensor((k, n), dtype=dtype, device=device)
+
+            if activation == '':
+                op_registry.register(name, (a, b), call, bench_fn)
+            else:
+                op_registry.register(name, (a, b, activation), call, bench_fn)

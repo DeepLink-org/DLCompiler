@@ -4,9 +4,9 @@ import os
 
 def import_all_modules_from_folder(folder_path):
     """
-    Import all Python modules from a specific folder.
+    dynamically import all Python modules under this folder
 
-    :param folder_path: The path to the folder containing the Python scripts.
+    Note that all kernels implementation under this folder must be registered a call interface
     """
     # Ensure the path is absolute
     folder_path = os.path.abspath(folder_path)

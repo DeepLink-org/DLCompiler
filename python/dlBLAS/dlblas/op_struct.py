@@ -25,6 +25,9 @@ class OpImpl:
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self.kernel(*args, **kwargs)
 
+    def bench(self, *args: Any, **kwargs: Any) -> Any:
+        return self.bench_fn(*args, **kwargs)
+
 
 def parse_args(args: tuple):
     types = []

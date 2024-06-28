@@ -1,11 +1,11 @@
+import os
 import torch
 import triton
 import triton.language as tl
 
 import pytest
 
-from dlblas import (get_op, get_list_op_names, get_num_op_impl, OpImpl,
-                    OpParams)
+from dlblas import (get_op, get_list_op_names, OpImpl, OpParams)
 
 
 @pytest.mark.parametrize("m", [32, 128])

@@ -1,9 +1,5 @@
 from dataclasses import dataclass, field
 
-import multiprocessing
-
-import numpy as np
-
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 
 
@@ -13,8 +9,10 @@ class OpRegistry:
     ops: dict[str, OpImpl] = field(default_factory=lambda: {})
 
     def __post_init__(self):
-        # XXX? To use CUDA with multiprocessing, you must use the 'spawn' start method
-        multiprocessing.set_start_method('spawn')
+        # XXX? To use CUDA with multiprocessing, you must use the 'spawn' start method?
+        # import multiprocessing
+        # multiprocessing.set_start_method('spawn')
+        pass
 
     def register(self, name, args: tuple, call, bench_fn):
         params = parse_args(args)
@@ -33,65 +31,48 @@ class OpRegistry:
         return [i.params for i in self.ops[op_name]]
 
     def get_op(self, op_name: str, args: tuple):
+        # fetch candidates
         if op_name not in self.ops:
             raise NameError(f"op {op_name} not found")
 
-        # fetch candidates
-        candidates = []
-        for op in self.ops[op_name]:
-            # we don't expect too much time waste look up here,
-            # we can always improve this look up time
-            if match(args, op.params):
-                candidates.append(op)
-
+        candidates = self._get_candidates(op_name, args)
         if len(candidates) == 0:
             raise LookupError(
                 f"no candidates for op {op_name} with args {args}")
 
         # run selection
-        best_idx, _ = self._selection(candidates)
+        best_idx, _ = self._selection(args, candidates)
 
         # get best
         best_op = candidates[best_idx]
         return best_op
 
-    def _selection(self, candidates: list[OpImpl]) -> int:
+    def _get_candidates(self, op_name: str, args: tuple):
+        candidates = []
+        for op in self.ops[op_name]:
+            # XXX the same op can have multiple dtype, impl, device etc
+            # we might want to shorten look up time, by
+            # hash those info when registering op
+            if match(args, op.params):
+                candidates.append(op)
+        return candidates
+
+    def _selection(self, args, candidates: list[OpImpl]) -> int:
         if len(candidates) == 1:
             return 0, 0
 
-        # NOTE: Even though we want tasks to run one at a time, we still use Pool
-        # Setting processes to 1 ensures serial execution
-        futures = []
-        with multiprocessing.Pool(processes=1) as pool:
-            for i, op in enumerate(candidates):
-                # TODO construct params
-                args = ()
-                future = pool.apply(op.bench_fn, args=args)
-                futures.append(future)
-
-            results = [future.get() for future in futures]
-
-        index = np.argmax(results)
-        return int(index), max(results)
-
-    def _build_args(self, params: OpParams):
-        # need to figure out symbolic shape 'n'
-        # and concrete shape 16 etc...
-        pass
-
-    # def _selection(self, candidates: list[OpImpl]) -> int:
-    #     if len(candidates) == 1:
-    #         return 0, 0
-
-    #     best_idx = -1
-    #     best_perf = None
-    #     for i, op in enumerate(candidates):
-    #         perf = self._bench(op)
-    #         if best_perf is None or perf > best_perf:
-    #             best_perf = perf
-    #             best_idx = i
-
-    #     return best_idx, best_perf
+        # NOTE: for now we only bench each one locally and in serial
+        # for parallel benchmark, see:
+        # https://github.com/pytorch/pytorch/blob/a0dac3de31b50a19e503652ffe257b314fa005a6/torch/_inductor/autotune_process.py#L282
+        best_idx = -1
+        best_perf = None
+        for i, op in enumerate(candidates):
+            perf = op.bench(*args)
+            # print('op is : ', op, ' perf is: ', perf)
+            if best_perf is None or perf < best_perf:
+                best_perf = perf
+                best_idx = i
+        return best_idx, best_perf
 
     # def _bench(self, op: OpImpl):
     #     # open a subprocess and run the benchmark

@@ -225,11 +225,14 @@ def bench_fn(a, b, activation=""):
 name = 'matmul'
 for dtype in [torch.float16, torch.float32]:
     for activation in ["", "leaky_relu"]:
+        # for now, epilogue is not added to op name
         for device in ['cuda']:
             m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
             # we dont' actually allocate tensor
             a = Tensor((m, k), dtype=dtype, device=device)
             b = Tensor((k, n), dtype=dtype, device=device)
 
-            # name, args, call, bench_fn
-            op_registry.register(name, (a, b, activation), call, bench_fn)
+            if activation == '':
+                op_registry.register(name, (a, b), call, bench_fn)
+            else:
+                op_registry.register(name, (a, b, activation), call, bench_fn)

@@ -4,6 +4,9 @@ from typing import Any
 import torch
 
 from dlblas.symbolic_var import Tensor
+from dlblas.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

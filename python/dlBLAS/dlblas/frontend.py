@@ -14,3 +14,7 @@ def get_op(name: str, args):
     return OpImpl
     '''
     return op_registry.get_op(name, args)
+
+
+def get_num_op_impl(name: str):
+    return op_registry.get_num_op_impl(name)

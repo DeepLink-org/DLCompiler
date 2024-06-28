@@ -41,7 +41,7 @@ def parse_args(args: tuple):
         else:
             raise TypeError(f"arg {i} has unsupported type {type(arg)}")
 
-    # TODO generate shape constraint at here?
+    # TODO generate shape constraint at register time?
     params = OpParams(
         n_args=len(args),
         args_types=types,

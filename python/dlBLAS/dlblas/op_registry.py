@@ -45,6 +45,9 @@ class OpRegistry:
 
         # get best
         best_op = candidates[best_idx]
+
+        # cache
+        self._cache(args, best_op)
         return best_op
 
     def _get_candidates(self, op_name: str, args: tuple):
@@ -73,6 +76,10 @@ class OpRegistry:
                 best_perf = perf
                 best_idx = i
         return best_idx, best_perf
+
+    def _cache(self, args, op: OpImpl):
+        # TODO cache best_op for the given args
+        pass
 
     # def _bench(self, op: OpImpl):
     #     # open a subprocess and run the benchmark

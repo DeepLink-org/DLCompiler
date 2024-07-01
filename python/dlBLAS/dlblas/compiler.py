@@ -24,28 +24,24 @@ def compile_and_bench(op: OpImpl, args):
 def compile_op(op: OpImpl):
     kernel_file = op.file_path
     with open(kernel_file, 'r') as file:
-        src_code = file.read()
+        src_code = file.readlines()
 
     # a hack to avoid re-register the func
-    ## replace = re.sub(r'register_dlblas_op.*?(?=\n|$)', 'pass', src_code, flags=re.MULTILINE)
-
-    ## regex seems to unable to express conditional replace
-    processed_content = []
+    buffer = []
     for line in src_code:
-        # Check if the line contains 'register_dlblas_op' and does not contain 'import'
+        # Replace the line with 'pass'
         if 'register_dlblas_op' in line and 'import' not in line:
             tmp = re.sub(r'register_dlblas_op.*?(?=\n|$)',
                          'pass\n',
                          line,
                          flags=re.MULTILINE)
-            processed_content.append(
-                tmp)  # Replace the line with 'pass', keeping the indentation
+            buffer.append(tmp)
         else:
-            processed_content.append(line)  # Keep the line as is
+            buffer.append(line)  # Keep the line as is
 
     with tempfile.NamedTemporaryFile(mode='w+', delete=True,
                                      suffix='.tmp') as temp_file:
-        temp_file.writelines(processed_content)
+        temp_file.writelines(buffer)
         temp_file.seek(0)  # Move the file pointer to the beginning to read
         replace = temp_file.read()
 
@@ -55,6 +51,7 @@ def compile_op(op: OpImpl):
     # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time?
     #
     # mod = PyCodeCache.load(src_code, extra=str(counter))
+    #
     mod = PyCodeCache.load(replace)
     PyCodeCache.clear()  # we want a fresh copy every time
 

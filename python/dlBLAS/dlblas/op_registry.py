@@ -24,7 +24,7 @@ class OpRegistry:
     def register(self, name, args: tuple, call, bench_fn, kernel):
         params = parse_args(args)
 
-        # XXX this condition is a hack to bypass re-registration of ops
+        # XXX this condition is a hack to bypass re-registration of ops from pytest
         # because we dynamically swap op's impl, so the name will be messed up if re-register
         #
         if 'torch' not in call.__module__:

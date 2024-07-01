@@ -14,11 +14,17 @@ def compile_and_bench(op: OpImpl, args):
 
         we use inductor's PyCodeCache for now
     '''
+    compile_op(op)
+    perf = op.bench(*args)
+    return perf
+
+
+def compile_op(op: OpImpl):
     kernel_file = op.file_path
     with open(kernel_file, 'r') as file:
         src_code = file.read()
 
-    # dynamically written to a python file and compiled as a python module
+    # dynamically write to a python file and compiled as a python module
     #
     # XXX
     # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time?
@@ -38,7 +44,3 @@ def compile_and_bench(op: OpImpl, args):
     op.call = getattr(mod, call_name)
     op.bench_fn = getattr(mod, bench_fn_name)
     op.kernel = getattr(mod, kernel_name)
-
-    # actual bench
-    perf = op.bench(*args)
-    return perf

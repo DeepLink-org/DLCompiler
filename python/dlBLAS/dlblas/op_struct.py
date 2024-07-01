@@ -19,6 +19,7 @@ class OpParams:
 @dataclass
 class OpImpl:
     params: OpParams
+    file_path: str
     call: callable
     bench_fn: callable
     kernel: callable

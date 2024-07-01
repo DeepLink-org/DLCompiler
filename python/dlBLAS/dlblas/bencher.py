@@ -2,6 +2,8 @@ import os
 
 from torch._inductor.codecache import PyCodeCache
 
+from triton.runtime.autotuner import Autotuner
+
 from dlblas.op_struct import OpImpl
 
 
@@ -12,19 +14,14 @@ def compile_and_bench(op: OpImpl, args):
 
         we use inductor's PyCodeCache for now
     '''
-    # path-to-deeplink/python/dlBLAS/dlblas
-    this_file_dir = os.path.dirname(os.path.realpath(__file__))
-    kernel_file_name = op.call.__globals__['__name__']
-    kernel_file = os.path.join(this_file_dir, 'kernels',
-                               kernel_file_name + '.py')
-
+    kernel_file = op.file_path
     with open(kernel_file, 'r') as file:
         src_code = file.read()
 
     # dynamically written to a python file and compiled as a python module
     #
     # XXX
-    # the file is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time?
+    # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time?
     #
     # mod = PyCodeCache.load(src_code, extra=str(counter))
     mod = PyCodeCache.load(src_code)
@@ -32,7 +29,10 @@ def compile_and_bench(op: OpImpl, args):
 
     call_name = op.call.__name__
     bench_fn_name = op.bench_fn.__name__
-    kernel_name = op.kernel.__name__
+    if isinstance(op.kernel, Autotuner):
+        kernel_name = op.kernel.fn.__name__
+    else:
+        kernel_name = op.kernel.__name__
 
     # swap the impl
     op.call = getattr(mod, call_name)

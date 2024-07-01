@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -22,13 +23,25 @@ class OpRegistry:
 
     def register(self, name, args: tuple, call, bench_fn, kernel):
         params = parse_args(args)
-        impl = OpImpl(params, call, bench_fn, kernel)
 
-        # FIXME what if a kernel register twice? de-duplication check
-        if name in self.ops:
-            self.ops[name].append(impl)
-        else:
-            self.ops[name] = [impl]
+        # XXX this condition is a hack to bypass re-registration of ops
+        # because we dynamically swap op's impl, so the name will be messed up if re-register
+        #
+        if 'torch' not in call.__module__:
+
+            # path-to-deeplink/python/dlBLAS/dlblas
+            this_file_dir = os.path.dirname(os.path.realpath(__file__))
+            # kernel_file_name = call.__globals__['__name__']
+            kernel_module_name = call.__module__
+            kernel_file = os.path.join(this_file_dir, 'kernels',
+                                       kernel_module_name + '.py')
+            impl = OpImpl(params, kernel_file, call, bench_fn, kernel)
+
+            # FIXME what if a kernel register twice? if appear seems to be a bug... de-duplication check
+            if name in self.ops:
+                self.ops[name].append(impl)
+            else:
+                self.ops[name] = [impl]
 
     def get_list_op_names(self):
         return list(self.ops.keys())

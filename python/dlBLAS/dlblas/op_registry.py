@@ -14,9 +14,9 @@ class OpRegistry:
         # multiprocessing.set_start_method('spawn')
         pass
 
-    def register(self, name, args: tuple, call, bench_fn):
+    def register(self, name, args: tuple, call, bench_fn, kernel):
         params = parse_args(args)
-        impl = OpImpl(params, call, bench_fn)
+        impl = OpImpl(params, call, bench_fn, kernel)
 
         # FIXME what if a kernel register twice? de-duplication check
         if name in self.ops:
@@ -44,7 +44,7 @@ class OpRegistry:
         best_idx, _ = self._selection(args, candidates)
 
         # get best
-        best_op = candidates[best_idx]
+        best_op: OpImpl = candidates[best_idx]
 
         # cache
         self._cache(args, best_op)

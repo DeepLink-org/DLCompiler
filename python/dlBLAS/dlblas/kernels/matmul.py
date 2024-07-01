@@ -232,7 +232,12 @@ for dtype in [torch.float16, torch.float32]:
             a = Tensor((m, k), dtype=dtype, device=device)
             b = Tensor((k, n), dtype=dtype, device=device)
 
+            # NOTE: the underlying kernel is the same jit'ed function, but Triton
+            # will dispatch to different kernels based on the input params
+            #
+            # why do we still need another dispatch layer in op_registry?
+            # because e.g. matmul may have different Triton implemetation...
             if activation == '':
-                op_registry.register(name, (a, b), call, bench_fn)
+                op_registry.register(name, (a, b), call, bench_fn, matmul_kernel)
             else:
-                op_registry.register(name, (a, b, activation), call, bench_fn)
+                op_registry.register(name, (a, b, activation), call, bench_fn, matmul_kernel)

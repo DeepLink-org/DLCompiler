@@ -19,11 +19,12 @@ class OpParams:
 @dataclass(frozen=True)
 class OpImpl:
     params: OpParams
-    kernel: callable
+    call: callable
     bench_fn: callable
+    kernel: callable
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return self.kernel(*args, **kwargs)
+        return self.call(*args, **kwargs)
 
     def bench(self, *args: Any, **kwargs: Any) -> Any:
         return self.bench_fn(*args, **kwargs)
@@ -107,7 +108,7 @@ def match(user_args, op_params: OpParams):
     return True
 
 
-def violate_symbolic_constraints(concrete_shapes, sym_shapes):
+def violate_symbolic_constraints(concrete_shapes, sym_shapes) -> bool:
     # NOTE this could be expensive,
     # we should probably improve if noticable slowdown
 

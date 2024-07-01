@@ -239,4 +239,4 @@ for dtype in [torch.float16, torch.float32]:
         b = Tensor((k, n), dtype=dtype, device=device)
 
         # name, args, call, bench_fn
-        op_registry.register(name, (a, b), call, bench_fn)
+        op_registry.register(name, (a, b), call, bench_fn, matmul_kernel_persistent)

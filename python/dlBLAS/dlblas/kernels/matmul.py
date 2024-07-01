@@ -200,6 +200,12 @@ def call(a, b, activation=""):
     )
     return c
 
+# NOTE: kernel-level benchmark would be inaccurate if we just do time.time()/time.perf_counter()
+#     triton's benchmarks are based on CUDA events
+#
+# however for DSA, we might not be able to use a CUDA event's mechanism,
+#     so we would fall back to time.time()/time.perf_counter()
+#
 def bench_fn(a, b, activation=""):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
@@ -237,6 +243,7 @@ for dtype in [torch.float16, torch.float32]:
             #
             # why do we still need another dispatch layer in op_registry?
             # because e.g. matmul may have different Triton implemetation...
+            #
             if activation == '':
                 op_registry.register(name, (a, b), call, bench_fn, matmul_kernel)
             else:

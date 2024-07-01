@@ -1,12 +1,14 @@
 from dataclasses import dataclass, field
 
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
+from dlblas.cache import Cache
 
 
 @dataclass
 class OpRegistry:
     # ops: name -> list[OpImpl]
     ops: dict[str, OpImpl] = field(default_factory=lambda: {})
+    cache: Cache = field(default_factory=lambda: Cache())
 
     def __post_init__(self):
         # XXX? To use CUDA with multiprocessing, you must use the 'spawn' start method?
@@ -47,7 +49,7 @@ class OpRegistry:
         best_op: OpImpl = candidates[best_idx]
 
         # cache
-        self._cache(args, best_op)
+        self._cache(best_op, args)
         return best_op
 
     def _get_candidates(self, op_name: str, args: tuple):
@@ -77,9 +79,8 @@ class OpRegistry:
                 best_idx = i
         return best_idx, best_perf
 
-    def _cache(self, args, op: OpImpl):
-        # TODO cache best_op for the given args
-        pass
+    def _cache(self, op: OpImpl, args):
+        self.cache.write2cache(op, args)
 
     # def _bench(self, op: OpImpl):
     #     # open a subprocess and run the benchmark

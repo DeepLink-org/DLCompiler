@@ -1,4 +1,6 @@
 import os
+import re
+import tempfile
 
 from torch._inductor.codecache import PyCodeCache
 
@@ -24,13 +26,36 @@ def compile_op(op: OpImpl):
     with open(kernel_file, 'r') as file:
         src_code = file.read()
 
+    # a hack to avoid re-register the func
+    ## replace = re.sub(r'register_dlblas_op.*?(?=\n|$)', 'pass', src_code, flags=re.MULTILINE)
+
+    ## regex seems to unable to express conditional replace
+    processed_content = []
+    for line in src_code:
+        # Check if the line contains 'register_dlblas_op' and does not contain 'import'
+        if 'register_dlblas_op' in line and 'import' not in line:
+            tmp = re.sub(r'register_dlblas_op.*?(?=\n|$)',
+                         'pass\n',
+                         line,
+                         flags=re.MULTILINE)
+            processed_content.append(
+                tmp)  # Replace the line with 'pass', keeping the indentation
+        else:
+            processed_content.append(line)  # Keep the line as is
+
+    with tempfile.NamedTemporaryFile(mode='w+', delete=True,
+                                     suffix='.tmp') as temp_file:
+        temp_file.writelines(processed_content)
+        temp_file.seek(0)  # Move the file pointer to the beginning to read
+        replace = temp_file.read()
+
     # dynamically write to a python file and compiled as a python module
     #
     # XXX
     # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time?
     #
     # mod = PyCodeCache.load(src_code, extra=str(counter))
-    mod = PyCodeCache.load(src_code)
+    mod = PyCodeCache.load(replace)
     PyCodeCache.clear()  # we want a fresh copy every time
 
     call_name = op.call.__name__

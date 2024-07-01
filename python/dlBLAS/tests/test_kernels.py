@@ -5,7 +5,7 @@ import triton.language as tl
 
 import pytest
 
-from dlblas import (get_op, get_list_op_names, OpImpl, OpParams)
+from dlblas import get_op, get_list_op_names
 
 
 @pytest.mark.parametrize("m", [32, 128])
@@ -34,7 +34,6 @@ def test_mm_leaky_rely(m, n, k, dtype, device):
 
     # import pdb; pdb.set_trace()
     dlblas_op = get_op('matmul', args)
-    assert isinstance(dlblas_op, OpImpl)
 
     # compare
     out = dlblas_op(a, b)
@@ -71,7 +70,6 @@ def test_mm(m, n, k, dtype, device):
 
     # import pdb; pdb.set_trace()
     dlblas_op = get_op('matmul', args)
-    assert isinstance(dlblas_op, OpImpl)
 
     # compare
     out = dlblas_op(a, b)

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
@@ -14,6 +15,8 @@ class OpRegistry:
         # XXX? To use CUDA with multiprocessing, you must use the 'spawn' start method?
         # import multiprocessing
         # multiprocessing.set_start_method('spawn')
+
+        # TODO also read cache from file?
         pass
 
     def register(self, name, args: tuple, call, bench_fn, kernel):
@@ -33,10 +36,23 @@ class OpRegistry:
         return [i.params for i in self.ops[op_name]]
 
     def get_op(self, op_name: str, args: tuple):
-        # fetch candidates
         if op_name not in self.ops:
             raise NameError(f"op {op_name} not found")
 
+        # 1. check cache
+        if op := self.look_up_cache(op_name, args):
+            # if op is not None, will hit the true branch
+            return op
+
+        # 2. if miss, tunning
+        op = self._tunning(op_name, args)
+        return op
+
+    def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:
+        return
+
+    def _tunning(self, op_name: str, args: tuple):
+        # fetch candidates
         candidates = self._get_candidates(op_name, args)
         if len(candidates) == 0:
             raise LookupError(
@@ -49,7 +65,7 @@ class OpRegistry:
         best_op: OpImpl = candidates[best_idx]
 
         # cache
-        self._cache(best_op, args)
+        self.cache.put(best_op, op_name, args)
         return best_op
 
     def _get_candidates(self, op_name: str, args: tuple):
@@ -78,9 +94,6 @@ class OpRegistry:
                 best_perf = perf
                 best_idx = i
         return best_idx, best_perf
-
-    def _cache(self, op: OpImpl, args):
-        self.cache.write2cache(op, args)
 
     # def _bench(self, op: OpImpl):
     #     # open a subprocess and run the benchmark

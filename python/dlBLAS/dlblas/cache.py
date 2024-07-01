@@ -1,9 +1,7 @@
 import inspect
+import pickle
 
 import torch
-
-from triton.runtime.autotuner import Autotuner
-from triton.runtime.jit import JITFunction, KernelParam
 
 from dlblas.op_struct import OpImpl
 
@@ -31,7 +29,6 @@ def convert_shapes(t: torch.Tensor):
 
 
 def convert_device(t: torch.Tensor):
-    # XXX assume all tensor in the same device
     if t.device.type == 'cuda':
         return 'cuda'
     elif t.device.type == 'cpu':
@@ -55,11 +52,12 @@ class Cache:
             else:
                 key += str(arg)  # let it fail if not implemented
 
+        # XXX assume all tensor in the same device
         key += '-' + device
         return key
 
-    def write2cache(self, op: OpImpl, args):
-        key = self.gen_key(op.kernel, args)
+    def put(self, op: OpImpl, op_name, args):
+        key = self.gen_key(op_name, args)
         #
         # so Triton has already a cache mechanism during compilation
         # https://github.com/triton-lang/triton/blob/8e96b71b1b47a5d09f1cfb1826a16178f58dbef0/python/triton/compiler/compiler.py#L258
@@ -67,8 +65,17 @@ class Cache:
         # XXX
         # do we maintain our own cache system? or we just trigger triton, which perform cache look-up for us?
         #
-        # I think we should just map key -> cubin?
+        # for now just key -> OpImpl
         #
+        # if key not in self._cache:
+        #     self._cache[key] = op
 
-        if key not in self._cache:
-            self._cache[key] = op
+    def to_file(self, fname):
+        with open(f'{fname}.pkl', 'wb') as handle:
+            # pickle.dump(self._cache, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self._cache, handle)
+
+    def from_file(self, fname):
+        with open(f'{fname}.pickle', 'rb') as handle:
+            data = pickle.load(handle)
+        self._cache = data

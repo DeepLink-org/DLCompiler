@@ -7,9 +7,6 @@ Triton and CuBLAS implementations are benchmarked under different configurations
 Users can pass command-line arguments to specify matrix dimensions and iteration steps flexibly.
 """
 
-import argparse
-import time
-
 import torch
 import triton
 import triton.language as tl
@@ -19,13 +16,6 @@ from dlblas.op_registry import op_registry
 from dlblas.symbolic_var import SymVar, Tensor
 
 # yapf: disable
-
-def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
-
-
-def supports_tma():
-    return is_cuda() and torch.cuda.get_device_capability()[0] >= 9
 
 
 def _matmul_launch_metadata(grid, kernel, args):

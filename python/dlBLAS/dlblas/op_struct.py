@@ -16,7 +16,7 @@ class OpParams:
     args: tuple
 
 
-@dataclass(frozen=True)
+@dataclass
 class OpImpl:
     params: OpParams
     call: callable

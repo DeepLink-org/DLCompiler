@@ -3,6 +3,7 @@ from typing import Optional
 
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
+from dlblas.bencher import compile_and_bench
 
 
 @dataclass
@@ -79,16 +80,15 @@ class OpRegistry:
         return candidates
 
     def _selection(self, args, candidates: list[OpImpl]) -> int:
-        if len(candidates) == 1:
-            return 0, 0
-
         # NOTE: for now we only bench each one locally and in serial
         # for parallel benchmark, see:
         # https://github.com/pytorch/pytorch/blob/a0dac3de31b50a19e503652ffe257b314fa005a6/torch/_inductor/autotune_process.py#L282
         best_idx = -1
         best_perf = None
         for i, op in enumerate(candidates):
-            perf = op.bench(*args)
+            # perf = op.bench(*args)
+            perf = compile_and_bench(op, args)
+
             # print('op is : ', op, ' perf is: ', perf)
             if best_perf is None or perf < best_perf:
                 best_perf = perf

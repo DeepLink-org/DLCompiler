@@ -81,6 +81,9 @@ class Cache:
     def put(self, op: OpImpl, op_name, args):
         key = self.gen_key(op_name, args)
 
+        # TODO we should just store the src code that make up the kernel...
+        # instead of hacking triton's compiled kernel
+
         # this is triton's driver interface, and may subject to change
         binary_ext = driver.binary_ext
         if isinstance(op.kernel, Autotuner):

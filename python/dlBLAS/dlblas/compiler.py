@@ -23,12 +23,14 @@ class State(Enum):
 @dataclass
 class Parser:
     _buffer: list = field(default_factory=list)
+    kernel_name: str = None
+    call_name: str = None
     kernel_def_idx: int = -1
-    kernel_end_idx: int = -1
     call_def_idx: int = -1
-    call_end_idx: int = -1
     mode: State = State.DEFAULT
     tunable_params: set = field(default_factory=set)
+
+    kw_pat: str = r'(\s*)(\w+)\s*=\s*(\w+)[,\n]'
 
     def pre_process(self, op: OpImpl):
         space = op.spaces
@@ -47,8 +49,8 @@ class Parser:
         self.tunable_params = set(tunable_params)
 
     def parse(self, src_code: str, op: OpImpl):
-        kernel_name = op.kernel.__name__
-        call_name = op.call.__name__
+        self.kernel_name = op.kernel.__name__
+        self.call_name = op.call.__name__
         self.pre_process(op)
 
         # XXX significant overhead?
@@ -64,13 +66,11 @@ class Parser:
                 self._buffer.append(replace)
                 continue
 
-            if "def" in line and kernel_name in line:
+            if "def" in line and self.kernel_name in line:
                 self.kernel_def_idx = i
-                self.mode = State.KERNEL
 
-            if "def" in line and call_name in line:
+            if "def" in line and self.call_name in line:
                 self.call_def_idx = i
-                self.mode = State.CALL
 
             # keep line
             self._buffer.append(line)
@@ -81,12 +81,27 @@ class Parser:
     def buffer(self):
         return self._buffer
 
-    def get_tunable_args(self):
-        for line in self.buffer[self.kernel_def_idx + 1:self.kernel_end_idx]:
-            pass
+    def replace_tunable_args(self, replacement):
+        assert self.kernel_name is not None, f'parser has no kernel name'
 
-    def replace_tunable_args(self):
-        return
+        self.mode = State.DEFAULT
+        for i in range(self.call_def_idx, len(self.buffer)):
+            line = self.buffer[i]
+            if self.mode == State.DEFAULT:
+                if self.kernel_name in line:
+                    self.mode = State.KERNEL
+
+            if self.mode == State.KERNEL:
+                matches = re.findall(self.kw_pat, line)
+                for match in matches:
+                    # empty list if no match
+                    kw, kw_val = match
+                    if kw in replacement:
+                        self.buffer[i] = line.replace(kw_val, replacement[kw])
+
+                if 'return' in line:
+                    # avoid go to the end
+                    break
 
 
 def compile_and_bench(op: OpImpl, args):
@@ -107,17 +122,20 @@ def compile_op(op: Union[OpImpl, TritonCompiledKernel]):
         src_code = file.readlines()
 
     parser = Parser().parse(src_code, op)
-    with tempfile.NamedTemporaryFile(mode='w+', delete=True,
-                                     suffix='.tmp') as temp_file:
-        temp_file.writelines(parser.buffer)
-        temp_file.seek(0)  # Move the file pointer to the beginning to read
-        replace = temp_file.read()
+
+    # TODO do we really need to write to file then read?
+    # with tempfile.NamedTemporaryFile(mode='w+', delete=True,
+    #                                  suffix='.tmp') as temp_file:
+    #     temp_file.writelines(parser.buffer)
+    #     temp_file.seek(0)  # Move the file pointer to the beginning to read
+    #     src = temp_file.read()
+    src = ''.join(parser.buffer)
 
     # dynamically write to a python file and compiled as a python module
     # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time
     #
     # mod = PyCodeCache.load(src_code, extra=str(counter))
-    mod = PyCodeCache.load(replace)
+    mod = PyCodeCache.load(src)
     PyCodeCache.clear()  # we want a fresh copy every time
 
     call_name = op.call.__name__

@@ -1,12 +1,14 @@
 import os
 import re
 import tempfile
+from typing import Union
 
 from torch._inductor.codecache import PyCodeCache
 
 from triton.runtime.autotuner import Autotuner
 
 from dlblas.op_struct import OpImpl
+from dlblas.cache import TritonCompiledKernel
 
 
 def compile_and_bench(op: OpImpl, args):
@@ -21,12 +23,12 @@ def compile_and_bench(op: OpImpl, args):
     return perf
 
 
-def compile_op(op: OpImpl):
+def compile_op(op: Union[OpImpl, TritonCompiledKernel]):
     kernel_file = op.file_path
     with open(kernel_file, 'r') as file:
         src_code = file.readlines()
 
-    # a hack to avoid re-register the func
+    # a hack to avoid re-register the func; XXX this seems to be significant overhead
     buffer = []
     for line in src_code:
         # Replace the line with 'pass'

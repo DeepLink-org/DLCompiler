@@ -1,9 +1,35 @@
-import inspect
+from dataclasses import dataclass
+from typing import Optional
 import pickle
 
 import torch
 
-from dlblas.op_struct import OpImpl
+from triton.runtime.autotuner import Autotuner
+from triton.runtime.driver import driver
+
+from dlblas.op_struct import OpImpl, OpParams
+
+# XXX not sure why dataclass is not working
+# @dataclass(frozen=True)
+# class TritonCompiledKernel:
+#     file_path: str
+#     call: callable
+#     bench_fn: callable
+#     kernel: callable
+#
+#     # triton-related
+#     # may add more in the future, but essentially a kernel is just bytes
+#     kernel: bytes
+
+
+class TritonCompiledKernel:
+
+    def __init__(self, file_path, call, bench_fn, kernel, binary):
+        self.file_path = file_path
+        self.call = call
+        self.bench_fn = bench_fn
+        self.kernel = kernel
+        self.binary = binary
 
 
 def convert_dtype(t: torch.Tensor):
@@ -64,11 +90,55 @@ class Cache:
         #
         # XXX
         # do we maintain our own cache system? or we just trigger triton, which perform cache look-up for us?
+        # we maintain our own cache
         #
-        # for now just key -> OpImpl
-        #
-        # if key not in self._cache:
-        #     self._cache[key] = op
+
+        # this is triton's driver interface, and may subject to change
+        binary_ext = driver.binary_ext
+        if isinstance(op.kernel, Autotuner):
+            jit_fn = op.kernel.fn
+        else:
+            jit_fn = op.kernel
+
+        # FIXME assume only one cache for now
+        for dev_id, vals in jit_fn.cache.items():
+            for workload_keys, compiled_kernel in vals.items():
+                binary: bytes = compiled_kernel.kernel
+
+        local_scope = {}
+
+        # we just need the function name to compile dynamically
+        call = f"""
+def {op.call.__name__}():
+    pass
+"""
+        bench_fn = f"""
+def {op.bench_fn.__name__}():
+    pass
+"""
+        kernel = f"""
+def {jit_fn.__name__}():
+    pass
+"""
+        exec(call, globals(), local_scope)
+        exec(bench_fn, globals(), local_scope)
+        exec(kernel, globals(), local_scope)
+        call = local_scope[op.call.__name__]
+        bench_fn = local_scope[op.bench_fn.__name__]
+        kernel = local_scope[jit_fn.__name__]
+
+        self._cache[key] = TritonCompiledKernel(
+            op.file_path,
+            call,
+            bench_fn,
+            kernel,
+            binary,
+        )
+
+    def get(self, op_name, args) -> Optional[TritonCompiledKernel]:
+        key = self.gen_key(op_name, args)
+        if key in self._cache:
+            return self._cache[key]
 
     def to_file(self, fname):
         with open(f'{fname}.pkl', 'wb') as handle:

@@ -4,7 +4,7 @@ from typing import Optional
 
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
-from dlblas.compiler import compile_and_bench
+from dlblas.compiler import compile_op, compile_and_bench
 
 
 @dataclass
@@ -58,7 +58,9 @@ class OpRegistry:
         return op
 
     def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:
-        return
+        if cached := self.cache.get(op_name, args):
+            compile_op(cached)  # XXX convert to OpImpl???
+            return cached
 
     def _tunning(self, op_name: str, args: tuple):
         # fetch candidates

@@ -68,3 +68,25 @@ def compile_op(op: Union[OpImpl, TritonCompiledKernel]):
     op.call = getattr(mod, call_name)
     op.bench_fn = getattr(mod, bench_fn_name)
     op.kernel = getattr(mod, kernel_name)
+
+
+def preload(op: TritonCompiledKernel, args):
+    # XXX there may be better way to do it
+    assert isinstance(op, TritonCompiledKernel)
+
+    # jit and fill the cache
+    op(*args)
+
+    #
+    if isinstance(op.kernel, Autotuner):
+        cache = op.kernel.fn.cache
+    else:
+        cache = op.kernel.cache
+
+    # FIXME assume only one cache for now
+    for dev_id, vals in cache.items():
+        for workload_keys, compiled_kernel in vals.items():
+
+            # write the kernel data
+            compiled_kernel.kernel = op.binary
+            compiled_kernel.module = None  # this force it to reload

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 import pickle
 
 import torch
@@ -9,27 +9,23 @@ from triton.runtime.driver import driver
 
 from dlblas.op_struct import OpImpl, OpParams
 
-# XXX not sure why dataclass is not working
-# @dataclass(frozen=True)
-# class TritonCompiledKernel:
-#     file_path: str
-#     call: callable
-#     bench_fn: callable
-#     kernel: callable
-#
-#     # triton-related
-#     # may add more in the future, but essentially a kernel is just bytes
-#     kernel: bytes
 
-
+@dataclass
 class TritonCompiledKernel:
+    file_path: str
+    call: callable
+    bench_fn: callable
+    kernel: callable
 
-    def __init__(self, file_path, call, bench_fn, kernel, binary):
-        self.file_path = file_path
-        self.call = call
-        self.bench_fn = bench_fn
-        self.kernel = kernel
-        self.binary = binary
+    # triton-related; XXX subject to change when upgrade triton
+    # may add more in the future, but essentially a kernel is just bytes
+    binary: bytes
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self.call(*args, **kwargs)
+
+    def bench(self, *args: Any, **kwargs: Any) -> Any:
+        return self.bench_fn(*args, **kwargs)
 
 
 def convert_dtype(t: torch.Tensor):

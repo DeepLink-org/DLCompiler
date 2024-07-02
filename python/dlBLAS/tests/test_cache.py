@@ -31,21 +31,39 @@ def test_gen_key(dtype, device):
 
 @pytest.mark.parametrize("dtype", [torch.float16])
 @pytest.mark.parametrize("device", ['cuda'])
-def test_serialize(dtype, device):
-    # a = torch.randn(
-    #     (1, 2),
-    #     dtype=dtype,
-    #     device=device,
-    # )
-    # b = torch.randn(
-    #     (2, 1),
-    #     dtype=dtype,
-    #     device=device,
-    # )
-    # activation = 'leaky_relu'
-    # op = 'matmul'
-    # args = (a, b, activation)
+def test_cache_hit(dtype, device):
+    a = torch.randn(
+        (3, 5),
+        dtype=dtype,
+        device=device,
+    )
+    b = torch.randn(
+        (5, 2),
+        dtype=dtype,
+        device=device,
+    )
 
-    # dlblas_op = get_op(op, args)  # trigger cache
-    # op_registry.cache.to_file('test')
-    pass
+    # args = (a, b)
+    activation = 'leaky_relu'
+    args = (a, b, activation)
+
+    # import pdb; pdb.set_trace()
+    dlblas_op = get_op('matmul', args)
+
+    # cache hit TODO considering to add a counter utility to counter every cache hit objects
+    c = torch.randn(
+        (3, 5),
+        dtype=dtype,
+        device=device,
+    )
+    d = torch.randn(
+        (5, 2),
+        dtype=dtype,
+        device=device,
+    )
+    # args = (a, b)
+    activation = 'leaky_relu'
+    args = (a, b, activation)
+    dlblas_op2 = get_op('matmul', args)
+
+    assert torch.allclose(dlblas_op2(c, d), dlblas_op(c, d))

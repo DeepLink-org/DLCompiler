@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas import register_dlblas_op, SymVar, Tensor
+from dlblas import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
 def is_cuda():
@@ -90,10 +90,10 @@ def get_autotune_config():
 #       meta-parameters (e.g., `BLOCK_SIZE_M`) and compilation options (e.g., `num_warps`) to try
 #   - An auto-tuning *key* whose change in values will trigger evaluation of all the
 #       provided configs
-@triton.autotune(
-    configs=get_autotune_config(),
-    key=['M', 'N', 'K'],
-)
+# @triton.autotune(
+#     configs=get_autotune_config(),
+#     key=['M', 'N', 'K'],
+# )
 @triton.jit
 def matmul_kernel(
         # Pointers to matrices
@@ -243,7 +243,8 @@ for dtype in [torch.float16, torch.float32]:
             # why do we still need another dispatch layer in op_registry?
             # because e.g. matmul may have different Triton implemetation...
             #
+            space = ChoiceSpace(get_cuda_autotune_config())
             if activation == '':
-                register_dlblas_op(name, (a, b), call, bench_fn, matmul_kernel)
+                register_dlblas_op(name, space, (a, b), call, bench_fn, matmul_kernel)
             else:
-                register_dlblas_op(name, (a, b, activation), call, bench_fn, matmul_kernel)
+                register_dlblas_op(name, space, (a, b, activation), call, bench_fn, matmul_kernel)

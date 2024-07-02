@@ -1,6 +1,7 @@
 import math
 import random
 from dataclasses import dataclass, field, astuple
+from typing import Any
 
 
 def next_power_of_2(n):
@@ -29,7 +30,22 @@ def next_power_of_2(n):
 
 
 @dataclass(frozen=True)
-class RangeSapce:
+class Space:
+
+    def sample(self):
+        raise NotImplementedError()
+
+
+@dataclass(frozen=True)
+class FixedSpace(Space):
+    value: Any
+
+    def sample(self):
+        return self.value
+
+
+@dataclass(frozen=True)
+class RangeSapce(Space):
     start: float
     end: float
 
@@ -43,7 +59,7 @@ class RangeSapce:
 
 
 @dataclass(frozen=True)
-class DiscreteSpace:
+class DiscreteSpace(Space):
     start: int
     end: int
 
@@ -67,3 +83,32 @@ class PowerOfTwoSpace(DiscreteSpace):
     def sample(self):
         n = random.randint(self.start_base, self.end_base)
         return 2**n
+
+
+@dataclass(frozen=True)
+class DictSpace:
+    params: dict
+
+    def __post_init__(self):
+        assert len(self.params) > 0
+        for k, v in self.params.items():
+            assert isinstance(v, Space)
+            assert not isinstance(v, ChoiceSpace)
+            assert not isinstance(v, DictSpace)
+
+    def sample(self):
+        ans = {}
+        for k, v in self.params.items():
+            ans[k] = v.sample()
+        return ans
+
+
+@dataclass(frozen=True)
+class ChoiceSpace:
+    choices: list
+
+    def __post_init__(self):
+        assert len(self.choices) > 0
+
+    def sample(self):
+        return random.choice(self.choices)

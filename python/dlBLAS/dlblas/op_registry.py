@@ -2,16 +2,19 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+from triton.runtime.jit import JITFunction
+
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
+from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.compiler import compile_op, compile_and_bench, preload
 
 
 @dataclass
 class OpRegistry:
     # ops: name -> list[OpImpl]
-    ops: dict[str, OpImpl] = field(default_factory=lambda: {})
-    cache: Cache = field(default_factory=lambda: Cache())
+    ops: dict[str, OpImpl] = field(default_factory=dict)
+    cache: Cache = field(default_factory=Cache)
 
     def __post_init__(self):
         # XXX? To use CUDA with multiprocessing, you must use the 'spawn' start method?
@@ -21,7 +24,13 @@ class OpRegistry:
         # TODO also read cache from file?
         pass
 
-    def register(self, name, args: tuple, call, bench_fn, kernel):
+    def register(self, name, spaces, args, call, bench_fn, kernel):
+        assert isinstance(
+            kernel,
+            JITFunction), f'kernel must be JITFunction, but got {type(kernel)}'
+        assert isinstance(
+            spaces, (ChoiceSpace, DictSpace)
+        ), f'space must be ChoiceSpace or DictSpace, but got {type(spaces)}'
         params = parse_args(args)
 
         # path-to-deeplink/python/dlBLAS/dlblas
@@ -30,7 +39,7 @@ class OpRegistry:
         kernel_module_name = call.__module__
         kernel_file = os.path.join(this_file_dir, 'kernels',
                                    kernel_module_name + '.py')
-        impl = OpImpl(params, kernel_file, call, bench_fn, kernel)
+        impl = OpImpl(params, kernel_file, spaces, call, bench_fn, kernel)
 
         # FIXME what if a kernel register twice? if appear seems to be a bug... de-duplication check
         if name in self.ops:

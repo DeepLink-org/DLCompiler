@@ -12,7 +12,7 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas import register_dlblas_op, SymVar, Tensor
+from dlblas import register_dlblas_op, SymVar, Tensor, DictSpace, FixedSpace
 
 # yapf: disable
 
@@ -228,4 +228,12 @@ for dtype in [torch.float16, torch.float32]:
         b = Tensor((k, n), dtype=dtype, device=device)
 
         # name, args, call, bench_fn
-        register_dlblas_op(name, (a, b), call, bench_fn, matmul_kernel_persistent)
+        spaces = DictSpace({
+            "BLOCK_SIZE_M": FixedSpace(128),
+            "BLOCK_SIZE_N": FixedSpace(256),
+            "BLOCK_SIZE_K": FixedSpace(64),
+            "GROUP_SIZE_M": FixedSpace(8),
+            "num_stages": FixedSpace(3),
+            "num_warps": FixedSpace(8)
+        })
+        register_dlblas_op(name, spaces, (a, b), call, bench_fn, matmul_kernel_persistent)

@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field, astuple
-from typing import Any
+from typing import Any, Union
 
 import torch
 
 from dlblas.symbolic_var import Tensor
 from dlblas.utils.logger import get_logger
+from dlblas.autotune.space import ChoiceSpace, DictSpace
 
 logger = get_logger(__name__)
 
@@ -20,6 +21,7 @@ class OpParams:
 class OpImpl:
     params: OpParams
     file_path: str
+    spaces: Union[ChoiceSpace, DictSpace]
     call: callable
     bench_fn: callable
     kernel: callable

@@ -48,12 +48,9 @@ def compile_op(op: Union[OpImpl, TritonCompiledKernel]):
         replace = temp_file.read()
 
     # dynamically write to a python file and compiled as a python module
-    #
-    # XXX
-    # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time?
+    # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time
     #
     # mod = PyCodeCache.load(src_code, extra=str(counter))
-    #
     mod = PyCodeCache.load(replace)
     PyCodeCache.clear()  # we want a fresh copy every time
 

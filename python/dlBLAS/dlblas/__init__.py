@@ -1,6 +1,7 @@
 from dlblas.op_registry import op_registry
 from dlblas.op_struct import OpParams, OpImpl
 from dlblas.symbolic_var import SymVar, Tensor
+from dlblas.autotune.space import RangeSapce, DiscreteSpace, PowerOfTwoSpace
 
 register_dlblas_op = op_registry.register
 

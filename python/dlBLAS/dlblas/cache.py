@@ -80,14 +80,6 @@ class Cache:
 
     def put(self, op: OpImpl, op_name, args):
         key = self.gen_key(op_name, args)
-        #
-        # so Triton has already a cache mechanism during compilation
-        # https://github.com/triton-lang/triton/blob/8e96b71b1b47a5d09f1cfb1826a16178f58dbef0/python/triton/compiler/compiler.py#L258
-        #
-        # XXX
-        # do we maintain our own cache system? or we just trigger triton, which perform cache look-up for us?
-        # we maintain our own cache
-        #
 
         # this is triton's driver interface, and may subject to change
         binary_ext = driver.binary_ext

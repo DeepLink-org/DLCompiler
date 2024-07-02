@@ -90,7 +90,7 @@ class DictSpace:
     params: dict
 
     def __post_init__(self):
-        assert len(self.params) > 0
+        assert len(self.params) > 0, f'empty params: {self.params}'
         for k, v in self.params.items():
             assert isinstance(v, Space)
             assert not isinstance(v, ChoiceSpace)
@@ -108,7 +108,13 @@ class ChoiceSpace:
     choices: list
 
     def __post_init__(self):
-        assert len(self.choices) > 0
+        assert len(self.choices) > 0, f'empty choices: {self.choices}'
 
     def sample(self):
         return random.choice(self.choices)
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return self.choices[index]
+        else:
+            raise TypeError("Index must be an integer")

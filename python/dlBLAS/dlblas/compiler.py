@@ -28,23 +28,23 @@ class Parser:
     call_def_idx: int = -1
     call_end_idx: int = -1
     mode: State = State.DEFAULT
-    tunable_params: field = field(default_factory=dict)
+    tunable_params: set = field(default_factory=set)
 
     def pre_process(self, op: OpImpl):
         space = op.spaces
         if isinstance(space, ChoiceSpace):
             first = space[0]
             assert isinstance(first, Config)
-            self.tunable_params = list(
+            tunable_params = list(
                 first.kwargs.keys()) + ['num_warps', 'num_stages', 'num_ctas']
         elif isinstance(space, DictSpace):
-            self.tunable_params = list(space.params.keys())
+            tunable_params = list(space.params.keys())
         else:
             raise TypeError(
                 f"space must be ChoiceSpace or DictSpace, but got {type(space)}"
             )
 
-        self.tunable_params = set(self.tunable_params)
+        self.tunable_params = set(tunable_params)
 
     def parse(self, src_code: str, op: OpImpl):
         kernel_name = op.kernel.__name__

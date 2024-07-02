@@ -7,7 +7,7 @@ from triton.runtime.jit import JITFunction
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.compiler import compile_op, compile_and_bench, preload
+from dlblas.dynamic_compiler import compile_op, tunning, preload
 
 
 @dataclass
@@ -107,7 +107,7 @@ class OpRegistry:
         best_perf = None
         for i, op in enumerate(candidates):
             # perf = op.bench(*args)
-            perf = compile_and_bench(op, args)
+            perf = tunning(op, args)
 
             # print('op is : ', op, ' perf is: ', perf)
             if best_perf is None or perf < best_perf:

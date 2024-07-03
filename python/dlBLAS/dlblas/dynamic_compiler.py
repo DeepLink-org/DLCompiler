@@ -60,6 +60,7 @@ class Parser:
         self.kernel_args_names = deepcopy(op.kernel.arg_names)
         self.kernel_constexprs_idx = deepcopy(op.kernel.constexprs)
 
+        # match `register_dlblas_op(` until end of line
         register_pat = r'register_dlblas_op\(.*?(?=\n|$)'
 
         def rewrite_register(match: re.Match):
@@ -171,8 +172,8 @@ def tunning(op: OpImpl, args):
 
     # TODO a simple loop for now
     for _ in range(10):
-        decision = policy.generate(op.spaces)
-        src = parser.build(decision)
+        config = policy.generate(op.spaces)
+        src = parser.build(config)
         op.src = src
         compile_op(op)
         try:

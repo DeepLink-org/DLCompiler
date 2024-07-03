@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, Union
 import pickle
 
 import torch
@@ -8,18 +8,18 @@ from triton.runtime.autotuner import Autotuner
 from triton.runtime.driver import driver
 
 from dlblas.op_struct import OpImpl, OpParams
+from dlblas.autotune.space import ChoiceSpace, DictSpace
 
 
-@dataclass
-class TritonCompiledKernel:
+@dataclass(frozen=True)
+class OpImplCache:
+    params: OpParams
     file_path: str
-    call: callable
-    bench_fn: callable
-    kernel: callable
-
-    # triton-related; XXX subject to change when upgrade triton
-    # may add more in the future, but essentially a kernel is just bytes
-    binary: bytes
+    src: str
+    spaces: Union[ChoiceSpace, DictSpace]
+    call_name: str
+    bench_fn_name: str
+    kernel_name: str
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self.call(*args, **kwargs)
@@ -80,56 +80,53 @@ class Cache:
 
     def put(self, op: OpImpl, op_name, args):
         key = self.gen_key(op_name, args)
-
-        # TODO we should just store the src code that make up the kernel...
-        # instead of hacking triton's compiled kernel
-
-        # this is triton's driver interface, and may subject to change
-        binary_ext = driver.binary_ext
-        if isinstance(op.kernel, Autotuner):
-            jit_fn = op.kernel.fn
-        else:
-            jit_fn = op.kernel
-
-        # FIXME assume only one cache for now
-        for dev_id, vals in jit_fn.cache.items():
-            for workload_keys, compiled_kernel in vals.items():
-                binary: bytes = compiled_kernel.kernel
-
-        local_scope = {}
-
-        # we just need the function name to compile dynamically
-        call = f"""
-def {op.call.__name__}():
-    pass
-"""
-        bench_fn = f"""
-def {op.bench_fn.__name__}():
-    pass
-"""
-        kernel = f"""
-def {jit_fn.__name__}():
-    pass
-"""
-        exec(call, globals(), local_scope)
-        exec(bench_fn, globals(), local_scope)
-        exec(kernel, globals(), local_scope)
-        call = local_scope[op.call.__name__]
-        bench_fn = local_scope[op.bench_fn.__name__]
-        kernel = local_scope[jit_fn.__name__]
-
-        self._cache[key] = TritonCompiledKernel(
+        new_op = OpImplCache(
+            op.params,
             op.file_path,
-            call,
-            bench_fn,
-            kernel,
-            binary,
+            op.src,
+            op.spaces,
+            op.call.__name__,
+            op.bench_fn.__name__,
+            op.kernel.__name__,
         )
+        self._cache[key] = new_op
 
-    def get(self, op_name, args) -> Optional[TritonCompiledKernel]:
+    def get(self, op_name, args) -> Optional[OpImpl]:
         key = self.gen_key(op_name, args)
         if key in self._cache:
-            return self._cache[key]
+            op_cache = self._cache[key]
+            assert isinstance(op_cache, OpImplCache)
+            local_scope = {}
+
+            # we just need the function name to compile dynamically
+            call = f"""
+def {op_cache.call_name}():
+    pass
+"""
+            bench_fn = f"""
+def {op_cache.bench_fn_name}():
+    pass
+"""
+            kernel = f"""
+def {op_cache.kernel_name}():
+    pass
+"""
+            exec(call, globals(), local_scope)
+            exec(bench_fn, globals(), local_scope)
+            exec(kernel, globals(), local_scope)
+            call = local_scope[op_cache.call_name]
+            bench_fn = local_scope[op_cache.bench_fn_name]
+            kernel = local_scope[op_cache.kernel_name]
+            op = OpImpl(
+                op_cache.params,
+                op_cache.file_path,
+                op_cache.src,
+                op_cache.spaces,
+                call,
+                bench_fn,
+                kernel,
+            )
+            return op
 
     def to_file(self, fname):
         with open(f'{fname}.pkl', 'wb') as handle:

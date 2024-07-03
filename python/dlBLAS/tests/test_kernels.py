@@ -13,7 +13,7 @@ from dlblas import get_op, get_list_op_names
 @pytest.mark.parametrize("k", [4, 16])
 @pytest.mark.parametrize("dtype", [torch.float16])
 @pytest.mark.parametrize("device", ['cuda'])
-def test_mm_leaky_rely(m, n, k, dtype, device):
+def test_mm_leaky_relu(m, n, k, dtype, device):
     torch.manual_seed(20)
 
     op_list = get_list_op_names()

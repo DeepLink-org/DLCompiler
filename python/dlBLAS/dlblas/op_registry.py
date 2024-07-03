@@ -7,7 +7,7 @@ from triton.runtime.jit import JITFunction
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.dynamic_compiler import compile_op, tunning, preload
+from dlblas.dynamic_compiler import compile_op, tunning
 
 
 @dataclass
@@ -39,7 +39,15 @@ class OpRegistry:
         kernel_module_name = call.__module__
         kernel_file = os.path.join(this_file_dir, 'kernels',
                                    kernel_module_name + '.py')
-        impl = OpImpl(params, kernel_file, spaces, call, bench_fn, kernel)
+        impl = OpImpl(
+            params,
+            kernel_file,
+            None,
+            spaces,
+            call,
+            bench_fn,
+            kernel,
+        )
 
         # FIXME what if a kernel register twice? if appear seems to be a bug... de-duplication check
         if name in self.ops:
@@ -68,8 +76,8 @@ class OpRegistry:
 
     def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:
         if cached := self.cache.get(op_name, args):
-            compile_op(cached)  # XXX convert to OpImpl???
-            preload(cached, args)
+            assert isinstance(cached, OpImpl)
+            compile_op(cached, cached.src)
             return cached
 
     def _tunning(self, op_name: str, args: tuple):

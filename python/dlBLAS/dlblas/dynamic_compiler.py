@@ -8,10 +8,9 @@ from copy import deepcopy
 
 from torch._inductor.codecache import PyCodeCache
 
-from triton.runtime.autotuner import Autotuner, Config
+from triton.runtime.autotuner import Autotuner, Config, OutOfResources
 
 from dlblas.op_struct import OpImpl
-from dlblas.cache import TritonCompiledKernel
 from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.autotune.policy import RandomPolicy
 '''
@@ -127,8 +126,13 @@ class Parser:
             #
             line = self.src_code[start:end]
             line = line.replace('\n', '').replace('#', '').replace(' ', '')
+            # find the first '('
             arg_start_index = line.find('(')
+            # strip '(' and ')'
             args_line = line[arg_start_index + 1:-1]
+            # the last arg could have a trailing comma...
+            args_line = args_line.rstrip(',')
+            # convert to list
             args_line_list = args_line.split(',')
             for arg_idx, arg in enumerate(args_line_list):
                 if '=' not in arg:
@@ -164,10 +168,21 @@ class Parser:
 def tunning(op: OpImpl, args):
     parser = parse_op(op)
     policy = RandomPolicy('random')
-    decision = policy.generate(op.spaces)
-    src = parser.build(decision)
-    compile_op(op, src)
-    perf = op.bench(*args)
+
+    # TODO a simple loop for now
+    for _ in range(10):
+        decision = policy.generate(op.spaces)
+        src = parser.build(decision)
+        compile_op(op, src)
+        try:
+            perf = op.bench(*args)
+            test_ok = True
+        except OutOfResources:
+            test_ok = False
+
+        if test_ok:
+            break
+
     return perf
 
 
@@ -187,7 +202,7 @@ def parse_op(op: OpImpl):
     return parser
 
 
-def compile_op(op: Union[OpImpl, TritonCompiledKernel], src: str):
+def compile_op(op: OpImpl, src: str):
     #
     # dynamically write to a python file and compiled as a python module
     # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time
@@ -205,25 +220,4 @@ def compile_op(op: Union[OpImpl, TritonCompiledKernel], src: str):
     op.call = getattr(mod, call_name)
     op.bench_fn = getattr(mod, bench_fn_name)
     op.kernel = getattr(mod, kernel_name)
-
-
-def preload(op: TritonCompiledKernel, args):
-    # XXX there may be better way to do it
-    assert isinstance(op, TritonCompiledKernel)
-
-    # jit and fill the cache
-    op(*args)
-
-    #
-    if isinstance(op.kernel, Autotuner):
-        cache = op.kernel.fn.cache
-    else:
-        cache = op.kernel.cache
-
-    # FIXME assume only one cache for now
-    for dev_id, vals in cache.items():
-        for workload_keys, compiled_kernel in vals.items():
-
-            # write the kernel data
-            compiled_kernel.kernel = op.binary
-            compiled_kernel.module = None  # this force it to reload
+    op.src = src

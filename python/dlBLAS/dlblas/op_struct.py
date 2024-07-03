@@ -21,6 +21,7 @@ class OpParams:
 class OpImpl:
     params: OpParams
     file_path: str
+    src: str
     spaces: Union[ChoiceSpace, DictSpace]
     call: callable
     bench_fn: callable

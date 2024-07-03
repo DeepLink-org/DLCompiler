@@ -3,6 +3,8 @@ import random
 from dataclasses import dataclass, field, astuple
 from typing import Any
 
+from triton.runtime.autotuner import Config
+
 
 def next_power_of_2(n):
     """
@@ -96,7 +98,7 @@ class DictSpace:
             assert not isinstance(v, ChoiceSpace)
             assert not isinstance(v, DictSpace)
 
-    def sample(self):
+    def sample(self) -> dict:
         ans = {}
         for k, v in self.params.items():
             ans[k] = v.sample()
@@ -110,8 +112,20 @@ class ChoiceSpace:
     def __post_init__(self):
         assert len(self.choices) > 0, f'empty choices: {self.choices}'
 
-    def sample(self):
-        return random.choice(self.choices)
+    def sample(self) -> dict:
+        choice = random.choice(self.choices)
+        if isinstance(choice, Config):
+            ans = {
+                'num_ctas': choice.num_ctas,
+                'num_warps': choice.num_warps,
+                'num_stages': choice.num_stages,
+            }
+            for k, v in choice.kwargs.items():
+                ans[k] = v
+
+            return ans
+
+        raise TypeError(f"choice must be Config, but got {type(choice)}")
 
     def __getitem__(self, index):
         if isinstance(index, int):

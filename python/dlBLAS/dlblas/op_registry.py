@@ -77,7 +77,7 @@ class OpRegistry:
     def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:
         if cached := self.cache.get(op_name, args):
             assert isinstance(cached, OpImpl)
-            compile_op(cached, cached.src)
+            compile_op(cached)
             return cached
 
     def _tunning(self, op_name: str, args: tuple):

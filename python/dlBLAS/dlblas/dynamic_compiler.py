@@ -173,7 +173,8 @@ def tunning(op: OpImpl, args):
     for _ in range(10):
         decision = policy.generate(op.spaces)
         src = parser.build(decision)
-        compile_op(op, src)
+        op.src = src
+        compile_op(op)
         try:
             perf = op.bench(*args)
             test_ok = True
@@ -202,14 +203,15 @@ def parse_op(op: OpImpl):
     return parser
 
 
-def compile_op(op: OpImpl, src: str):
+def compile_op(op: OpImpl):
     #
     # dynamically write to a python file and compiled as a python module
     # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time
     #
     # mod = PyCodeCache.load(src_code, extra=str(counter))
     #
-    mod = PyCodeCache.load(src)
+    assert (op.src is not None and isinstance(op.src, str))
+    mod = PyCodeCache.load(op.src)
     PyCodeCache.clear()  # we want a fresh copy every time
 
     call_name = op.call.__name__
@@ -220,4 +222,3 @@ def compile_op(op: OpImpl, src: str):
     op.call = getattr(mod, call_name)
     op.bench_fn = getattr(mod, bench_fn_name)
     op.kernel = getattr(mod, kernel_name)
-    op.src = src

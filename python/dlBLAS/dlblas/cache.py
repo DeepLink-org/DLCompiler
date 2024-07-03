@@ -21,12 +21,6 @@ class OpImplCache:
     bench_fn_name: str
     kernel_name: str
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return self.call(*args, **kwargs)
-
-    def bench(self, *args: Any, **kwargs: Any) -> Any:
-        return self.bench_fn(*args, **kwargs)
-
 
 def convert_dtype(t: torch.Tensor):
     if t.dtype == torch.float32:

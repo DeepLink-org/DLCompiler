@@ -42,10 +42,13 @@ def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
             bench_ok = False
 
         # update tunner
-        policy.feedback(perf)
         if bench_ok:
+            policy.feedback(perf)
+
             perfs[iteration] = perf
             srcs[iteration] = src
+        else:
+            policy.feedback(None)
 
         iteration += 1
 

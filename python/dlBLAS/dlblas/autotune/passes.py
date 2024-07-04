@@ -6,8 +6,11 @@ def find_call_pattern_index_from_text(text: str,
                                       pattern: str) -> list[tuple[int]]:
     '''call pattern:
         xxx(whatever)
-    
-        1. find xxx based on pattern
+        |           |
+       / \         / \
+      start_idx   end_idx
+
+        1. find `xxx` based on pattern
         2. find the first `(`
         3. find the last `)`
     '''
@@ -78,6 +81,8 @@ def analyse_kernel_call_pass(text: str, kernel_name: str) -> list[tuple[int]]:
     Triton kernel call have this pattern: {kernel_name}[{grid_name}]
     '''
     kernel_call_pattern = fr'{kernel_name}\[[a-zA-Z0-9_]+\]'
-    start_end_idx = find_call_pattern_index_from_text(text,
-                                                      kernel_call_pattern)
+    start_end_idx = find_call_pattern_index_from_text(
+        text,
+        kernel_call_pattern,
+    )
     return start_end_idx

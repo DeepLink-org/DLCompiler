@@ -7,7 +7,7 @@ from triton.runtime.jit import JITFunction
 from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.dynamic_compiler import compile_op, tunning
+from dlblas.autotune.autotuner import compile_op, tunning
 
 
 @dataclass

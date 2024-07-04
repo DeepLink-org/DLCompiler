@@ -6,25 +6,17 @@ from typing import Union
 from dataclasses import dataclass, field, astuple
 from copy import deepcopy
 
-from torch._inductor.codecache import PyCodeCache
-
-from triton.runtime.autotuner import Autotuner, Config, OutOfResources
+from triton.runtime.autotuner import Config
 
 from dlblas.op_struct import OpImpl
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.autotune.policy import RandomPolicy
+from dlblas.autotune.passes import rewrite_dlblas_registeration_pass, analyse_kernel_call_pass
 '''
 The compiler dynamically parse and execute the kernel file as string,
     this is because kernels defined under the kerenl/ folder have been `executed` 
     it would have been easier to define kerenl as templates,
     dynamic parsing and execution `templatfy` the kernels
 '''
-
-
-class State(Enum):
-    DEFAULT = auto()
-    CALL = auto()
-    CALL_KERNEL = auto()
 
 
 @dataclass
@@ -60,55 +52,9 @@ class Parser:
         self.kernel_args_names = deepcopy(op.kernel.arg_names)
         self.kernel_constexprs_idx = deepcopy(op.kernel.constexprs)
 
-        # match `register_dlblas_op(` until end of line
-        register_pat = r'register_dlblas_op\(.*?(?=\n|$)'
-
-        def rewrite_register(match: re.Match):
-            return 'pass\n'
-
-        # replace all `register_dlblas_op` call
-        text = re.sub(
-            register_pat,
-            rewrite_register,
-            src_code,
-            flags=re.MULTILINE,
-        )
-
-        # find invoke kernel idx; {kernel_name}[{grid_name}]
-        start_idx = []
-        invoke_kernel_pattern = fr'{self.kernel_name}\[[a-zA-Z0-9_]+\]'
-        matches: list[re.Match] = re.finditer(
-            invoke_kernel_pattern,
-            text,
-            flags=re.DOTALL,
-        )
-        for match in matches:
-            start_idx.append(match.start())
-
-        # find (start, end) pair in the kernel text
-        start_end_idx = []
-        for start in start_idx:
-            # goes to the first '('
-            end = start
-            while True:
-                if text[end] == '(':
-                    break
-                end += 1
-
-            # find the last closing ')'
-            # there must be one, otherwise the file will report error at import time
-            open_count = 1
-            end += 1
-            while True:
-                if text[end] == '(':
-                    open_count += 1
-                elif text[end] == ')':
-                    open_count -= 1
-                    if open_count == 0:
-                        break
-                end += 1
-            end += 1
-            start_end_idx.append((start, end))
+        # run passes
+        text = rewrite_dlblas_registeration_pass(src_code)
+        start_end_idx = analyse_kernel_call_pass(text, self.kernel_name)
 
         self.src_code = text
         self.start_end_idx = start_end_idx
@@ -164,62 +110,3 @@ class Parser:
         # the remaining part
         new_src += self.src_code[last_end:]
         return new_src
-
-
-def tunning(op: OpImpl, args):
-    parser = parse_op(op)
-    policy = RandomPolicy('random')
-
-    # TODO a simple loop for now
-    for _ in range(10):
-        config = policy.generate(op.spaces)
-        src = parser.build(config)
-        op.src = src
-        compile_op(op)
-        try:
-            perf = op.bench(*args)
-            test_ok = True
-        except OutOfResources:
-            test_ok = False
-
-        if test_ok:
-            break
-
-    return perf
-
-
-def parse_op(op: OpImpl):
-    '''at kernel-register time, the same triton kernel is used
-        here we want to intercept the source code and compile it
-        so that each args can correspond to only one instance of triton kernel
-
-        we use inductor's PyCodeCache for now
-    '''
-    kernel_file = op.file_path
-    with open(kernel_file, 'r') as file:
-        # src_code = file.readlines()  # list[str]
-        src_code = file.read()  # str
-
-    parser = Parser().process(src_code, op)
-    return parser
-
-
-def compile_op(op: OpImpl):
-    #
-    # dynamically write to a python file and compiled as a python module
-    # the mod is cached in PyCodeCache, but we want a fresh copy each time, so we clear each time
-    #
-    # mod = PyCodeCache.load(src_code, extra=str(counter))
-    #
-    assert (op.src is not None and isinstance(op.src, str))
-    mod = PyCodeCache.load(op.src)
-    PyCodeCache.clear()  # we want a fresh copy every time
-
-    call_name = op.call.__name__
-    bench_fn_name = op.bench_fn.__name__
-    kernel_name = op.kernel.__name__
-
-    # swap the impl
-    op.call = getattr(mod, call_name)
-    op.bench_fn = getattr(mod, bench_fn_name)
-    op.kernel = getattr(mod, kernel_name)

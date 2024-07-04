@@ -6,27 +6,35 @@ from triton.runtime.autotuner import OutOfResources
 
 from dlblas.op_struct import OpImpl
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.autotune.policy import RandomPolicy
+from dlblas.autotune.policy import get_policy, Policy
 from dlblas.autotune.dynamic_compiler import Parser
+from dlblas.autotune.configs import AutotuneConfig
 
 
-def tunning(op: OpImpl, args):
-    parser = parse_op(op)
-    policy = RandomPolicy('random')
+def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
+    parser: Parser = parse_op(op)
+    policy: Policy = get_policy(configs)
 
-    # TODO a simple loop for now
-    for _ in range(10):
-        config = policy.generate(op.spaces)
-        src = parser.build(config)
+    # tunning loop
+    for iteration in range(configs.iteration):
+
+        # policy generate suggestions
+        kernel_configs = policy.generate(op.spaces)
+
+        # compile
+        src = parser.build(kernel_configs)
         op.src = src
         compile_op(op)
+
+        # feedback signal
+        bench_ok = True
         try:
             perf = op.bench(*args)
-            test_ok = True
         except OutOfResources:
-            test_ok = False
+            bench_ok = False
 
-        if test_ok:
+        # early stop creiteria
+        if bench_ok:
             break
 
     return perf

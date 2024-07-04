@@ -8,6 +8,10 @@ from dlblas.op_struct import OpImpl, OpParams, parse_args, match
 from dlblas.cache import Cache
 from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.autotune.autotuner import compile_op, tunning
+from dlblas.autotune.configs import AutotuneConfig
+from dlblas.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -61,17 +65,23 @@ class OpRegistry:
     def get_args_from_op_name(self, op_name: str):
         return [i.params for i in self.ops[op_name]]
 
-    def get_op(self, op_name: str, args: tuple):
+    def get_op(self, op_name: str, args: tuple, configs=None):
         if op_name not in self.ops:
             raise NameError(f"op {op_name} not found")
 
         # 1. check cache
         if op := self.look_up_cache(op_name, args):
             # if op is not None, will hit the true branch
+            logger.info(f'cache hit for op {op_name}')
             return op
 
         # 2. if miss, tunning
-        op = self._tunning(op_name, args)
+        if configs is None:
+            logger.warning(f'use default autotune configs for op {op_name}')
+            configs = AutotuneConfig()
+        else:
+            assert isinstance(configs, AutotuneConfig)
+        op = self._tunning(op_name, args, configs)
         return op
 
     def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:

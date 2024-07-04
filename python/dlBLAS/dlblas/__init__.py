@@ -9,6 +9,7 @@ from dlblas.autotune.space import (
     FixedSpace,
     DictSpace,
 )
+from dlblas.autotune.configs import AutotuneConfig
 
 register_dlblas_op = op_registry.register
 

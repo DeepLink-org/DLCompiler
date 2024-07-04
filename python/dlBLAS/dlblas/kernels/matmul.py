@@ -6,8 +6,7 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas.op_registry import op_registry
-from dlblas.symbolic_var import SymVar, Tensor
+from dlblas import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
 def is_cuda():
@@ -91,10 +90,10 @@ def get_autotune_config():
 #       meta-parameters (e.g., `BLOCK_SIZE_M`) and compilation options (e.g., `num_warps`) to try
 #   - An auto-tuning *key* whose change in values will trigger evaluation of all the
 #       provided configs
-@triton.autotune(
-    configs=get_autotune_config(),
-    key=['M', 'N', 'K'],
-)
+# @triton.autotune(
+#     configs=get_autotune_config(),
+#     key=['M', 'N', 'K'],
+# )
 @triton.jit
 def matmul_kernel(
         # Pointers to matrices
@@ -200,6 +199,12 @@ def call(a, b, activation=""):
     )
     return c
 
+# NOTE: kernel-level benchmark would be inaccurate if we just do time.time()/time.perf_counter()
+#     triton's benchmarks are based on CUDA events
+#
+# however for DSA, we might not be able to use a CUDA event's mechanism,
+#     so we would fall back to time.time()/time.perf_counter()
+#
 def bench_fn(a, b, activation=""):
     # Check constraints.
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
@@ -232,7 +237,14 @@ for dtype in [torch.float16, torch.float32]:
             a = Tensor((m, k), dtype=dtype, device=device)
             b = Tensor((k, n), dtype=dtype, device=device)
 
+            # NOTE: the underlying kernel is the same jit'ed function, but Triton
+            # will dispatch to different kernels based on the input params
+            #
+            # why do we still need another dispatch layer in op_registry?
+            # because e.g. matmul may have different Triton implemetation...
+            #
+            space = ChoiceSpace(get_cuda_autotune_config())
             if activation == '':
-                op_registry.register(name, (a, b), call, bench_fn)
+                register_dlblas_op(name, space, (a, b), call, bench_fn, matmul_kernel)
             else:
-                op_registry.register(name, (a, b, activation), call, bench_fn)
+                register_dlblas_op(name, space, (a, b, activation), call, bench_fn, matmul_kernel)

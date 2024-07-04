@@ -10,7 +10,7 @@ from triton.runtime.autotuner import Config
 
 from dlblas.op_struct import OpImpl
 from dlblas.autotune.space import ChoiceSpace, DictSpace
-from dlblas.autotune.passes import rewrite_dlblas_registeration_pass, analyse_kernel_call_pass
+from dlblas.autotune.passes import rewrite_dlblas_registration_pass, analyse_kernel_call_pass
 '''
 The compiler dynamically parse and execute the kernel file as string,
     this is because kernels defined under the kerenl/ folder have been `executed` 
@@ -25,7 +25,7 @@ class Parser:
     call_name: str = None
     tunable_params: set = field(default_factory=set)
     src_code: str = None
-    start_end_idx: list[tuple[int]] = field(default_factory=list)
+    kernel_call_start_end_idx: list[tuple[int]] = field(default_factory=list)
     kernel_args_names: list[str] = field(default_factory=list)
     kernel_constexprs_idx: list[int] = field(default_factory=list)
 
@@ -53,11 +53,15 @@ class Parser:
         self.kernel_constexprs_idx = deepcopy(op.kernel.constexprs)
 
         # run passes
-        text = rewrite_dlblas_registeration_pass(src_code)
-        start_end_idx = analyse_kernel_call_pass(text, self.kernel_name)
+        text = rewrite_dlblas_registration_pass(src_code)
+        kernel_call_start_end_idx = analyse_kernel_call_pass(
+            text,
+            self.kernel_name,
+        )
 
+        # populate self
         self.src_code = text
-        self.start_end_idx = start_end_idx
+        self.kernel_call_start_end_idx = kernel_call_start_end_idx
         return self
 
     def build(self, replacement: dict) -> str:
@@ -65,7 +69,7 @@ class Parser:
         '''
         new_src = ''
         last_end = 0
-        for i, (start, end) in enumerate(self.start_end_idx):
+        for i, (start, end) in enumerate(self.kernel_call_start_end_idx):
             new_args = []
             #
             # for each kernel invocation

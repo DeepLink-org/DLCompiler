@@ -218,6 +218,7 @@ def bench_fn(a, b):
     return ms
 
 
+# yapf: enable
 # register
 name = 'matmul'
 for dtype in [torch.float16, torch.float32]:
@@ -236,4 +237,11 @@ for dtype in [torch.float16, torch.float32]:
             "num_stages": FixedSpace(3),
             "num_warps": FixedSpace(8)
         })
-        register_dlblas_op(name, spaces, (a, b), call, bench_fn, matmul_kernel_persistent)
+        register_dlblas_op(
+            name,
+            spaces,
+            (a, b),
+            call,
+            bench_fn,
+            matmul_kernel_persistent,
+        )

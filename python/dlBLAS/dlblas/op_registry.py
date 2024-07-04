@@ -90,7 +90,7 @@ class OpRegistry:
             compile_op(cached)
             return cached
 
-    def _tunning(self, op_name: str, args: tuple):
+    def _tunning(self, op_name: str, args: tuple, configs):
         # fetch candidates
         candidates = self._get_candidates(op_name, args)
         if len(candidates) == 0:
@@ -98,7 +98,7 @@ class OpRegistry:
                 f"no candidates for op {op_name} with args {args}")
 
         # run selection
-        best_idx, _ = self._selection(args, candidates)
+        best_idx, _ = self._selection(args, candidates, configs)
 
         # get best
         best_op: OpImpl = candidates[best_idx]
@@ -117,7 +117,7 @@ class OpRegistry:
                 candidates.append(op)
         return candidates
 
-    def _selection(self, args, candidates: list[OpImpl]) -> int:
+    def _selection(self, args, candidates: list[OpImpl], configs) -> int:
         # NOTE: for now we only bench each one locally and in serial
         # for parallel benchmark, see:
         # https://github.com/pytorch/pytorch/blob/a0dac3de31b50a19e503652ffe257b314fa005a6/torch/_inductor/autotune_process.py#L282
@@ -125,7 +125,7 @@ class OpRegistry:
         best_perf = None
         for i, op in enumerate(candidates):
             # perf = op.bench(*args)
-            perf = tunning(op, args)
+            perf = tunning(op, args, configs)
 
             # print('op is : ', op, ' perf is: ', perf)
             if best_perf is None or perf < best_perf:

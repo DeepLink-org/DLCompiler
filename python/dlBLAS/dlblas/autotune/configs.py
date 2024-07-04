@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class AutotuneConfig:
     # iteration for tunning
-    iteration: int = 10
+    total_iteration: int = 5
 
     # tunner
-    tunner: str = 'random'
+    tunner: str = 'enumeration'

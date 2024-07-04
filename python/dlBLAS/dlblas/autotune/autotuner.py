@@ -1,5 +1,7 @@
 import os
 
+import numpy as np
+
 from torch._inductor.codecache import PyCodeCache
 
 from triton.runtime.autotuner import OutOfResources
@@ -13,13 +15,19 @@ from dlblas.autotune.configs import AutotuneConfig
 
 def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
     parser: Parser = parse_op(op)
-    policy: Policy = get_policy(configs)
+    policy: Policy = get_policy(op.spaces, configs)
 
     # tunning loop
-    for iteration in range(configs.iteration):
+    perfs = [float('inf') for _ in range(configs.total_iteration)]
+    srcs = [None for _ in range(configs.total_iteration)]
+    iteration = 0
+    while iteration < configs.total_iteration:
 
         # policy generate suggestions
-        kernel_configs = policy.generate(op.spaces)
+        kernel_configs = policy.generate()
+        if kernel_configs is None:
+            # exhausted
+            break
 
         # compile
         src = parser.build(kernel_configs)
@@ -33,11 +41,25 @@ def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
         except OutOfResources:
             bench_ok = False
 
-        # early stop creiteria
+        # update tunner
+        policy.feedback(perf)
         if bench_ok:
-            break
+            perfs[iteration] = perf
+            srcs[iteration] = src
 
-    return perf
+        iteration += 1
+
+    # get best
+    best_kernel_configs_idx = int(np.argmin(perfs))
+    if srcs[best_kernel_configs_idx] is None:
+        raise RuntimeError(f'''
+            unable to tune for op {op.name},
+            consider to config more tunning iteration,
+            or widen the search space
+        ''')
+    op.src = srcs[best_kernel_configs_idx]
+    best_perf = perfs[best_kernel_configs_idx]
+    return best_perf
 
 
 def parse_op(op: OpImpl):

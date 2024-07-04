@@ -45,6 +45,9 @@ class FixedSpace(Space):
     def sample(self):
         return self.value
 
+    def to_iter(self):
+        return [self.value]
+
 
 @dataclass(frozen=True)
 class RangeSapce(Space):
@@ -71,6 +74,9 @@ class DiscreteSpace(Space):
     def sample(self):
         return random.randint(self.start, self.end)
 
+    def to_iter(self):
+        return [i for i in range(self.start, self.end + 1)]
+
 
 @dataclass(frozen=True)
 class PowerOfTwoSpace(DiscreteSpace):
@@ -85,6 +91,9 @@ class PowerOfTwoSpace(DiscreteSpace):
     def sample(self):
         n = random.randint(self.start_base, self.end_base)
         return 2**n
+
+    def to_iter(self):
+        return [2**i for i in range(self.start_base, self.end_base + 1)]
 
 
 @dataclass(frozen=True)
@@ -107,28 +116,43 @@ class DictSpace:
 
 @dataclass(frozen=True)
 class ChoiceSpace:
-    choices: list
+    choices: list[Config]
 
     def __post_init__(self):
         assert len(self.choices) > 0, f'empty choices: {self.choices}'
+        for choice in self.choices:
+            assert isinstance(
+                choice,
+                Config), f"choice must be Config, but got {type(choice)}"
 
     def sample(self) -> dict:
         choice = random.choice(self.choices)
-        if isinstance(choice, Config):
-            ans = {
-                'num_ctas': choice.num_ctas,
-                'num_warps': choice.num_warps,
-                'num_stages': choice.num_stages,
-            }
-            for k, v in choice.kwargs.items():
-                ans[k] = v
+        ans = {
+            'num_ctas': choice.num_ctas,
+            'num_warps': choice.num_warps,
+            'num_stages': choice.num_stages,
+        }
+        for k, v in choice.kwargs.items():
+            ans[k] = v
 
-            return ans
-
-        raise TypeError(f"choice must be Config, but got {type(choice)}")
+        return ans
 
     def __getitem__(self, index):
         if isinstance(index, int):
             return self.choices[index]
         else:
             raise TypeError("Index must be an integer")
+
+    def to_iter(self):
+        iterables = []
+        for choice in self.choices:
+            this = {
+                'num_ctas': choice.num_ctas,
+                'num_warps': choice.num_warps,
+                'num_stages': choice.num_stages,
+            }
+            for k, v in choice.kwargs.items():
+                this[k] = v
+
+            iterables.append(this)
+        return iterables

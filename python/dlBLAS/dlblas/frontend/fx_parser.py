@@ -7,6 +7,16 @@ import inspect
 from collections import defaultdict
 from pathlib import Path
 from argparse import ArgumentParser
+'''
+this is meant to parse a fx_readable dump from torch.compile when TORCH_COMPILE_DEBUG=1
+
+note we also need to change 2 things
+
+1. import torch 
+2. change the class name to a valid nn_module_name
+
+then this file can parse it
+'''
 
 
 def dynamic_import_and_parse(path_to_src, nn_module_name):

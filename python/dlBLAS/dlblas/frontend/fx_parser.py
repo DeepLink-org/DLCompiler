@@ -8,47 +8,96 @@ from collections import defaultdict
 from pathlib import Path
 from argparse import ArgumentParser
 
-import torch
+
+def dynamic_import_and_parse(path_to_src, nn_module_name):
+    # dynamically exec the module.py file
+    arg_path = Path(path_to_src)
+    sys.path.insert(0, str(arg_path.parent))
+    spec = importlib.util.spec_from_file_location(arg_path.stem, arg_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    nn_mod = getattr(mod, nn_module_name)
+    forward_method = getattr(nn_mod, 'forward')
+
+    forward_src = inspect.getsource(forward_method)
+    forward_src = textwrap.dedent(forward_src)
+    return forward_src
 
 
-# Define a function to evaluate expressions
-def eval_expr(expr_node, tensor_dict):
-    if isinstance(expr_node, ast.Name):
-        # Variable reference
-        return tensor_dict[expr_node.id]
-    elif isinstance(expr_node, ast.Call):
-
-        # Function call
-        # func_name = expr_node.func.attr
-        func = expr_node.func
-        assert isinstance(func, ast.Name)
-        func_name = func.id
-
-        args = [eval_expr(arg) for arg in expr_node.args]
-        kwargs = {kw.arg: eval_expr(kw.value) for kw in expr_node.keywords}
-
-        # TODO; convert this to appropriate op, and
-        aten_op = getattr(torch.ops.aten, func_name)
-        output = aten_op(*args, **kwargs)
-        return output
-
-    elif isinstance(expr_node, ast.Constant):
-        # Constant value
-        return expr_node.value
-    else:
-        raise NotImplementedError(
-            f"Expression type {type(expr_node)} not implemented")
+def extract_shape_dtype(annotation):
+    # Extracting the dtype and shape from the annotation string
+    dtype, shape = annotation.split('[')
+    shape = shape.rstrip(']')  # Remove the closing bracket
+    return dtype, shape
 
 
-# Define a function to execute assignments
-def exec_assign(node, tensor_dict):
-    value = eval_expr(node.value)
-    for target in node.targets:
-        if isinstance(target, ast.Name):
-            tensor_dict[target.id] = value
-        else:
-            raise NotImplementedError(
-                f"Assignment target {type(target)} not implemented")
+def parse_fx_readable(source_code):
+    tensor_info = {}
+    op_info = defaultdict(list)
+
+    # Process the function body.
+    tree = ast.parse(source_code)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            # Handle function arguments.
+            for arg_node in node.args.args:
+                if arg_node.annotation:
+                    tensor_name = arg_node.arg
+                    dtype, shape = extract_shape_dtype(
+                        ast.get_source_segment(source_code,
+                                               arg_node.annotation))
+                    if dtype and shape:
+                        tensor_info[tensor_name] = {
+                            'dtype': dtype,
+                            'shape': shape
+                        }
+
+        elif isinstance(node, ast.AnnAssign):
+            # Handle a stmt
+            ## fisrt deal with the output tensor
+            target_tensor_name = node.target.id
+            if isinstance(node.annotation, ast.Constant):
+                dtype, shape = extract_shape_dtype(node.annotation.s)
+                if dtype and shape:
+                    tensor_info[target_tensor_name] = {
+                        'dtype': dtype,
+                        'shape': shape
+                    }
+            else:
+                raise ValueError(f"Unsupported annotation: {node.annotation}")
+
+            ## then deal with the function and args
+            if isinstance(node.value, ast.Call):
+                call = node.value
+
+                # get the full function name, e.g. `torch.ops.xxx`
+                op_names = []
+                attr = call.func
+                while isinstance(attr, ast.Attribute):
+                    op_names.append(attr.attr)
+                    attr = attr.value
+
+                assert isinstance(attr, ast.Name)
+                op_names.append(attr.id)
+                op_names = '.'.join(op_names[::-1])
+
+                # get the args
+                args = call.args
+                kwargs = call.keywords
+
+                for arg in args:
+                    assert isinstance(arg, ast.Name)
+                args_names = [arg.id for arg in args]
+                assert len(
+                    kwargs) == 0, f"Unexpected keyword arguments: {kwargs}"
+
+                # store
+                op_info[op_names].append(
+                    (target_tensor_name, args_names, kwargs))
+            else:
+                raise ValueError(f"Unsupported value: {node.value}")
+
+    return tensor_info, op_info
 
 
 if __name__ == "__main__":
@@ -58,42 +107,20 @@ if __name__ == "__main__":
         "-p",
         type=str,
         default=
-        '/heguoliang/triton_deeplink/custom_bench/llama_fx/llama_fx_graph/prefill/module.py',
+        '/heguoliang/triton_deeplink/custom_bench/fx_graphs/fx_graph_readable.py',
     )
     parser.add_argument(
         "-m",
         type=str,
-        default='cddb4645ik6eir7vfcqcgsfyc3fm2imkftwug55kk2pmqzxkowk6',
+        default='g',
     )
     args = parser.parse_args()
 
-    # dynamically exec the module.py file
-    arg_path = Path(args.p)
-    sys.path.insert(0, str(arg_path.parent))
-    spec = importlib.util.spec_from_file_location(arg_path.stem, arg_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    nn_mod = getattr(mod, args.m)
-    forward_method = getattr(nn_mod, 'forward')
+    forward_src = dynamic_import_and_parse(args.p, args.m)
+    tensor_info, op_info = parse_fx_readable(forward_src)
 
-    # Inspect the forward method to get the parameter names
-    forward_input_args = inspect.signature(forward_method).parameters
+    print("Tensor Information:")
+    print(tensor_info)
 
-    # Create a mapping from variable names to tensors
-    # TODO how to get args shape? then write into tensor_dict
-    dummy_tensors = {name: torch.randn(1) for name in forward_input_args}
-    tensor_dict = defaultdict(lambda: torch.randn(1))
-
-    # execute function line-by-line
-    ## convert to fake tensors
-    ## iterate over torch ops, execute it on fake tensor
-    ## store output to a dict
-    forward_src = inspect.getsource(forward_method)
-    forward_src = textwrap.dedent(forward_src)
-    tree: ast.Module = ast.parse(forward_src)
-
-    # Walk through the AST and execute assignments
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            # assume forward has no control flow; only sequential torch ops
-            exec_assign(node)
+    print("\nOperation Inputs:")
+    print(op_info)

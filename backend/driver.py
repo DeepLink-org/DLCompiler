@@ -103,17 +103,17 @@ class DICUtils:
         self.get_device_properties = mod.get_device_properties
 
 class DICPDriver(DriverBase):
-    def __init__(self, target):
+    def __init__(self, target=None):
         if(self.__initialized): return
         self.__initialized = True
         super().__init__()
         if target is None:
             self.target = "dicp"
-        else:
-            self.target = target
+        elif target == "mlu":
+            self.target = "mlu"
            
     
-    def __new__(cls, target):
+    def __new__(cls, target=None):
         if not hasattr(cls, 'instance'):
             cls.instance = super(DICPDriver, cls).__new__(cls)
             cls.instance.__initialized = False

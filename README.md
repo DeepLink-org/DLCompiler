@@ -24,7 +24,6 @@ ninja -j64
 ## 编译 triton && triton
 ```
 export LLVM_BUILD_DIR=...
-export CUPTI_INCLUDE_DIR=...
 bash compile.sh
 export PYTHONPATH=$PWD/third_party/triton/python
 export PATH=$PWD/third_party/triton/build/third_party/triton_linalg/bin:$PATH

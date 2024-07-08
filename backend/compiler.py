@@ -1,7 +1,6 @@
 from triton.backends.compiler import BaseBackend, GPUTarget
 from triton._C.libtriton import ir, passes
 from dataclasses import dataclass
-from typing import Any
 import hashlib
 import tempfile
 import os
@@ -67,7 +66,7 @@ def _linalg_to_fatbin(ttlinalgdir: str, metadata):
         llc_path = _get_llvm_bin_path("llc")
         # subprocess.check_call([llc_path, src_path, "-o", dst_path])
         # Actually it's text-format assembly.  Use read_text().
-        return ttlinalgdir   
+        return ttlinalgdir
 
 
 @dataclass(frozen=True)
@@ -99,12 +98,11 @@ class DICPBackend(BaseBackend):
         #     device_type = "370"
         #     MLUBackend().__init__(device_type)
         super().__init__(target)
-        self.driver = DICPDriver()
-
+        self.driver = DICPDriver(target)
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend == 'dicp'
+        return target.backend in ['dicp', 'mlu']
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -119,11 +117,17 @@ class DICPBackend(BaseBackend):
         passes.common.add_symbol_dce(pm)
         pm.run(mod)
         return mod
-    
+
     def add_stages(self, stages, options):
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
-        stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
+        if self.driver.target == 'dicp':
+            stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
+            stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
+        elif self.driver.target == 'mlu':
+            from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
+            stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, get_architecture_descriptor(self.driver.get_current_device()), False, True)
+        else:
+            raise RuntimeError("backend not supported")
 
     def load_dialects(self, ctx):
         return

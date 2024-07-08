@@ -103,20 +103,20 @@ class DICUtils:
         self.get_device_properties = mod.get_device_properties
 
 class DICPDriver(DriverBase):
-    def __init__(self):
-       super().__init__()
-    #    self.target = target
-    #    if target is None:
-    #        self.utils = DICUtils()
-    #        self.backend = "DICP"
-    #    elif target is "mlu":
-    #     #    self.utils = MLUUtils()
-    #        self.backend = "MLU"
+    def __init__(self, target):
+        if(self.__initialized): return
+        self.__initialized = True
+        super().__init__()
+        if target is None:
+            self.target = "dicp"
+        else:
+            self.target = target
            
     
-    def __new__(cls):
+    def __new__(cls, target):
         if not hasattr(cls, 'instance'):
             cls.instance = super(DICPDriver, cls).__new__(cls)
+            cls.instance.__initialized = False
         return cls.instance
 
     @staticmethod
@@ -124,22 +124,34 @@ class DICPDriver(DriverBase):
         return True
 
     def get_device_capability(self):
+        if self.target == "mlu":
+            return ("mlu", 0)
         return ("dicp", 0)
 
     def get_current_stream(self, device):
+        if self.target == "mlu":
+            if idx is None:
+                idx = self.get_current_device()
+            return torch.mlu.current_stream(device).mlu_stream
         return None
 
     def get_current_device(self):
         # dicp doesn't have a device to return. Return something.
+        if self.target == "mlu":
+            return torch.mlu.current_device()
         return "dicp"
 
     def set_current_device(self, device):
         # dicp doesn't have a device to set
+        if self.target == "mlu":
+            return torch.mlu.set_device(device)
         assert device == "dicp"
         return
 
     def get_current_target(self):
+        if self.target == "mlu":
+            return GPUTarget("mlu", "x86", 32)
         return GPUTarget("dicp", "x86", 32)
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):
-        return args 
+        return args

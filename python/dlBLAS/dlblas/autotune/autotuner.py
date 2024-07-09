@@ -40,6 +40,13 @@ def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
             perf = op.bench(*args)
         except OutOfResources:
             bench_ok = False
+        except Exception as e:
+            # this actually triggers JIT compile,
+            # if there's problem with the compilation
+            # it will raise an exception
+            # TODO not sure if we simply ignore here?
+            # if all fails, then just return a inf perf?
+            raise e
 
         # update tunner
         if bench_ok:
@@ -71,6 +78,7 @@ def parse_op(op: OpImpl):
         so that each args can correspond to only one instance of triton kernel
 
         we use inductor's PyCodeCache for now
+        also note that registration is ok means that the python file can be parsed successfully
     '''
     kernel_file = op.file_path
     with open(kernel_file, 'r') as file:

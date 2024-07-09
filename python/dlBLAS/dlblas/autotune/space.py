@@ -157,11 +157,22 @@ class ChoiceSpace:
     def to_iter(self):
         iterables = []
         for choice in self.choices:
-            this = {
-                'num_ctas': choice.num_ctas,
-                'num_warps': choice.num_warps,
-                'num_stages': choice.num_stages,
-            }
+            try:
+                this = {
+                    'num_ctas': choice.num_ctas,
+                    'num_warps': choice.num_warps,
+                    'num_stages': choice.num_stages,
+                }
+            except AttributeError:
+                # older version triton has no num_ctas
+                this = {
+                    'num_warps': choice.num_warps,
+                    'num_stages': choice.num_stages,
+                }
+            except Exception as e:
+                # If the exception is not one of the above, re-raise it
+                raise e
+
             for k, v in choice.kwargs.items():
                 this[k] = v
 

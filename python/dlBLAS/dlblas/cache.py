@@ -4,9 +4,6 @@ import pickle
 
 import torch
 
-from triton.runtime.autotuner import Autotuner
-from triton.runtime.driver import driver
-
 from dlblas.op_struct import OpImpl, OpParams
 from dlblas.autotune.space import ChoiceSpace, DictSpace
 

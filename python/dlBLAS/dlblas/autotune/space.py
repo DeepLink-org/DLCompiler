@@ -127,11 +127,22 @@ class ChoiceSpace:
 
     def sample(self) -> dict:
         choice = random.choice(self.choices)
-        ans = {
-            'num_ctas': choice.num_ctas,
-            'num_warps': choice.num_warps,
-            'num_stages': choice.num_stages,
-        }
+        try:
+            ans = {
+                'num_ctas': choice.num_ctas,
+                'num_warps': choice.num_warps,
+                'num_stages': choice.num_stages,
+            }
+        except AttributeError:
+            # older version triton has no num_ctas
+            ans = {
+                'num_warps': choice.num_warps,
+                'num_stages': choice.num_stages,
+            }
+        except Exception as e:
+            # If the exception is not one of the above, re-raise it
+            raise e
+
         for k, v in choice.kwargs.items():
             ans[k] = v
 

@@ -107,10 +107,13 @@ class DICPDriver(DriverBase):
         if(self.__initialized): return
         self.__initialized = True
         super().__init__()
-        if target is None:
-            self.target = "dicp"
-        elif target == "mlu":
+        if target == "mlu":
+            from triton.backends.dicp_triton.mlu import MluLauncher, MLUUtils
             self.target = "mlu"
+            self.utils = MLUUtils()
+            self.launcher_cls = MluLauncher
+        else:
+            self.target = "dicp"
            
     
     def __new__(cls, target=None):
@@ -130,8 +133,8 @@ class DICPDriver(DriverBase):
 
     def get_current_stream(self, device):
         if self.target == "mlu":
-            if idx is None:
-                idx = self.get_current_device()
+            if device is None:
+                device = self.get_current_device()
             return torch.mlu.current_stream(device).mlu_stream
         return None
 

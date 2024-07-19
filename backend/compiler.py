@@ -56,14 +56,24 @@ def _linalgir_get_kernel_name(ttir: str) -> str:
             return line.split('@')[1].split("(")[0]
     raise RuntimeError("can not get kernel name from ttir")
 
+def _ttir_get_kernel_name(ttir: str):
+    '''
+    Get kernel name from ttir.
+    This Kernel name is required when launching the kernel.
+    '''
+    for line in ttir.split('\n'):
+        line = line.strip()
+        if line.startswith('tt.func'):
+            return line.split('@')[1].split("(")[0]
+    return None
+
 # call llvm compiler to generate bin file
 def _linalg_to_fatbin(ttlinalgdir: str, metadata):
-    metadata["name"] = _linalgir_get_kernel_name(ttlinalgdir)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "temp_linalg.mlir")
         dst_path = os.path.join(tmpdir, "kernel.o")
         Path(src_path).write_text(ttlinalgdir)
-        llc_path = _get_llvm_bin_path("llc")
+        # llc_path = _get_llvm_bin_path("llc")
         # subprocess.check_call([llc_path, src_path, "-o", dst_path])
         # Actually it's text-format assembly.  Use read_text().
         return ttlinalgdir
@@ -99,6 +109,10 @@ class DICPBackend(BaseBackend):
         #     MLUBackend().__init__(device_type)
         super().__init__(target)
         self.driver = DICPDriver(target)
+        if self.driver.target == 'dicp':
+            self.binary_ext = "ttlinalgdir"
+        elif self.driver.target == 'mlu':
+            self.binary_ext = "cnbin"
 
     @staticmethod
     def supports_target(target: GPUTarget):
@@ -116,6 +130,8 @@ class DICPBackend(BaseBackend):
         passes.common.add_licm(pm)
         passes.common.add_symbol_dce(pm)
         pm.run(mod)
+        metadata["name"] = _ttir_get_kernel_name(str(mod))
+        metadata["shared"] = 0
         return mod
 
     def add_stages(self, stages, options):
@@ -125,7 +141,7 @@ class DICPBackend(BaseBackend):
             stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
         elif self.driver.target == 'mlu':
             from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
-            stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, get_architecture_descriptor(self.driver.get_current_device()), False, True)
+            stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver), False, True)
         else:
             raise RuntimeError("backend not supported")
 

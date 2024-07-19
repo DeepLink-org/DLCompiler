@@ -26,4 +26,5 @@ cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON \
 ninja -j32
 
 cd ../python/triton/backends/
+unlink dicp_triton
 ln -s $DICP_TRITON_DIR/backend dicp_triton

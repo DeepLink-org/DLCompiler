@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
 def is_cuda():
@@ -247,4 +247,4 @@ for dtype in [torch.float16, torch.float32]:
             if activation == '':
                 register_dlblas_op(name, space, (a, b), call, bench_fn, matmul_kernel)
             else:
-                register_dlblas_op(name, space, (a, b, activation), call, bench_fn, matmul_kernel)
+                register_dlblas_op(f"{name}_{activation}", space, (a, b, activation), call, bench_fn, matmul_kernel)

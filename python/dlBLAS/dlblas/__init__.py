@@ -1,35 +1,38 @@
-from dlblas.op_registry import op_registry
-from dlblas.op_struct import OpParams, OpImpl
-from dlblas.symbolic_var import SymVar, Tensor
-from dlblas.autotune.space import (
-    RangeSapce,
-    DiscreteSpace,
-    PowerOfTwoSpace,
-    ChoiceSpace,
-    FixedSpace,
-    DictSpace,
-)
-from dlblas.autotune.configs import AutotuneConfig
-
-register_dlblas_op = op_registry.register
+from typing import Tuple
+from torch import Tensor
 
 # this import all kernels dynamically
 import dlblas.kernels
-
-
-def get_list_op_names() -> list[str]:
-    return op_registry.get_list_op_names()
-
-
-def get_args_from_op_name(name: str):
-    return op_registry.get_args_from_op_name(name)
-
-
-def get_op(name: str, args):
-    '''based on name and args,
-    return OpImpl
-    '''
-    return op_registry.get_op(name, args)
-
-
+from dlblas.utils import get_op
 __version__ = "0.0.1"
+
+def topk_gating(logits: Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    op = get_op("topk_gating", (logits, k, capacity_factor, min_capacity))
+    return op(logits, k, capacity_factor, min_capacity)
+
+
+def matmul(a:Tensor, b: Tensor, activation=""):
+    if activation == "leaky_relu":
+        op = get_op("matmul_leaky_relu", (a, b, activation))
+        return op(a, b, activation)
+    elif activation == "":
+        op = get_op("matmul", (a, b))
+        return op(a, b)
+    else:
+        raise f"matmul_{activation} not impl."
+
+
+def _topk_gating_fwd_part1(logits: Tensor, k: int):
+    op = get_op("_topk_gating_fwd_part1", (logits, k))
+    return op(logits, k)
+
+
+def _topk_gating_fwd_part2(gates: Tensor, masks: Tensor, k: int):
+    op = get_op("_topk_gating_fwd_part2", (gates, masks, k))
+    return op(gates, masks, k)
+
+
+def _topk_gating_fwd_part3(gates: Tensor, masks: Tensor, locations: Tensor, k: int, capacity: int):
+    op = get_op("_topk_gating_fwd_part3", (gates, masks, locations, k, capacity))
+    return op(gates, masks, locations, k, capacity)
+

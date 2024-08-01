@@ -15,6 +15,15 @@ class OpParams:
     n_args: int
     args_types: list[str]
     args: tuple
+    
+    def __eq__(self, __value: object) -> bool:
+        assert isinstance(__value, OpParams)
+        if len(self.args_types) != len(__value.args_types) or self.n_args != __value.n_args:
+            return False
+        for i in range(self.n_args):
+            if self.args_types[i] != __value.args_types[i]:
+                return False
+        return True
 
 
 @dataclass

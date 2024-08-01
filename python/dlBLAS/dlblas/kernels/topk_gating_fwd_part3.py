@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.core as tlc
-from dlblas import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
 @triton.jit

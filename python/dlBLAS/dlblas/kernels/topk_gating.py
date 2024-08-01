@@ -4,8 +4,9 @@ import torch
 from torch import Tensor
 import triton
 
-from dlblas import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 from dlblas.op_registry import op_registry
+import dlblas
 # from topk_gating_fwd_part1 import _topk_gating_kernel_part1
 # from topk_gating_bwd import fused_bwd
 
@@ -34,22 +35,13 @@ def gumbel_rsample(shape: Tuple, device: torch.device) -> Tensor:
 
 
 class TopKGatingFunc(torch.autograd.Function):
-    fwd_part1_op = None
-    fwd_part2_op = None
-    fwd_part3_op = None
     @staticmethod
     def forward(ctx: torch.Any, logits: torch.Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2):
         # compute the capacity
         capacity = _capacity(logits, torch.tensor(capacity_factor * k), torch.tensor(min_capacity)).item()
-        if TopKGatingFunc.fwd_part1_op is None:
-            TopKGatingFunc.fwd_part1_op = op_registry.get_op("_topk_gating_fwd_part1", (logits, k))
-        gates, masks = TopKGatingFunc.fwd_part1_op(logits, k)
-        if TopKGatingFunc.fwd_part2_op is None:
-            TopKGatingFunc.fwd_part2_op = op_registry.get_op("_topk_gating_fwd_part2", (gates, masks, k))
-        locations, exp_counts, res, ce = TopKGatingFunc.fwd_part2_op(gates, masks, k)
-        if TopKGatingFunc.fwd_part3_op is None:
-            TopKGatingFunc.fwd_part3_op = op_registry.get_op("_topk_gating_fwd_part3", (gates, masks, locations, k, capacity))
-        combine_weights, dispatch_mask = TopKGatingFunc.fwd_part3_op(gates, masks, locations, k, capacity)
+        gates, masks = dlblas._topk_gating_fwd_part1(logits, k)
+        locations, exp_counts, res, ce = dlblas._topk_gating_fwd_part2(gates, masks, k)
+        combine_weights, dispatch_mask = dlblas._topk_gating_fwd_part3(gates, masks, locations, k, capacity)
         l_aux = torch.mean(res)
         ctx.save_for_backward(locations, masks, gates, ce)
         return l_aux, combine_weights, dispatch_mask, exp_counts.to('cpu')

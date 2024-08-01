@@ -3,7 +3,6 @@ import os
 import numpy as np
 
 from torch._inductor.codecache import PyCodeCache
-
 from triton.runtime.autotuner import OutOfResources
 
 from dlblas.op_struct import OpImpl
@@ -12,8 +11,21 @@ from dlblas.autotune.policy import get_policy, Policy
 from dlblas.autotune.dynamic_compiler import Parser
 from dlblas.autotune.configs import AutotuneConfig
 
+def perf_op(op: OpImpl, args: tuple):
+    bench_ok = True
+    try:
+        perf = op.bench(*args)
+    except OutOfResources:
+        bench_ok = False
+    except Exception as e:
+        raise e
+    return bench_ok, perf if bench_ok else float('inf')
+
 
 def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
+    if op.spaces is None:
+        op.src = get_src(op)
+        return perf_op(op, args)
     parser: Parser = parse_op(op)
     policy: Policy = get_policy(op.spaces, configs)
 
@@ -35,18 +47,7 @@ def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
         compile_op(op)
 
         # feedback signal
-        bench_ok = True
-        try:
-            perf = op.bench(*args)
-        except OutOfResources:
-            bench_ok = False
-        except Exception as e:
-            # this actually triggers JIT compile,
-            # if there's problem with the compilation
-            # it will raise an exception
-            # TODO not sure if we simply ignore here?
-            # if all fails, then just return a inf perf?
-            raise e
+        bench_ok, perf = perf_op(op, args)
 
         # update tunner
         if bench_ok:
@@ -72,6 +73,13 @@ def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
     return best_perf
 
 
+def get_src(op: OpImpl):
+    kernel_file = op.file_path
+    with open(kernel_file, 'r') as file:
+        src_code = file.read()  # str
+    return src_code
+
+
 def parse_op(op: OpImpl):
     '''at kernel-register time, the same triton kernel is used
         here we want to intercept the source code and compile it
@@ -80,12 +88,7 @@ def parse_op(op: OpImpl):
         we use inductor's PyCodeCache for now
         also note that registration is ok means that the python file can be parsed successfully
     '''
-    kernel_file = op.file_path
-    with open(kernel_file, 'r') as file:
-        # src_code = file.readlines()  # list[str]
-        src_code = file.read()  # str
-
-    parser = Parser().process(src_code, op)
+    parser = Parser().process(get_src(op), op)
     return parser
 
 

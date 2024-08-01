@@ -43,6 +43,10 @@ def parse_args(args: tuple):
             types.append('str')
         elif isinstance(arg, int):
             types.append('int')
+        elif arg is torch.SymInt:
+            types.append('int')
+        elif arg is torch.SymFloat:
+            types.append(torch.SymFloat)
         else:
             raise TypeError(f"arg {i} has unsupported type {type(arg)}")
 
@@ -78,14 +82,16 @@ def match(user_args, op_params: OpParams):
             return False
         if op_params.args_types[i] == 'int' and not isinstance(arg, int):
             return False
+        if op_params.args_types[i] == torch.SymFloat and not isinstance(arg, float):
+            return False
 
         # py_val check
-        if isinstance(arg, str):
-            if arg != op_params.args[i]:
-                return False
-        if isinstance(arg, int):
-            if arg != op_params.args[i]:
-                return False
+        # if isinstance(arg, str):
+        #     if arg != op_params.args[i]:
+        #         return False
+        # if isinstance(arg, int):
+        #     if arg != op_params.args[i]:
+        #         return False
 
         # tensor check
         if isinstance(arg, torch.Tensor):

@@ -26,6 +26,8 @@ def convert_dtype(t: torch.Tensor):
         return 'f16'
     elif t.dtype == torch.bfloat16:
         return 'bf16'
+    elif t.dtype == torch.int64:
+        return 'i64'
     elif t.dtype == torch.int32:
         return 'i32'
     elif t.dtype == torch.int8:
@@ -71,21 +73,25 @@ class Cache:
 
     def put(self, op: OpImpl, op_name, args):
         key = self.gen_key(op_name, args)
-        new_op = OpImplCache(
-            op.params,
-            op.file_path,
-            op.src,
-            op.spaces,
-            op.call.__name__,
-            op.bench_fn.__name__,
-            op.kernel.__name__,
-        )
-        self._cache[key] = new_op
+        self._cache[key] = op
+        # new_op = OpImplCache(
+        #     op.params,
+        #     op.file_path,
+        #     op.src,
+        #     op.spaces,
+        #     op.call.__name__,
+        #     op.bench_fn.__name__,
+        #     op.kernel.__name__,
+        # )
+        # self._cache[key] = new_op
+       
 
     def get(self, op_name, args) -> Optional[OpImpl]:
         key = self.gen_key(op_name, args)
         if key in self._cache:
             op_cache = self._cache[key]
+            if isinstance(op_cache, OpImpl):
+                return op_cache
             assert isinstance(op_cache, OpImplCache)
             local_scope = {}
 

@@ -218,24 +218,24 @@ def bench_fn(q, k, v, causal=False, sm_scale=0.0, dropout_p=0.0):
 
 
 # register
-name = 'matmul'
+name = 'flash_attention'
 for dtype in [torch.float16, torch.float32]:
-        # for now, epilogue is not added to op name
-        for device in ['cuda']:
-            batch, seqLenQ = SymVar('batch'), SymVar('seqLenQ')
-            headN, headD = SymVar('headN'), SymVar('headD')
-            seqLenKV = SymVar(seqLenKV)
-            # we dont' actually allocate tensor
-            q = Tensor((batch, headN, seqLenQ, headD), dtype=dtype, device=device)
-            k = Tensor((batch, headN, seqLenKV, headD), dtype=dtype, device=device)
-            v = Tensor((batch, headN, seqLenKV, headD), dtype=dtype, device=device)
+    # for now, epilogue is not added to op name
+    for device in ['cuda']:
+        batch, seqLenQ = SymVar('batch'), SymVar('seqLenQ')
+        headN, headD = SymVar('headN'), SymVar('headD')
+        seqLenKV = SymVar('seqLenKV')
+        # we dont' actually allocate tensor
+        q = Tensor((batch, headN, seqLenQ, headD), dtype=dtype, device=device)
+        k = Tensor((batch, headN, seqLenKV, headD), dtype=dtype, device=device)
+        v = Tensor((batch, headN, seqLenKV, headD), dtype=dtype, device=device)
 
-            # NOTE: the underlying kernel is the same jit'ed function, but Triton
-            # will dispatch to different kernels based on the input params
-            #
-            # why do we still need another dispatch layer in op_registry?
-            # because e.g. matmul may have different Triton implemetation...
-            #
-            space = ChoiceSpace(get_fa_autotune_config())
-            register_dlblas_op(name, space, (q, k, v), call, bench_fn, _fa_fwd_kernel)
+        # NOTE: the underlying kernel is the same jit'ed function, but Triton
+        # will dispatch to different kernels based on the input params
+        #
+        # why do we still need another dispatch layer in op_registry?
+        # because e.g. matmul may have different Triton implemetation...
+        #
+        space = ChoiceSpace(get_fa_autotune_config())
+        register_dlblas_op(name, space, (q, k, v), call, bench_fn, _fa_fwd_kernel)
 

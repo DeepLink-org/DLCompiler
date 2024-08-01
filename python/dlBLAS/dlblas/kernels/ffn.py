@@ -118,27 +118,27 @@ def bench_fn(x: torch.Tensor, w1: torch.Tensor, w3: torch.Tensor, rms_w: torch.T
     return ms
 
 # register
-name = 'matmul'
-for dtype in [torch.float16, torch.float32]:
-    for activation in ["", "leaky_relu"]:
-        # for now, epilogue is not added to op name
-        for device in ['cuda']:
-            m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
-            # we dont' actually allocate tensor
-            a = Tensor((m, k), dtype=dtype, device=device)
-            b = Tensor((k, n), dtype=dtype, device=device)
+# name = 'matmul'
+# for dtype in [torch.float16, torch.float32]:
+#     for activation in ["", "leaky_relu"]:
+#         # for now, epilogue is not added to op name
+#         for device in ['cuda']:
+#             m, n, k = SymVar('m'), SymVar('n'), SymVar('k')
+#             # we dont' actually allocate tensor
+#             a = Tensor((m, k), dtype=dtype, device=device)
+#             b = Tensor((k, n), dtype=dtype, device=device)
 
-            # NOTE: the underlying kernel is the same jit'ed function, but Triton
-            # will dispatch to different kernels based on the input params
-            #
-            # why do we still need another dispatch layer in op_registry?
-            # because e.g. matmul may have different Triton implemetation...
-            #
-            space = ChoiceSpace(get_cuda_autotune_config())
-            if activation == '':
-                register_dlblas_op(name, space, (a, b), call, bench_fn, matmul_kernel)
-            else:
-                register_dlblas_op(name, space, (a, b, activation), call, bench_fn, matmul_kernel)
+#             # NOTE: the underlying kernel is the same jit'ed function, but Triton
+#             # will dispatch to different kernels based on the input params
+#             #
+#             # why do we still need another dispatch layer in op_registry?
+#             # because e.g. matmul may have different Triton implemetation...
+#             #
+#             space = ChoiceSpace()
+#             if activation == '':
+#                 register_dlblas_op(name, space, (a, b), call, bench_fn, ff_llama)
+#             else:
+#                 register_dlblas_op(name, space, (a, b, activation), call, bench_fn, ff_llama)
 
 
 

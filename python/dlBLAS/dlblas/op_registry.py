@@ -29,12 +29,12 @@ class OpRegistry:
         pass
 
     def register(self, name, spaces, args, call, bench_fn, kernel):
-        assert isinstance(
-            kernel,
-            JITFunction), f'kernel must be JITFunction, but got {type(kernel)}'
-        assert isinstance(
-            spaces, (ChoiceSpace, DictSpace)
-        ), f'space must be ChoiceSpace or DictSpace, but got {type(spaces)}'
+        # assert isinstance(
+        #     kernel,
+        #     JITFunction), f'kernel must be JITFunction, but got {type(kernel)}'
+        # assert isinstance(
+        #     spaces, (ChoiceSpace, DictSpace)
+        # ), f'space must be ChoiceSpace or DictSpace, but got {type(spaces)}'
         params = parse_args(args)
 
         # path-to-deeplink/python/dlBLAS/dlblas
@@ -72,12 +72,12 @@ class OpRegistry:
         # 1. check cache
         if op := self.look_up_cache(op_name, args):
             # if op is not None, will hit the true branch
-            logger.info(f'cache hit for op {op_name}')
+            logger.debug(f'cache hit for op {op_name}')
             return op
 
         # 2. if miss, tunning
         if configs is None:
-            logger.warning(f'use default autotune configs for op {op_name}')
+            logger.debug(f'use default autotune configs for op {op_name}')
             configs = AutotuneConfig()
         else:
             assert isinstance(configs, AutotuneConfig)
@@ -87,7 +87,7 @@ class OpRegistry:
     def look_up_cache(self, op_name: str, args: tuple) -> Optional[OpImpl]:
         if cached := self.cache.get(op_name, args):
             assert isinstance(cached, OpImpl)
-            compile_op(cached)
+            # compile_op(cached)
             return cached
 
     def _tunning(self, op_name: str, args: tuple, configs):

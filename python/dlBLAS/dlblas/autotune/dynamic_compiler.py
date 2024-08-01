@@ -31,7 +31,9 @@ class Parser:
 
     def get_tunable_params(self, op: OpImpl):
         space = op.spaces
-        if isinstance(space, ChoiceSpace):
+        if space is None:
+            tunable_params = []
+        elif isinstance(space, ChoiceSpace):
             first = space[0]
             assert isinstance(first, Config)
             tunable_params = list(

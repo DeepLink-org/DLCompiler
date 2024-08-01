@@ -6,34 +6,40 @@ import torch.nn.functional as F
 @triton.jit
 def _fused_bwd_kernel(
     grad_combine,
-    locations1_se,
-    locations2_se,
+    locations_se,
     ce,
     mask1,
     mask2,
     gates,
     diag_mask,
     grad_logits,
+    stride_kse_k, stride_kse_s,
     stride_sec_s, stride_sec_e,
     stride_se_s,
     grad_l_aux: tl.constexpr,
     min_value: tl.constexpr,
-    s: tl.constexpr, e: tl.constexpr, c: tl.constexpr,
+    s: tl.constexpr, e: tl.constexpr, c: tl.constexpr, 
     BLOCK_SIZE_e: tl.constexpr,
+    K: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
+    offs_k = tl.arange(0, BLOCK_K)[:,None]
     pid = tl.program_id(axis=0)
     e_offset = tl.arange(0, BLOCK_SIZE_e)
     
-    locations1_se_ptrs = locations1_se + pid * stride_se_s + e_offset
-    locations2_se_ptrs = locations2_se + pid * stride_se_s + e_offset
+    # locations1_se_ptrs = locations1_se + pid * stride_se_s + e_offset
+    # locations2_se_ptrs = locations2_se + pid * stride_se_s + e_offset
+    locations_ptrs = locations_se + offs_k * stride_kse_k + pid * stride_kse_s + e_offset
     mask1_ptrs = mask1 + pid * stride_se_s + e_offset
     mask2_ptrs = mask2 + pid * stride_se_s + e_offset
     gates_ptrs = gates + pid * stride_se_s + e_offset
     ce_ptrs = ce + e_offset
     diag_mask_ptrs = diag_mask + e_offset[:, None] * e + e_offset[None, :]
     
-    locations1_se = tl.load(locations1_se_ptrs, mask=e_offset < e)
-    locations2_se = tl.load(locations2_se_ptrs, mask=e_offset < e)
+    # locations1_se = tl.load(locations1_se_ptrs, mask=e_offset < e)
+    # locations2_se = tl.load(locations2_se_ptrs, mask=e_offset < e)
+    locations_data = tl.load(locations_ptrs, mask=offs_k < K)
+
     mask1_data = tl.load(mask1_ptrs, mask=e_offset < e)
     mask2_data = tl.load(mask2_ptrs, mask=e_offset < e)
     gates = tl.load(gates_ptrs, mask=e_offset < e)
@@ -84,11 +90,13 @@ def _fused_bwd_kernel(
 
     tl.store(grad_logits_ptrs, grad_logits_data)
 
-def fused_bwd(grad_l_aux, grad_combine, loca1, loca2, mask1, mask2, gates, ce):
-    
+def fused_bwd(grad_l_aux, grad_combine, locations, mask1, mask2, gates, ce):
+    # return torch_bwd(grad_l_aux, grad_combine, loca1, loca2, mask1, mask2, gates, ce)
+
     s, e, c = grad_combine.shape
     stride_sec_s, stride_sec_e, _ = grad_combine.stride()
     stride_se_s, _ = mask1.stride()
+    stride_kse_k, stride_kse_s, _ = locations.stride()
     
     grad_logits = torch.zeros((s,e), device=grad_combine.device)
     diag_mask = torch.diag(torch.ones(e, device=grad_combine.device))
@@ -98,14 +106,14 @@ def fused_bwd(grad_l_aux, grad_combine, loca1, loca2, mask1, mask2, gates, ce):
         
         _fused_bwd_kernel[(s, )](
             grad_combine,
-            loca1,
-            loca2,
+            locations,
             ce,
             mask1,
             mask2,
             gates,
             diag_mask,
             grad_logits,
+            stride_kse_k, stride_kse_s,
             stride_sec_s, stride_sec_e,
             stride_se_s,
             grad_l_aux,
@@ -116,7 +124,7 @@ def fused_bwd(grad_l_aux, grad_combine, loca1, loca2, mask1, mask2, gates, ce):
         
     return grad_logits
 
-def BackwardTorch(grad_output1, grad_output2, locations1_se, locations2_se, mask1_float, mask2_float, gates, ce):
+def torch_bwd(grad_output1, grad_output2, locations1_se, locations2_se, mask1_float, mask2_float, gates, ce):
     gates1_s = torch.einsum("se,se->s", gates, mask1_float)
     gates2_s = torch.einsum("se,se->s", gates, mask2_float)
     denom_s = gates1_s + gates2_s
@@ -161,4 +169,4 @@ def BackwardTorch(grad_output1, grad_output2, locations1_se, locations2_se, mask
         grad_logits.append(torch.matmul(softmax_grad, grad_gates[i].t()))
     grad_logits = torch.stack(grad_logits)
     
-    return grad_logits, None, None
+    return grad_logits

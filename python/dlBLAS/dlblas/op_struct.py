@@ -56,6 +56,8 @@ def parse_args(args: tuple):
             types.append('int')
         elif arg is torch.SymFloat:
             types.append(torch.SymFloat)
+        elif arg is torch.SymBool:
+            types.append(torch.SymBool)
         else:
             raise TypeError(f"arg {i} has unsupported type {type(arg)}")
 
@@ -82,6 +84,8 @@ def match(user_args, op_params: OpParams):
     concrete_shapes = []
     sym_shapes = []
     for i, arg in enumerate(user_args):
+        if arg is None:
+            continue
         # type check
         if op_params.args_types[i] == 'tensor' and not isinstance(
                 arg, torch.Tensor):
@@ -92,6 +96,8 @@ def match(user_args, op_params: OpParams):
         if op_params.args_types[i] == 'int' and not isinstance(arg, int):
             return False
         if op_params.args_types[i] == torch.SymFloat and not isinstance(arg, float):
+            return False
+        if op_params.args_types[i] == torch.SymBool and not isinstance(arg, bool):
             return False
 
         # py_val check

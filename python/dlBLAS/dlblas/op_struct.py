@@ -148,12 +148,16 @@ def violate_symbolic_constraints(concrete_shapes, sym_shapes) -> bool:
             else:
                 sym2loc[symbol] = [(i, j)]
 
-    for sym, locs in sym2loc.items():
-        first_loc = locs[0]
-        first_val = concrete_shapes[first_loc[0]][first_loc[1]]
-
-        for loc in locs:
-            if concrete_shapes[loc[0]][loc[1]] != first_val:
-                return True
+    try:
+        for sym, locs in sym2loc.items():
+            first_loc = locs[0]
+            first_val = concrete_shapes[first_loc[0]][first_loc[1]]
+            for loc in locs:
+                if concrete_shapes[loc[0]][loc[1]] != first_val:
+                    return True
+    except IndexError:
+        return True
+    except Exception as e:
+        raise e
 
     return False

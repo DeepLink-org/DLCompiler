@@ -114,8 +114,8 @@ def fused_topkgating(
 def test():
     device_ = torch.device('cuda:6')
     torch.cuda.set_device(device_)
-    k, SeqLen, NumberExperts = 8, 33, 64
-    # k, SeqLen, NumberExperts = 2, 4096, 64
+    # k, SeqLen, NumberExperts = 8, 33, 64
+    k, SeqLen, NumberExperts = 2, 4096, 64
     shape = (SeqLen, NumberExperts)
     logits_torch = torch.randn(shape, device=device_, requires_grad=True)
     capacity_factor: float = 1.0

@@ -128,6 +128,9 @@ we want to reuse torch symbolic varialbe as much as possible, however it seems r
 '''
 
 
+import torch
+
+
 class SymVar:
     '''
     this could be replaced by smypy
@@ -154,7 +157,7 @@ class Tensor:
         for more: https://dev-discuss.pytorch.org/t/what-and-why-is-torch-dispatch/557
     '''
 
-    def __init__(self, shape, *, device=None, dtype=None):
+    def __init__(self, shape, *, device:str, dtype:torch.dtype):
         for arg in shape:
             assert isinstance(arg, SymVar), f'expect a SymVar, but got {arg}'
         self._shape = shape

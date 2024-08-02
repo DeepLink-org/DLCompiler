@@ -16,6 +16,11 @@ def layernorm_gated(x, weight, bias, z=None, eps=1e-6, group_size=None, norm_bef
     return op(x, weight, bias, z, eps, group_size, norm_before_gate, is_rms_norm)
 
 
+def selective_state_update(state, x, dt, A, B, C, D=None, z=None, dt_bias=None, dt_softplus=False):
+    op = get_op("selective_state_update", (state, x, dt, A, B, C, D, z, dt_bias, dt_softplus))
+    return op(state, x, dt, A, B, C, D, z, dt_bias, dt_softplus)
+
+
 def matmul(a:Tensor, b: Tensor, activation=""):
     if activation == "leaky_relu":
         op = get_op("matmul_leaky_relu", (a, b, activation))

@@ -57,23 +57,23 @@ class Cache:
     def __init__(self):
         self._cache = {}
 
-    # def gen_key(self, op_name, args):
-    #     key = op_name
-    #     for i, arg in enumerate(args):
-    #         key += '-' + str(i) + ':'
-    #         if isinstance(arg, torch.Tensor):
-    #             key += convert_dtype(arg) + '_' + convert_shapes(arg)
-    #             device = convert_device(arg)
-    #         else:
-    #             key += str(arg)  # let it fail if not implemented
+    def gen_key(self, op_name, args):
+        key = op_name
+        for i, arg in enumerate(args):
+            key += '-' + str(i) + ':'
+            if isinstance(arg, torch.Tensor):
+                key += convert_dtype(arg) + '_' + convert_shapes(arg)
+                # device = convert_device(arg)
+            # else:
+                # key += str(arg)  # let it fail if not implemented
 
-    #     # XXX assume all tensor in the same device
-    #     key += '-' + device
-    #     return key
+        # XXX assume all tensor in the same device
+        # key += '-' + device
+        return key
 
     def put(self, op: OpImpl, op_name, args):
-        # key = self.gen_key(op_name, args)
-        self._cache[op_name] = op
+        key = self.gen_key(op_name, args)
+        self._cache[key] = op
         # new_op = OpImplCache(
         #     op.params,
         #     op.file_path,
@@ -87,8 +87,7 @@ class Cache:
        
 
     def get(self, op_name, args) -> Optional[OpImpl]:
-        # key = self.gen_key(op_name, args)
-        key = op_name
+        key = self.gen_key(op_name, args)
         if key in self._cache:
             op_cache = self._cache[key]
             if isinstance(op_cache, OpImpl):

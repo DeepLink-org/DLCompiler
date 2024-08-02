@@ -6,7 +6,7 @@ from torch import Tensor
 import triton
 import time
 
-from dlblas import get_op, get_list_op_names
+import dlblas 
 
 def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> Tensor:
     # gates has shape of SE
@@ -127,13 +127,10 @@ def test():
     logits_triton.requires_grad = True
     
     model_torch = fused_topkgating
-
-    model_triton = get_op("topk_gating", (logits_triton, k, capacity_factor, min_capacity))
+    model_triton = dlblas.topk_gating
     
     output1_torch, output2_torch, output3_torch, output4_torch = model_torch(logits_torch, k, capacity_factor, min_capacity)
     output1_triton, output2_triton, output3_triton, output4_triton = model_triton(logits_triton, k, capacity_factor, min_capacity)
-
-    
     
     assert output1_torch.shape == output1_triton.shape
     assert torch.allclose(output1_torch, output1_triton)

@@ -3,7 +3,7 @@ import torch
 import triton
 import triton.language as tl
 # register
-from dlblas import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
 def get_fa_autotune_config():

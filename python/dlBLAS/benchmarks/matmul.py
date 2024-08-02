@@ -5,8 +5,7 @@ import argparse
 import torch
 import triton
 import triton.language as tl
-
-from dlblas import get_op, get_list_op_names
+import dlblas
 
 
 def parse_args():
@@ -27,10 +26,6 @@ def is_cuda():
 
 def main():
     args = parse_args()
-
-    op_list = get_list_op_names()
-    assert 'matmul' in op_list
-
     dtype = torch.float16
     device = 'cuda'
     a = torch.randn(
@@ -44,11 +39,8 @@ def main():
         device=device,
     )
 
-    tunning_args = (a, b)
-    dlblas_op = get_op('matmul', tunning_args)
-
     # test
-    out = dlblas_op(a, b)
+    out = dlblas.matmul(a, b)
     ref_out = a @ b
     tol = {
         'atol': 1.0,

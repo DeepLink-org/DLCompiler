@@ -55,6 +55,7 @@ class OpRegistry:
 
         # FIXME what if a kernel register twice? if appear seems to be a bug... de-duplication check
         if name in self.ops:
+            assert self.ops[name][0].params == params, f"Multiple implementations of a kernel:{name} must have the same parameters."
             self.ops[name].append(impl)
         else:
             self.ops[name] = [impl]

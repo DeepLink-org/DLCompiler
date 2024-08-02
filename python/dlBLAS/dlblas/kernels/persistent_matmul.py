@@ -12,7 +12,7 @@ import triton
 import triton.language as tl
 
 # register
-from dlblas import register_dlblas_op, SymVar, Tensor, DictSpace, FixedSpace
+from dlblas.utils import register_dlblas_op, SymVar, Tensor, DictSpace, FixedSpace
 
 # yapf: disable
 

@@ -4,7 +4,7 @@ import numpy as np
 
 from torch._inductor.codecache import PyCodeCache
 from triton.runtime.autotuner import OutOfResources
-
+from torch import Tensor
 from dlblas.op_struct import OpImpl
 from dlblas.autotune.space import ChoiceSpace, DictSpace
 from dlblas.autotune.policy import get_policy, Policy
@@ -14,7 +14,8 @@ from dlblas.autotune.configs import AutotuneConfig
 def perf_op(op: OpImpl, args: tuple):
     bench_ok = True
     try:
-        perf = op.bench(*args)
+        tmp_args = [arg.detach().clone() if isinstance(arg, Tensor) else arg for arg in args]
+        perf = op.bench(*tmp_args)
     except OutOfResources:
         bench_ok = False
     except Exception as e:

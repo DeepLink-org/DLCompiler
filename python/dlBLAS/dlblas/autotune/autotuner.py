@@ -14,7 +14,7 @@ from dlblas.autotune.configs import AutotuneConfig
 def perf_op(op: OpImpl, args: tuple):
     bench_ok = True
     try:
-        tmp_args = [arg.detach().clone() if isinstance(arg, Tensor) else arg for arg in args]
+        tmp_args = [arg.clone() if isinstance(arg, Tensor) else arg for arg in args]
         perf = op.bench(*tmp_args)
     except OutOfResources:
         bench_ok = False

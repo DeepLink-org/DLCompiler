@@ -1,82 +1,124 @@
 import torch
 import triton
 import triton.language as tl
-import torch.nn.functional as F
+import triton.language.core as tlc
+from dlblas.utils import register_dlblas_op, SymVar, Tensor
 
 @triton.jit
-def _fused_bwd_kernel(
+def _topk_gating_bwd_kernel(
     grad_combine,
-    locations_se,
+    locations_kse,
     ce,
-    mask1,
-    mask2,
+    masks,
     gates,
     diag_mask,
     grad_logits,
     stride_kse_k, stride_kse_s,
     stride_sec_s, stride_sec_e,
-    stride_se_s,
     grad_l_aux: tl.constexpr,
     min_value: tl.constexpr,
-    s: tl.constexpr, e: tl.constexpr, c: tl.constexpr, 
+    k:tl.constexpr, s: tl.constexpr, e: tl.constexpr, c: tl.constexpr, 
     BLOCK_SIZE_e: tl.constexpr,
-    K: tl.constexpr,
-    BLOCK_K: tl.constexpr,
 ):
-    offs_k = tl.arange(0, BLOCK_K)[:,None]
-    pid = tl.program_id(axis=0)
+    # offs_k = tl.arange(0, BLOCK_K)[:,None]
+    pid_s = tl.program_id(axis=0)
     e_offset = tl.arange(0, BLOCK_SIZE_e)
-    
-    # locations1_se_ptrs = locations1_se + pid * stride_se_s + e_offset
-    # locations2_se_ptrs = locations2_se + pid * stride_se_s + e_offset
-    locations_ptrs = locations_se + offs_k * stride_kse_k + pid * stride_kse_s + e_offset
-    mask1_ptrs = mask1 + pid * stride_se_s + e_offset
-    mask2_ptrs = mask2 + pid * stride_se_s + e_offset
-    gates_ptrs = gates + pid * stride_se_s + e_offset
+    gates_ptrs = gates + pid_s * stride_kse_s + e_offset
     ce_ptrs = ce + e_offset
     diag_mask_ptrs = diag_mask + e_offset[:, None] * e + e_offset[None, :]
-    
-    # locations1_se = tl.load(locations1_se_ptrs, mask=e_offset < e)
-    # locations2_se = tl.load(locations2_se_ptrs, mask=e_offset < e)
-    locations_data = tl.load(locations_ptrs, mask=offs_k < K)
-
-    mask1_data = tl.load(mask1_ptrs, mask=e_offset < e)
-    mask2_data = tl.load(mask2_ptrs, mask=e_offset < e)
     gates = tl.load(gates_ptrs, mask=e_offset < e)
     ce = tl.load(ce_ptrs, mask=e_offset < e)
     diag_mask = tl.load(diag_mask_ptrs, mask=e_offset[:,None] < e and e_offset[None,:] < e)
     
-    locations1_s = tl.sum(locations1_se, axis=0).to(tl.int32)
-    locations2_s = tl.sum(locations2_se, axis=0).to(tl.int32)
-
-    grad_gates1_ptrs = grad_combine + pid * stride_sec_s + e_offset * stride_sec_e + locations1_s
-    grad_gates1 = tl.load(grad_gates1_ptrs, locations1_s < c)
-    grad_gates2_ptrs = grad_combine + pid * stride_sec_s + e_offset * stride_sec_e + locations2_s
-    grad_gates2 = tl.load(grad_gates2_ptrs, locations1_s < c)
+    locations0_se_ptrs = locations_kse + 0 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    locations1_se_ptrs = locations_kse + 1 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    locations2_se_ptrs = locations_kse + 2 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    locations3_se_ptrs = locations_kse + 3 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    locations4_se_ptrs = locations_kse + 4 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    locations5_se_ptrs = locations_kse + 5 * stride_kse_k + pid_s * stride_kse_s + e_offset
+   
+    mask0_ptrs = masks + 0 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    mask1_ptrs = masks + 1 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    mask2_ptrs = masks + 2 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    mask3_ptrs = masks + 3 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    mask4_ptrs = masks + 4 * stride_kse_k + pid_s * stride_kse_s + e_offset
+    mask5_ptrs = masks + 5 * stride_kse_k + pid_s * stride_kse_s + e_offset
     
+    
+    locations0_se = tl.load(locations0_se_ptrs, mask=e_offset < e)
+    locations1_se = tl.load(locations1_se_ptrs, mask=e_offset < e)
+    locations2_se = tl.load(locations2_se_ptrs, mask=e_offset < e)
+    locations3_se = tl.load(locations3_se_ptrs, mask=e_offset < e)
+    locations4_se = tl.load(locations4_se_ptrs, mask=e_offset < e)
+    locations5_se = tl.load(locations5_se_ptrs, mask=e_offset < e)
+
+    mask0_data = tl.load(mask0_ptrs, mask=e_offset < e)
+    mask1_data = tl.load(mask1_ptrs, mask=e_offset < e)
+    mask2_data = tl.load(mask2_ptrs, mask=e_offset < e)
+    mask3_data = tl.load(mask3_ptrs, mask=e_offset < e)
+    mask4_data = tl.load(mask4_ptrs, mask=e_offset < e)
+    mask5_data = tl.load(mask5_ptrs, mask=e_offset < e)
+    
+    locations0_s = tl.sum(locations0_se * mask0_data, axis=0).to(tl.int32)
+    locations1_s = tl.sum(locations1_se * mask1_data, axis=0).to(tl.int32)
+    locations2_s = tl.sum(locations2_se * mask2_data, axis=0).to(tl.int32)
+    locations3_s = tl.sum(locations3_se * mask3_data, axis=0).to(tl.int32)
+    locations4_s = tl.sum(locations4_se * mask4_data, axis=0).to(tl.int32)
+    locations5_s = tl.sum(locations5_se * mask5_data, axis=0).to(tl.int32)
+
+    grad_gates0_ptrs = grad_combine + pid_s * stride_sec_s + e_offset * stride_sec_e + locations0_s
+    grad_gates0 = tl.load(grad_gates0_ptrs, locations0_s < c)
+    grad_gates1_ptrs = grad_combine + pid_s * stride_sec_s + e_offset * stride_sec_e + locations1_s
+    grad_gates1 = tl.load(grad_gates1_ptrs, locations1_s < c)
+    grad_gates2_ptrs = grad_combine + pid_s * stride_sec_s + e_offset * stride_sec_e + locations2_s
+    grad_gates2 = tl.load(grad_gates2_ptrs, locations2_s < c)
+    grad_gates3_ptrs = grad_combine + pid_s * stride_sec_s + e_offset * stride_sec_e + locations3_s
+    grad_gates3 = tl.load(grad_gates3_ptrs, locations3_s < c)
+    grad_gates4_ptrs = grad_combine + pid_s * stride_sec_s + e_offset * stride_sec_e + locations4_s
+    grad_gates4 = tl.load(grad_gates4_ptrs, locations4_s < c)
+    grad_gates5_ptrs = grad_combine + pid_s * stride_sec_s + e_offset * stride_sec_e + locations5_s
+    grad_gates5 = tl.load(grad_gates5_ptrs, locations5_s < c)
+    
+    grad_gates0_s = tl.sum(grad_gates0 * mask0_data, axis=0)
     grad_gates1_s = tl.sum(grad_gates1 * mask1_data, axis=0)
     grad_gates2_s = tl.sum(grad_gates2 * mask2_data, axis=0)
+    grad_gates3_s = tl.sum(grad_gates3 * mask3_data, axis=0)
+    grad_gates4_s = tl.sum(grad_gates4 * mask4_data, axis=0)
+    grad_gates5_s = tl.sum(grad_gates5 * mask5_data, axis=0)
     
     # compute the gates1_s and gates2_s to re-compute the denom_s in forward
+    gates0_s = tl.sum(gates * mask0_data, axis=0)
     gates1_s = tl.sum(gates * mask1_data, axis=0)
     gates2_s = tl.sum(gates * mask2_data, axis=0)
+    gates3_s = tl.sum(gates * mask3_data, axis=0)
+    gates4_s = tl.sum(gates * mask4_data, axis=0)
+    gates5_s = tl.sum(gates * mask5_data, axis=0)
     
-    denom_s = gates1_s + gates2_s
+    denom_s = gates0_s + gates1_s + gates2_s + gates3_s + gates4_s + gates5_s
     denom_s_output = tl.where(denom_s < min_value, min_value, denom_s)
-    grad_denom_s = -(grad_gates1_s * gates1_s + grad_gates2_s * gates2_s) / (denom_s * denom_s)
+
+    grad_denom_s = grad_gates0_s * gates0_s + grad_gates1_s * gates1_s + grad_gates2_s * gates2_s + grad_gates3_s * gates3_s + grad_gates4_s * gates4_s + grad_gates5_s * gates5_s
+    grad_denom_s = -(grad_denom_s) / (denom_s * denom_s)
     grad_denom_s = tl.where(denom_s < min_value, 0, grad_denom_s)
     
+    grad_gates0_s_ = grad_gates0_s / denom_s_output
     grad_gates1_s_ = grad_gates1_s / denom_s_output
     grad_gates2_s_ = grad_gates2_s / denom_s_output
- 
+    grad_gates3_s_ = grad_gates3_s / denom_s_output
+    grad_gates4_s_ = grad_gates4_s / denom_s_output
+    grad_gates5_s_ = grad_gates5_s / denom_s_output
     
+    grad_gates0 = (grad_gates0_s_ + grad_denom_s) * mask0_data
     grad_gates1 = (grad_gates1_s_ + grad_denom_s) * mask1_data
     grad_gates2 = (grad_gates2_s_ + grad_denom_s) * mask2_data
+    grad_gates3 = (grad_gates3_s_ + grad_denom_s) * mask3_data
+    grad_gates4 = (grad_gates4_s_ + grad_denom_s) * mask4_data
+    grad_gates5 = (grad_gates5_s_ + grad_denom_s) * mask5_data
     
     grad_me = grad_l_aux * ce * e * e / e
-    grad_gates_3 = (tl.zeros((e, ), dtype=tl.float32) + 1) * grad_me / s
+    grad_gates_t = (tl.zeros((e, ), dtype=tl.float32) + 1) * grad_me / s
     
-    grad_gates = grad_gates1 + grad_gates2 + grad_gates_3
+    grad_gates = grad_gates0 + grad_gates1 + grad_gates2 + grad_gates3 + grad_gates4 + grad_gates5 + grad_gates_t
     
     grad_gates_expand = tl.expand_dims(grad_gates, axis=0)
     gates_expand = tl.expand_dims(gates, axis=0)
@@ -86,87 +128,58 @@ def _fused_bwd_kernel(
     softmax_grad = diag_mask * gates_in1 - ger
     grad_logits_data = tl.sum(softmax_grad * tl.broadcast_to(grad_gates_expand, (e, e)), axis=1)
 
-    grad_logits_ptrs = grad_logits + pid * stride_se_s + e_offset
-
+    grad_logits_ptrs = grad_logits + pid_s * stride_kse_s + e_offset
     tl.store(grad_logits_ptrs, grad_logits_data)
 
-def fused_bwd(grad_l_aux, grad_combine, locations, mask1, mask2, gates, ce):
-    # return torch_bwd(grad_l_aux, grad_combine, loca1, loca2, mask1, mask2, gates, ce)
 
+def call(grad_l_aux, grad_combine, locations, masks, gates, ce):
+    assert grad_combine.shape[0] == locations.shape[1]
+    assert grad_combine.shape[1] == locations.shape[2]
     s, e, c = grad_combine.shape
+    k = locations.shape[0]
     stride_sec_s, stride_sec_e, _ = grad_combine.stride()
-    stride_se_s, _ = mask1.stride()
-    stride_kse_k, stride_kse_s, _ = locations.stride()
+    stride_kse_k, stride_kse_s, _ = masks.stride()
     
-    grad_logits = torch.zeros((s,e), device=grad_combine.device)
+    grad_logits = torch.empty((s,e), device=grad_combine.device)
     diag_mask = torch.diag(torch.ones(e, device=grad_combine.device))
     block_size_e = triton.next_power_of_2(e)
     
     with torch.cuda.device(grad_combine.device.index):
         
-        _fused_bwd_kernel[(s, )](
+        _topk_gating_bwd_kernel[(s, )](
             grad_combine,
             locations,
             ce,
-            mask1,
-            mask2,
+            masks,
             gates,
             diag_mask,
             grad_logits,
             stride_kse_k, stride_kse_s,
             stride_sec_s, stride_sec_e,
-            stride_se_s,
             grad_l_aux,
             torch.finfo(gates.dtype).eps,
-            s, e, c,
+            k, s, e, c,
             block_size_e,
         )
         
     return grad_logits
 
-def torch_bwd(grad_output1, grad_output2, locations1_se, locations2_se, mask1_float, mask2_float, gates, ce):
-    gates1_s = torch.einsum("se,se->s", gates, mask1_float)
-    gates2_s = torch.einsum("se,se->s", gates, mask2_float)
-    denom_s = gates1_s + gates2_s
-    # Avoid divide-by-zero
-    denom_s_output = torch.clamp(denom_s, min=torch.finfo(gates.dtype).eps)
-    
-    s, e, c = grad_output1.shape
-    
-    locations1_s = torch.sum(locations1_se, dim=1).to(torch.int64)
-    locations2_s = torch.sum(locations2_se, dim=1).to(torch.int64)
-    
-    locations1_sc = F.one_hot(locations1_s, num_classes=c).type_as(gates)
-    locations2_sc = F.one_hot(locations2_s, num_classes=c).type_as(gates)
-    
-    grad_gates1 = torch.einsum("sec,sc->se", grad_output1, locations1_sc)
-    grad_gates2 = torch.einsum("sec,sc->se", grad_output1, locations2_sc)
-    
-    grad_gates1_s = torch.einsum("se,se->s", grad_gates1, mask1_float)
-    grad_gates2_s = torch.einsum("se,se->s", grad_gates2, mask2_float)
-    
-    grad_denom_s = -(grad_gates1_s * gates1_s + grad_gates2_s * gates2_s) / (denom_s ** 2)
-    grad_denom_s[denom_s < torch.finfo(gates.dtype).eps] = 0
-    
-    grad_gates1_s_ = grad_gates1_s / denom_s_output
-    grad_gates2_s_ = grad_gates2_s / denom_s_output
-    
-    grad_gates1_s_final = grad_gates1_s_ + grad_denom_s
-    grad_gates2_s_final = grad_gates2_s_ + grad_denom_s
-    
-    grad_gates1 = torch.einsum("s,se->se", grad_gates1_s_final, mask1_float)
-    grad_gates2 = torch.einsum("s,se->se", grad_gates2_s_final, mask2_float)
-    
-    s, e, c = grad_output1.shape
-    grad_me = grad_output2 * e * e * ce /  ce.shape[0]
-    grad_gates3 = grad_me / s * torch.ones((s, e), device=ce.device)
-    
-    grad_gates = grad_gates1 + grad_gates2 + grad_gates3
-    
-    grad_logits = []
-    for i in range(grad_gates.shape[0]):
-        softmax_grad = torch.diag(gates[i]) - torch.ger(gates[i], gates[i])
-        grad_logits.append(torch.matmul(softmax_grad, grad_gates[i].t()))
-    grad_logits = torch.stack(grad_logits)
-    
-    return grad_logits
+
+def bench_fn(grad_l_aux, grad_combine, locations, masks, gates, ce):
+    return float('inf')
+
+
+# register
+name = '_topk_gating_bwd'
+for dtype in [torch.float16, torch.float32]:
+    for device in ['cuda']:
+        seqLen, experts = SymVar('seqLen'), SymVar('experts')
+        k, c= SymVar('k'), SymVar('c')
+        # we dont' actually allocate tensor
+        grad_combine = Tensor((seqLen, experts, c), dtype=dtype, device=device)
+        locations = Tensor((k, seqLen, experts), dtype=torch.int64, device=device)
+        masks = Tensor((k, seqLen, experts), dtype=torch.int64, device=device)
+        gates = Tensor((seqLen, experts), dtype=dtype, device=device)
+        ce = Tensor((experts,), dtype=dtype, device=device)
+        register_dlblas_op(name, None, (torch.SymFloat, grad_combine, locations, masks, gates, ce),
+                           call, bench_fn, _topk_gating_bwd_kernel)

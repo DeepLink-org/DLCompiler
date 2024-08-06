@@ -46,3 +46,6 @@ def _topk_gating_fwd_part3(gates: Tensor, masks: Tensor, locations: Tensor, k: i
     op = get_op("_topk_gating_fwd_part3", (gates, masks, locations, k, capacity))
     return op(gates, masks, locations, k, capacity)
 
+def _topk_gating_bwd(grad_l_aux, grad_combine, locations, masks, gates, ce):
+    op = get_op("_topk_gating_bwd", (grad_l_aux, grad_combine, locations, masks, gates, ce))
+    return op(grad_l_aux, grad_combine, locations, masks, gates, ce)

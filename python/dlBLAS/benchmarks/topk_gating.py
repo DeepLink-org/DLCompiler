@@ -48,26 +48,14 @@ def fused_topkgating(
     # gating decisions
     exp_counts = torch.sum(masks[0], dim=0).detach().to("cpu")
 
-    # print(f"gates:{gates}")    
-
     # Compute l_aux
     me = torch.mean(gates, dim=0)
     ce = torch.mean(masks[0].type_as(logits), dim=0)
     l_aux = torch.mean(me * ce) * num_experts * num_experts
-
-    # print(f"l_aux:{l_aux}")
-    # print(f"ce:{ce}")
-    # print(f"masks:{masks}")
-    # print(f"locations:{locations.shape}")
-    
     # Remove locations outside capacity from mask
     masks *= torch.lt(locations, capacity)
-
     # Store the capacity location for each token
     locations_s = torch.sum(locations * masks, dim=2)
-   
-    
-
     # Normalize gate probabilities
     mask_float = masks.type_as(logits)
     gate_s = torch.einsum("se,kse->ks", gates, mask_float)
@@ -75,14 +63,8 @@ def fused_topkgating(
     # Avoid divide-by-zero
     denom_s = torch.clamp(denom_s, min=torch.finfo(denom_s.dtype).eps)
     gate_s /= denom_s
-
-    
-
     # Calculate combine_weights and dispatch_mask
     gate_all = torch.einsum("ks,kse->kse", gate_s, mask_float)
-    
-    # print(f"capacity:{capacity}")
-    
     
     # ---- test begin ----
     # k, s, e, c= locations_s.shape[0], locations_s.shape[1], logits.shape[1], capacity
@@ -90,6 +72,8 @@ def fused_topkgating(
     # for idx_k in range(k):
     #     for idx_s in range(s):
     #         combine_weights_test[idx_s,:,locations_s[idx_k][idx_s]] += gate_all[idx_k, idx_s,:]
+    # dispatch_mask = combine_weights_test.bool()
+    # return l_aux, combine_weights_test, dispatch_mask, exp_counts
     # --replace---
     locations_sc = F.one_hot(locations_s, num_classes=capacity).type_as(logits)
     combine_sec = torch.einsum("kse,ksc->ksec", gate_all, locations_sc)
@@ -110,12 +94,11 @@ def fused_topkgating(
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
 
-
 def test():
     device_ = torch.device('cuda:6')
     torch.cuda.set_device(device_)
-    # k, SeqLen, NumberExperts = 8, 33, 64
-    k, SeqLen, NumberExperts = 2, 4096, 64
+    # k, SeqLen, NumberExperts = 6, 16, 8
+    k, SeqLen, NumberExperts = 6, 4096, 64
     shape = (SeqLen, NumberExperts)
     logits_torch = torch.randn(shape, device=device_, requires_grad=True)
     capacity_factor: float = 1.0
@@ -145,23 +128,26 @@ def test():
     
     assert torch.allclose(loss_torch, loss_triton)
 
-    # for backward 
-    # loss_torch.backward()
-    # loss_triton.backward()
-    
-    # assert logits_torch.grad.shape == logits_triton.grad.shape
-    # assert torch.allclose(logits_torch.grad, logits_triton.grad)
-    
+    # for backward
+    dout_torch = torch.randn_like(loss_torch)
+    with torch.no_grad():
+        dout_triton = dout_torch.clone()
+    loss_torch.backward(dout_torch, retain_graph=True)
+    loss_triton.backward(dout_triton, retain_graph=True)
 
-
+    print(f"logits grad max diff: {(logits_torch.grad - logits_triton.grad).abs().max().item()}")
+    print(f"logits grad mean diff: {(logits_torch.grad - logits_triton.grad).abs().mean().item()}")
+    
+    assert logits_torch.grad.shape == logits_triton.grad.shape
+    assert torch.allclose(logits_torch.grad, logits_triton.grad, rtol = 1e-8, atol = 1e-8)
     
     # vary seq length for fixed head and batch=4
     configs = []
 
     configs.append(
         triton.testing.Benchmark(
-            x_names=["Experts"],
-            x_vals=[NumberExperts],
+            x_names=["op"],
+            x_vals=['fwd', 'bwd'],
             line_arg="provider",
 
             line_vals=["triton", "pytorch"],
@@ -169,33 +155,49 @@ def test():
 
             styles=[("red", "-"), ("blue", "-"), ("green", "-"), ("orange", "-")],
             ylabel="ms",
-            plot_name=f"top{k}-gating-seqLen:{SeqLen}",
+            plot_name=f"Experts{NumberExperts}-top{k}-gating-seqLen:{SeqLen}",
             args={
                 "SeqLen": SeqLen
             },
         ))
     @triton.testing.perf_report(configs)
-    def bench_top2gating(SeqLen, Experts, provider, device=device_):
+    def bench_top2gating(SeqLen, op, provider, device=device_):
         warmup = 10
         rep = 10
-        shape = (SeqLen, Experts)
+        shape = (SeqLen, NumberExperts)
         logits = torch.randn(shape, device=device, requires_grad=True)
 
 
         if "triton" in provider:
-            fn = lambda: model_triton(logits, k)
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-
+            if 'fwd' == op:
+                fn = lambda: model_triton(logits, k)
+                ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            elif 'bwd' == op:
+                out0, out1, _, _ =  model_triton(logits, k)
+                loss = torch.sum(torch.mean(out0 * out1))
+                dout = torch.randn_like(loss)
+                bwd_fn = lambda: loss.backward(dout, retain_graph=True)
+                ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
+            else:
+                raise Exception()
+        
+        
         if "pytorch" in provider:
-            fn = lambda : model_torch(logits, k)
-            ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            if 'fwd' == op:
+                fn = lambda : model_torch(logits, k)
+                ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            elif 'bwd' == op:
+                out0, out1, _, _ =  model_torch(logits, k)
+                loss = torch.sum(torch.mean(out0 * out1))
+                dout = torch.randn_like(loss)
+                bwd_fn = lambda: loss.backward(dout, retain_graph=True)
+                ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
+            else:
+                raise Exception()
 
         return ms
     
     bench_top2gating.run(show_plots=True, print_data=True)
-
-
-
 
 
 if __name__ == '__main__':

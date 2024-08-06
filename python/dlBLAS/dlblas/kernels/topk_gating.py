@@ -51,12 +51,11 @@ class TopKGatingFunc(torch.autograd.Function):
     def backward(ctx: torch.Any, *grad_outputs: torch.Any) -> torch.Any:
         grad_l_aux = grad_outputs[0].item()
         grad_combine = grad_outputs[1]
-        locas, masks, gates, ce = ctx.saved_tensors
-        
-        # grad_logits = fused_bwd(grad_l_aux, grad_combine, locas, masks[0], masks[1], gates, ce)
-        
-        # return grad_logits, None, None, None
+        locations, masks, gates, ce = ctx.saved_tensors
+        grad_logits = dlblas._topk_gating_bwd(grad_l_aux, grad_combine, locations, masks, gates, ce)
+        return grad_logits, None, None, None
     
+
 def call(logits: torch.Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2):
     return TopKGatingFunc.apply(logits, k, capacity_factor, min_capacity)
 

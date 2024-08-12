@@ -49,3 +49,13 @@ def _topk_gating_fwd_part3(gates: Tensor, masks: Tensor, locations: Tensor, k: i
 def _topk_gating_bwd(grad_l_aux, grad_combine, locations, masks, gates, ce):
     op = get_op("_topk_gating_bwd", (grad_l_aux, grad_combine, locations, masks, gates, ce))
     return op(grad_l_aux, grad_combine, locations, masks, gates, ce)
+
+def paged_attention(query: Tensor,  # [num_seqs, NUM_KV_HEADS * QUERY_GROUP_SIZE, HEAD_SIZE]
+                    key_cache: Tensor,  # [num_blocks, NUM_KV_HEADS, KV_BLOCK_SIZE, HEAD_SIZE]
+                    value_cache: Tensor,  # [num_blocks, NUM_KV_HEADS, KV_BLOCK_SIZE, HEAD_SIZE], required same stride with key_cache
+                    context_lens: Tensor,  # [num_seqs]
+                    block_tables: Tensor,  # [num_seqs, max_num_blocks_per_seq]
+                    attn_scale: float,
+                    max_context_len: int):
+    op = get_op("paged_attention", (query, key_cache, value_cache, context_lens, block_tables, attn_scale, max_context_len))
+    return op(query, key_cache, value_cache, context_lens, block_tables, attn_scale, max_context_len)

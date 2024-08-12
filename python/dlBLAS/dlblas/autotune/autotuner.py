@@ -18,15 +18,17 @@ def perf_op(op: OpImpl, args: tuple):
         perf = op.bench(*tmp_args)
     except OutOfResources:
         bench_ok = False
+    except AssertionError:
+        bench_ok = False
     except Exception as e:
-        raise e
+        bench_ok = False
     return bench_ok, perf if bench_ok else float('inf')
 
 
 def tunning(op: OpImpl, args: tuple, configs: AutotuneConfig):
     if op.spaces is None:
-        op.src = get_src(op)
-        return perf_op(op, args)
+        bench_ok, perf = perf_op(op, args)
+        return perf
     parser: Parser = parse_op(op)
     policy: Policy = get_policy(op.spaces, configs)
 

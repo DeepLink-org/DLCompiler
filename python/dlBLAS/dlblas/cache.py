@@ -64,8 +64,8 @@ class Cache:
             if isinstance(arg, torch.Tensor):
                 key += convert_dtype(arg) + '_' + convert_shapes(arg)
                 # device = convert_device(arg)
-            # else:
-                # key += str(arg)  # let it fail if not implemented
+            else:
+                key += str(arg)  # let it fail if not implemented
 
         # XXX assume all tensor in the same device
         # key += '-' + device

@@ -166,7 +166,9 @@ def call(grad_l_aux, grad_combine, locations, masks, gates, ce):
 
 
 def bench_fn(grad_l_aux, grad_combine, locations, masks, gates, ce):
-    return float('inf')
+    fn = lambda: call(grad_l_aux, grad_combine, locations, masks, gates, ce)
+    ms = triton.testing.do_bench(fn, warmup=20, rep=20)
+    return ms
 
 
 # register

@@ -32,6 +32,8 @@ def convert_dtype(t: torch.Tensor):
         return 'i32'
     elif t.dtype == torch.int8:
         return 'i8'
+    elif t.dtype == torch.bool:
+        return 'bool'
     else:
         raise LookupError(f"unsupported dtype {t.dtype}")
 

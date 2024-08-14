@@ -38,7 +38,7 @@ def _topk_gating_fwd_part3(
     masks_data = tl.load(masks_ptrs, mask=offs_k < K)
     masks_data *= tl.where(locations_data < CAPACITY, 1, 0)
 
-    # test
+    # for bwd
     tl.store(masks_ptrs, masks_data, mask=offs_k < K)
 
     locations_data *= masks_data
@@ -57,9 +57,8 @@ def _topk_gating_fwd_part3(
     denom_s = tl.where(denom_s < min_value, min_value, denom_s)
 
     gates_s /= denom_s
-    # tl.device_print("shape:", (gates_s.shape[1]))
     gates_s = tl.reshape(gates_s, (BLOCK_K, 1))
-    gates_all_data = tl.broadcast_to(gates_s, (BLOCK_K, EXPERTS)) * masks_data.to(tl.float16)
+    gates_all_data = tl.broadcast_to(gates_s, (BLOCK_K, EXPERTS)) * masks_data.to(gates_s.dtype)
 
     # test
     gates_all_ptrs = gates_all + offs_k * stride_kse_k + s_pid * stride_kse_s + offs_e

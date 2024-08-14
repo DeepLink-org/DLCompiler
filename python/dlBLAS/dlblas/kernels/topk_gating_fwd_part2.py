@@ -78,7 +78,7 @@ def call(gates: torch.Tensor, masks: torch.Tensor, k: int):
 
 def bench_fn(gates: torch.Tensor, masks: torch.Tensor, k: int):
     fn = lambda: call(gates, masks, k)
-    ms = triton.testing.do_bench(fn, warmup=100, rep=100)
+    ms = triton.testing.do_bench(fn, warmup=20, rep=20)
     return ms
 
 

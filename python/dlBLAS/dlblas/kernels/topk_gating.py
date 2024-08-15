@@ -62,7 +62,7 @@ def call(logits: torch.Tensor, k: int, capacity_factor: float = 1.0, min_capacit
 
 def bench_fn(logits: torch.Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2):
     fn = lambda: call(logits, k, capacity_factor, min_capacity)
-    ms = triton.testing.do_bench(fn, warmup=100, rep=100)
+    ms = triton.testing.do_bench(fn, warmup=20, rep=20)
     return ms
 
 

@@ -4,14 +4,15 @@ import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
-def get_autotune_config():
-    return [
+@triton.autotune(
+    configs = [
         triton.Config({'BLOCK_S': BS}, num_stages=s, num_warps=w) \
         for BS in [2, 4] \
         for s in [1] \
         for w in [1, 2] \
-    ]
-
+    ],
+    key=['seq_len'],
+)
 @triton.jit
 def _topk_gating_kernel_part1(
     logits_ptr,
@@ -42,13 +43,14 @@ def _topk_gating_kernel_part1(
     tl.store(gates_ptrs, gates_data, mask=offs_s < seq_len)
 
     for idx in tlc.static_range(K):
-        gates_max = tl.max(gates_data, axis = 1)
-        gates_max_b = tl.broadcast_to(tl.reshape(gates_max, (BLOCK_S, 1)), (BLOCK_S, EXPERTS))
-        mask1_data = tl.zeros((BLOCK_S, EXPERTS), tl.int64)
-        mask1_data = tl.where(gates_data == gates_max_b, 1, mask1_data)
+        max_idx = tl.argmax(gates_data, axis = 1, tie_break_left=False)
+        mask_data = tl.zeros((BLOCK_S, EXPERTS), tl.int64)
+        all_ids = tl.broadcast_to(tl.arange(0, EXPERTS)[None,:], (BLOCK_S, EXPERTS))
+        max_idx = tl.broadcast_to(tl.reshape(max_idx, (BLOCK_S, 1)), (BLOCK_S, EXPERTS))
+        mask_data = tl.where(all_ids == max_idx, 1, mask_data)
         masks_ptrs = masks_ptr + idx * seq_len * EXPERTS + offs_s * stride_s + offs_e
-        tl.store(masks_ptrs, mask1_data, mask=offs_s < seq_len)
-        gates_data = tl.where(mask1_data > 0, fill_value, gates_data)
+        tl.store(masks_ptrs, mask_data, mask=offs_s < seq_len)
+        gates_data = tl.where(mask_data > 0, fill_value, gates_data)
 
 
 def call(logits: torch.Tensor, k: int):
@@ -74,7 +76,7 @@ def call(logits: torch.Tensor, k: int):
 
 def bench_fn(logits: torch.Tensor, k: int):
     fn = lambda: call(logits, k)
-    ms = triton.testing.do_bench(fn, warmup=100, rep=100)
+    ms = triton.testing.do_bench(fn, warmup=20, rep=20)
     return ms
 
 
@@ -86,5 +88,4 @@ for dtype in [torch.float16, torch.float32]:
         k = SymVar('k')
         # we dont' actually allocate tensor
         logits = Tensor((seqLen, experts), dtype=dtype, device=device)
-        space = ChoiceSpace(get_autotune_config())
-        register_dlblas_op(name, space, (logits, torch.SymInt), call, bench_fn, _topk_gating_kernel_part1)
+        register_dlblas_op(name, None, (logits, torch.SymInt), call, bench_fn, _topk_gating_kernel_part1)

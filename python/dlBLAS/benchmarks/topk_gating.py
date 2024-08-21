@@ -458,10 +458,12 @@ def test():
                 fn = lambda: model_triton(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
             elif 'bwd' == op:
+                # def iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt):
                 out0, out1, out2, _ =  model_triton(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 loss = torch.sum(torch.mean(out0*out2))
-                dout = torch.randn_like(loss)
-                bwd_fn = lambda: loss.backward(dout, retain_graph=True)
+                # loss.backward(retain_graph=True)
+                bwd_fn = lambda: loss.backward(retain_graph=True)
+                # bwd_fn = lambda: iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
             else:
                 raise Exception()
@@ -478,10 +480,9 @@ def test():
                 output3_torch = out_torch_pack.token_exp_weights
                 output4_torch = out_torch_pack.expert_select_token_idx
                 loss = torch.sum(torch.mean(out0*output3_torch))
-                dout = torch.randn_like(loss)
-                loss.backward(dout, retain_graph=True)
+                # loss.backward(retain_graph=True)
 
-                bwd_fn = lambda: loss.backward(dout, retain_graph=True)
+                bwd_fn = lambda: loss.backward(retain_graph=True)
                 # bwd_fn = lambda: iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
             else:

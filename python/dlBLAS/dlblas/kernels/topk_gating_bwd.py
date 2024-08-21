@@ -22,7 +22,7 @@ def _topk_gating_bwd_kernel(
     diag_mask,
     grad_logits,
     stride_kse_k, stride_kse_s,
-    grad_l_aux: tl.constexpr,
+    grad_l_aux,
     min_value: tl.constexpr,
     k:tl.constexpr, s: tl.constexpr, e: tl.constexpr, c: tl.constexpr, 
     BLOCK_K: tl.constexpr, BLOCK_S: tl.constexpr

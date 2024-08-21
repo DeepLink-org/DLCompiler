@@ -6,12 +6,13 @@ import dlblas.kernels
 from dlblas.utils import get_op
 __version__ = "0.0.1"
 
+# output: l_aux, token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx
 def topk_gating(logits: Tensor,
                 k: int, capacity_factor: float = 1.0, 
                 min_capacity: int = 2, 
-                enable_token_rearrange_opt: bool = False) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    op = get_op("topk_gating", (logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt))
-    return op(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
+                higher_precision: bool = False) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    op = get_op("topk_gating", (logits, k, capacity_factor, min_capacity, higher_precision))
+    return op(logits, k, capacity_factor, min_capacity, higher_precision)
 
 
 def layernorm_gated(x, weight, bias, z=None, eps=1e-6, group_size=None, norm_before_gate=True, is_rms_norm=False):

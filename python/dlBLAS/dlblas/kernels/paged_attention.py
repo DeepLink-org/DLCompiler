@@ -192,18 +192,18 @@ def get_num_stages(PARTITION_SIZE, KV_BLOCK_SIZE):
         else:
             return 1
 
-
-@triton.heuristics(
-    {
-        "num_warps": lambda args: get_num_warps(
-            args["QUERY_GROUP_SIZE"], args["HEAD_SIZE"], args["KV_BLOCK_SIZE"]
-        ),
-        "num_stages": lambda args: get_num_stages(
-            args["QUERY_GROUP_SIZE"], args["KV_BLOCK_SIZE"]
-        ),
-    }
-)
-@triton.jit
+# FIX: triton3.0.0 not support, must use triton-nightly 3.0.0.post20240422051420 or later
+# @triton.heuristics(
+#     {
+#         "num_warps": lambda args: get_num_warps(
+#             args["QUERY_GROUP_SIZE"], args["HEAD_SIZE"], args["KV_BLOCK_SIZE"]
+#         ),
+#         "num_stages": lambda args: get_num_stages(
+#             args["QUERY_GROUP_SIZE"], args["KV_BLOCK_SIZE"]
+#         ),
+#     }
+# )
+# @triton.jit
 def _paged_attn_kernel(
     m_i_ptr,  # [num_seqs, NUM_KV_HEADS, max_num_partitions, QUERY_GROUP_SIZE]
     l_i_ptr,  # [num_seqs, NUM_KV_HEADS, max_num_partitions, QUERY_GROUP_SIZE]
@@ -452,38 +452,38 @@ def bench_fn(
     return ms
 
 
-def make_func(num_splits):
-    def custom_call(*args, **kwargs):
-        kwargs['num_splits'] = num_splits
-        return call(*args, **kwargs)
+# def make_func(num_splits):
+#     def custom_call(*args, **kwargs):
+#         kwargs['num_splits'] = num_splits
+#         return call(*args, **kwargs)
     
-    def custom_bench_fn(*args, **kwargs):
-        kwargs['num_splits'] = num_splits
-        return bench_fn(*args, **kwargs)
+#     def custom_bench_fn(*args, **kwargs):
+#         kwargs['num_splits'] = num_splits
+#         return bench_fn(*args, **kwargs)
     
-    return (custom_call, custom_bench_fn)
+#     return (custom_call, custom_bench_fn)
 
 
-funcs = map(make_func, range(0, 9))
+# funcs = map(make_func, range(0, 9))
 
 
-# register
-name = 'paged_attention'
-for dtype in [torch.float16, torch.float32]:
-    for device in ['cuda']:
-        seq_len, head_dim = SymVar('seq_len'), SymVar('head_dim')
-        blocks, num_kv_heads = SymVar('blocks'), SymVar('num_kv_heads')
-        kv_block_size = SymVar('kv_block_size')
-        max_num_blocks_per_seq = SymVar('max_num_blocks_per_seq')
-        num_kv_heads_query_group_size = SymVar('num_kv_heads_query_group_size')
+# # register
+# name = 'paged_attention'
+# for dtype in [torch.float16, torch.float32]:
+#     for device in ['cuda']:
+#         seq_len, head_dim = SymVar('seq_len'), SymVar('head_dim')
+#         blocks, num_kv_heads = SymVar('blocks'), SymVar('num_kv_heads')
+#         kv_block_size = SymVar('kv_block_size')
+#         max_num_blocks_per_seq = SymVar('max_num_blocks_per_seq')
+#         num_kv_heads_query_group_size = SymVar('num_kv_heads_query_group_size')
 
-        # we dont' actually allocate tensor
-        query = Tensor((seq_len, num_kv_heads_query_group_size, head_dim), dtype=dtype, device=device)
-        key_cache = Tensor((blocks, num_kv_heads, kv_block_size, head_dim), dtype=dtype, device=device)
-        value_cache = Tensor((blocks, num_kv_heads, kv_block_size, head_dim), dtype=dtype, device=device)
-        context_lens = Tensor((seq_len,), dtype=torch.int32, device=device)
-        block_table = Tensor((seq_len, max_num_blocks_per_seq), dtype=torch.int64, device=device)
-        for func in list(funcs):
-            register_dlblas_op(name, None, (query, key_cache, value_cache, context_lens, block_table, torch.SymFloat, torch.SymInt),
-                               func[0], func[1], func[0])
+#         # we dont' actually allocate tensor
+#         query = Tensor((seq_len, num_kv_heads_query_group_size, head_dim), dtype=dtype, device=device)
+#         key_cache = Tensor((blocks, num_kv_heads, kv_block_size, head_dim), dtype=dtype, device=device)
+#         value_cache = Tensor((blocks, num_kv_heads, kv_block_size, head_dim), dtype=dtype, device=device)
+#         context_lens = Tensor((seq_len,), dtype=torch.int32, device=device)
+#         block_table = Tensor((seq_len, max_num_blocks_per_seq), dtype=torch.int64, device=device)
+#         for func in list(funcs):
+#             register_dlblas_op(name, None, (query, key_cache, value_cache, context_lens, block_table, torch.SymFloat, torch.SymInt),
+#                                func[0], func[1], func[0])
         

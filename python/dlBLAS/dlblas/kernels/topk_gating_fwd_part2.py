@@ -3,6 +3,7 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from tutel import moe as tutel_moe
 
 
 @triton.jit
@@ -74,6 +75,8 @@ def call(gates: torch.Tensor, masks: torch.Tensor, k: int):
         BLOCK_KS = triton.next_power_of_2(k * s),
     )
     return locations, exp_counts, res, ce
+    # locations = tutel_moe.fast_cumsum_sub_one(masks.view(-1, e))
+    # return locations.reshape(k,s,e), exp_counts, res, ce
 
 
 def bench_fn(gates: torch.Tensor, masks: torch.Tensor, k: int):

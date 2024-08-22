@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -6,7 +6,8 @@ from torch import Tensor
 import triton
 import time
 
-import dlblas 
+import dlblas
+from dlblas.utils.op_collector import InnerCompilerOpCollectorContext 
 
 def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> Tensor:
     # gates has shape of SE
@@ -94,27 +95,132 @@ def fused_topkgating(
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
 
+
+from functorch.compile import aot_module, make_boxed_func, aot_function
+from torch._dynamo.backends.common import aot_autograd
+def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
+    print(">>> my_compiler() invoked:")
+    # print(">>> FX graph:")
+    # gm.graph.print_tabular()
+    print(f">>> Code:\n{gm.code}")
+    return make_boxed_func(gm.forward)  # return a python callable
+
+my_aot_backend = aot_autograd(fw_compiler=my_compiler)
+
+from tutel import moe as tutel_moe
+from collections import namedtuple
+GatingTokenRearrangeInfo = namedtuple(
+    "GatingTokenRearrangeInfo", ["token_rearranged_ec_idx", "token_exp_weights", "expert_select_token_idx"]
+)
+# @torch.compile(backend=my_aot_backend)
+def fused_topkgating_opt(
+    logits: Tensor,
+    k: int,
+    capacity_factor: float,
+    min_capacity: int,
+    enable_token_rearrange_opt: bool = False,
+    use_tutel: bool = False,
+) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Implements TopKGating on logits."""
+    # everything is in fp32 in this function
+    gates = F.softmax(logits, dim=1)
+    num_experts = int(gates.shape[1])
+
+    capacity = _capacity(gates, torch.tensor(capacity_factor * k), torch.tensor(min_capacity))
+    # Create a mask by top-k experts
+    indices_s = torch.topk(gates, k, dim=1).indices.t()
+    masks = F.one_hot(indices_s.reshape(-1), num_classes=num_experts)
+
+    # Compute locations in capacity buffer
+    # if use_tutel and TUTEL_INSTALLED:
+    locations = tutel_moe.fast_cumsum_sub_one(masks)
+    # else:
+    # locations = torch.cumsum(masks, dim=0) - 1
+
+    # reshape (s,e) to (k,s,e)
+    masks = masks.reshape(-1, gates.shape[0], num_experts)
+    locations = locations.reshape(-1, gates.shape[0], num_experts)
+
+    # gating decisions
+    # exp_counts = torch.sum(masks[0], dim=0).detach()
+
+    # Compute l_aux
+    me = torch.mean(gates, dim=0)
+    ce = torch.mean(masks[0].type_as(logits), dim=0)
+    l_aux = torch.mean(me * ce) * num_experts * num_experts
+
+    # Remove locations outside capacity from mask
+    masks *= torch.lt(locations, capacity)
+
+    # Store the capacity location for each token
+    locations_s = torch.sum(locations * masks, dim=2)
+
+    # Normalize gate probabilities
+    mask_float = masks.type_as(logits)
+    # gate_s = einsum("se,kse->ks", gates, mask_float)
+    gate_s, indices_s = torch.max(gates * mask_float, dim=2)
+    denom_s = torch.sum(gate_s, dim=0)
+    # Avoid divide-by-zero
+    clamp_denom_s = torch.clamp(denom_s, min=torch.finfo(denom_s.dtype).eps)
+    gate_s /= clamp_denom_s
+
+    # if enable_token_rearrange_opt:
+    token_rearranged_ec_idx = indices_s.int() * capacity + locations_s.int()
+    # shape：[S, E]->[C, E]->[E, C]->[E*C]
+    # import pdb; pdb.set_trace()
+    token_sel_exp_int_mask = masks * torch.arange(k, 0, -1, device=masks.device).reshape(k, 1, 1)
+    expert_sel_top_c_token_idx = torch.topk(
+        torch.sum(token_sel_exp_int_mask, dim=0), k=capacity, dim=0, sorted=True
+    )[1]
+    expert_select_token_idx = expert_sel_top_c_token_idx.t().reshape(num_experts * capacity)
+    token_rearranged_ec_idx = token_rearranged_ec_idx.reshape(-1)
+    token_exp_weights = gate_s.reshape(-1)
+
+    top2_gating_token_infos = GatingTokenRearrangeInfo(
+        token_rearranged_ec_idx=token_rearranged_ec_idx,
+        token_exp_weights=token_exp_weights,
+        expert_select_token_idx=expert_select_token_idx,
+    )
+    return l_aux, top2_gating_token_infos
+    # else:
+    #     # Calculate combine_weights and dispatch_mask
+    #     gate_all = torch.einsum("ks,kse->kse", gate_s, mask_float)
+    #     locations_sc = F.one_hot(locations_s, num_classes=capacity).type_as(logits)
+    #     combine_sec = torch.einsum("kse,ksc->ksec", gate_all, locations_sc)
+    #     combine_weights = torch.sum(combine_sec, dim=0)
+    #     dispatch_mask = combine_weights.bool()
+
+    #     return l_aux, combine_weights, dispatch_mask
+
+device_ = torch.device('cuda:1')
+torch.cuda.set_device(device_)
+
+
 def test():
-    device_ = torch.device('cuda:2')
-    torch.cuda.set_device(device_)
     # k, SeqLen, NumberExperts = 4, 16, 8
-    k, SeqLen, NumberExperts = 6, 4096, 64
+    k, SeqLen, NumberExperts = 8, 4096, 64
     shape = (SeqLen, NumberExperts)
     logits_torch = torch.randn(shape, device=device_, requires_grad=True)
     capacity_factor: float = 1.0
     min_capacity: int = 2
+    enable_token_rearrange_opt = True
     
     with torch.no_grad():
         logits_triton = logits_torch.clone()
+        logits_test = logits_torch.clone()
 
     logits_triton.requires_grad = True
+    logits_test.requires_grad = True
     
-    model_torch = fused_topkgating
+    model_torch = fused_topkgating_opt
     model_triton = dlblas.topk_gating
     
-    output1_torch, output2_torch, output3_torch, output4_torch = model_torch(logits_torch, k, capacity_factor, min_capacity)
-    output1_triton, output2_triton, output3_triton, output4_triton = model_triton(logits_triton, k, capacity_factor, min_capacity)
-    
+    output1_torch, out_torch_pack = model_torch(logits_torch, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
+    output2_torch = out_torch_pack.token_rearranged_ec_idx
+    output3_torch = out_torch_pack.token_exp_weights
+    output4_torch = out_torch_pack.expert_select_token_idx
+    output1_triton, output2_triton, output3_triton, output4_triton = model_triton(logits_triton, k, capacity_factor, min_capacity, True)
+
     assert output1_torch.shape == output1_triton.shape
     assert torch.allclose(output1_torch, output1_triton)
     assert output2_torch.shape == output2_triton.shape
@@ -123,12 +229,12 @@ def test():
     assert torch.allclose(output3_torch, output3_triton)
     assert torch.allclose(output4_torch, output4_triton)
    
-    loss_torch = torch.sum(torch.mean(output1_torch * output2_torch))
-    loss_triton = torch.sum(torch.mean(output1_triton * output2_triton))
+    loss_torch = torch.sum(torch.mean(output1_torch * output3_torch))
+    loss_triton = torch.sum(torch.mean(output1_triton * output3_triton))
     
     assert torch.allclose(loss_torch, loss_triton)
 
-    # for backward
+    # # for backward
     dout_torch = torch.randn_like(loss_torch)
     with torch.no_grad():
         dout_triton = dout_torch.clone()
@@ -140,7 +246,6 @@ def test():
     
     assert logits_torch.grad.shape == logits_triton.grad.shape
     assert torch.allclose(logits_torch.grad, logits_triton.grad, rtol = 1e-8, atol = 1e-8)
-    
     # vary seq length for fixed head and batch=4
     configs = []
 
@@ -162,21 +267,23 @@ def test():
         ))
     @triton.testing.perf_report(configs)
     def bench_top2gating(SeqLen, op, provider, device=device_):
-        warmup = 10
-        rep = 10
+        warmup = 100
+        rep = 100
         shape = (SeqLen, NumberExperts)
         logits = torch.randn(shape, device=device, requires_grad=True)
 
 
         if "triton" in provider:
             if 'fwd' == op:
-                fn = lambda: model_triton(logits, k)
+                fn = lambda: model_triton(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
             elif 'bwd' == op:
-                out0, out1, _, _ =  model_triton(logits, k)
-                loss = torch.sum(torch.mean(out0 * out1))
-                dout = torch.randn_like(loss)
-                bwd_fn = lambda: loss.backward(dout, retain_graph=True)
+                # def iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt):
+                out0, out1, out2, _ =  model_triton(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
+                loss = torch.sum(torch.mean(out0*out2))
+                # loss.backward(retain_graph=True)
+                bwd_fn = lambda: loss.backward(retain_graph=True)
+                # bwd_fn = lambda: iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
             else:
                 raise Exception()
@@ -184,13 +291,19 @@ def test():
         
         if "pytorch" in provider:
             if 'fwd' == op:
-                fn = lambda : model_torch(logits, k)
+                fn = lambda : model_torch(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
             elif 'bwd' == op:
-                out0, out1, _, _ =  model_torch(logits, k)
-                loss = torch.sum(torch.mean(out0 * out1))
-                dout = torch.randn_like(loss)
-                bwd_fn = lambda: loss.backward(dout, retain_graph=True)
+                # def iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt):
+                out0, out_torch_pack =  model_torch(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
+                output2_torch = out_torch_pack.token_rearranged_ec_idx
+                output3_torch = out_torch_pack.token_exp_weights
+                output4_torch = out_torch_pack.expert_select_token_idx
+                loss = torch.sum(torch.mean(out0*output3_torch))
+                # loss.backward(retain_graph=True)
+
+                bwd_fn = lambda: loss.backward(retain_graph=True)
+                # bwd_fn = lambda: iter(logits, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
                 ms = triton.testing.do_bench(bwd_fn, warmup=warmup, rep=rep)
             else:
                 raise Exception()

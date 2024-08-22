@@ -6,9 +6,13 @@ import dlblas.kernels
 from dlblas.utils import get_op
 __version__ = "0.0.1"
 
-def topk_gating(logits: Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    op = get_op("topk_gating", (logits, k, capacity_factor, min_capacity))
-    return op(logits, k, capacity_factor, min_capacity)
+# output: l_aux, token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx
+def topk_gating(logits: Tensor,
+                k: int, capacity_factor: float = 1.0, 
+                min_capacity: int = 2, 
+                higher_precision: bool = False) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    op = get_op("topk_gating", (logits, k, capacity_factor, min_capacity, higher_precision))
+    return op(logits, k, capacity_factor, min_capacity, higher_precision)
 
 
 def layernorm_gated(x, weight, bias, z=None, eps=1e-6, group_size=None, norm_before_gate=True, is_rms_norm=False):
@@ -42,13 +46,13 @@ def _topk_gating_fwd_part2(gates: Tensor, masks: Tensor, k: int):
     return op(gates, masks, k)
 
 
-def _topk_gating_fwd_part3(gates: Tensor, masks: Tensor, locations: Tensor, k: int, capacity: int):
-    op = get_op("_topk_gating_fwd_part3", (gates, masks, locations, k, capacity))
-    return op(gates, masks, locations, k, capacity)
+def _topk_gating_fwd_part3(gates: Tensor, masks: Tensor, locations: Tensor, k: int, capacity: int, enable_token_rearrange_opt):
+    op = get_op("_topk_gating_fwd_part3", (gates, masks, locations, k, capacity, enable_token_rearrange_opt))
+    return op(gates, masks, locations, k, capacity, enable_token_rearrange_opt)
 
-def _topk_gating_bwd(grad_l_aux, grad_combine, locations, masks, gates, ce):
-    op = get_op("_topk_gating_bwd", (grad_l_aux, grad_combine, locations, masks, gates, ce))
-    return op(grad_l_aux, grad_combine, locations, masks, gates, ce)
+def _topk_gating_bwd(grad_l_aux, locations, masks, gates, ce):
+    op = get_op("_topk_gating_bwd", (grad_l_aux, locations, masks, gates, ce))
+    return op(grad_l_aux, locations, masks, gates, ce)
 
 def paged_attention(query: Tensor,  # [num_seqs, NUM_KV_HEADS * QUERY_GROUP_SIZE, HEAD_SIZE]
                     key_cache: Tensor,  # [num_blocks, NUM_KV_HEADS, KV_BLOCK_SIZE, HEAD_SIZE]

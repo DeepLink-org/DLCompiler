@@ -3,6 +3,11 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+if triton.__version__ >= "3.0.0":
+    from triton.language.extra.cuda.libdevice import fast_expf as tl_exp
+else:
+    from triton.language.math import fast_expf as tl_exp
+
 
 @triton.autotune(
     configs = [
@@ -37,7 +42,7 @@ def _topk_gating_kernel_part1(
 
     # load data
     logits_data = tl.load(logits_ptrs, mask=offs_s < seq_len)
-    logits_exp = tl.exp(logits_data)
+    logits_exp = tl_exp(logits_data)
     denom1 = tl.sum(logits_exp, axis=1)
     gates_data = logits_exp / denom1[:,None]
     tl.store(gates_ptrs, gates_data, mask=offs_s < seq_len)

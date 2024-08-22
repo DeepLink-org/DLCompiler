@@ -84,14 +84,10 @@ def _topk_gating_fwd_part3(
     tl.store(token_sel_exp_int_mask_ptrs, token_sel_exp_int_mask_data)
 
 
-def topk_fwd_triton(logits: torch.Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2):
-    capacity = _capacity(logits, torch.tensor(capacity_factor * k), torch.tensor(min_capacity)).item()
-    gates, masks = dlblas._topk_gating_fwd_part1(logits, k)
-    locations, res, ce = dlblas._topk_gating_fwd_part2(gates, masks, k)
-    l_aux = torch.mean(res)
+def topk_fwd_triton(gates: torch.Tensor, masks, locations, capacity):
     s, e = gates.shape
+    k = masks.shape[0]
     invers_k = torch.arange(k, 0, -1, device=masks.device)
-
     token_rearranged_ec_idx = torch.empty((k, s), dtype=torch.int32, device=gates.device)
     indices_ks = torch.empty((k, s), dtype=torch.int64, device=gates.device)
     gate_ks = torch.empty((k, s), dtype=gates.dtype, device=gates.device)
@@ -128,8 +124,8 @@ def topk_fwd_triton(logits: torch.Tensor, k: int, capacity_factor: float = 1.0, 
     expert_select_token_idx = expert_sel_top_c_token_idx.t().reshape(e * capacity)
     token_rearranged_ec_idx = token_rearranged_ec_idx.reshape(-1)
     token_exp_weights = gate_ks.reshape(-1)
-    for_bwd = (gates, ce, masks, gate_ks, indices_ks, denom_s, clamp_denom_s)
-    return l_aux, token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx, for_bwd
+    for_bwd = (gate_ks, indices_ks, denom_s, clamp_denom_s)
+    return token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx, for_bwd
 
 
 @triton.autotune(
@@ -248,14 +244,15 @@ class TopKGatingFunc(torch.autograd.Function):
     @staticmethod
     def forward(ctx: torch.Any, logits: torch.Tensor, k: int, capacity_factor: float = 1.0, min_capacity: int = 2, higher_precision: bool = False):
         # compute the capacity
+        capacity = _capacity(logits, torch.tensor(capacity_factor * k), torch.tensor(min_capacity)).item()
+        gates, masks = dlblas._topk_gating_fwd_part1(logits, k)
+        locations, res, ce = dlblas._topk_gating_fwd_part2(gates, masks, k)
+        l_aux = torch.mean(res)
         if higher_precision:
-            l_aux, token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx, for_bwd = topk_fwd_triton(logits, k, capacity_factor, min_capacity)
-            ctx.save_for_backward(*for_bwd)
+            token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx, for_bwd = topk_fwd_triton(gates, masks, locations, capacity)
+            ctx.save_for_backward(gates, ce, masks, *for_bwd)
             return l_aux, token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx
         else:
-            capacity = _capacity(logits, torch.tensor(capacity_factor * k), torch.tensor(min_capacity)).item()
-            gates, masks = dlblas._topk_gating_fwd_part1(logits, k)
-            locations, res, ce = dlblas._topk_gating_fwd_part2(gates, masks, k)
             part3_res = dlblas._topk_gating_fwd_part3(gates, masks, locations, k, capacity, True)
             l_aux = torch.mean(res)
             ctx.save_for_backward(locations, masks, gates, ce)
@@ -264,8 +261,9 @@ class TopKGatingFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: torch.Any, *grad_outputs: torch.Any) -> torch.Any:
+     
         if len(ctx.saved_tensors) == 4:
-            grad_l_aux = grad_outputs[0].item()
+            grad_l_aux = grad_outputs[0]
             locations, masks, gates, ce = ctx.saved_tensors
             grad_logits = dlblas._topk_gating_bwd(grad_l_aux, locations, masks, gates, ce)
             return grad_logits, None, None, None, None

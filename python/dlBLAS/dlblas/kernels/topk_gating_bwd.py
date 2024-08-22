@@ -39,10 +39,11 @@ def _topk_gating_bwd_kernel(
     gates = tl.load(gates_ptrs)
     ce = tl.load(ce_ptrs)
     diag_mask = tl.load(diag_mask_ptrs)
+    grad_l_aux_data = tl.load(grad_l_aux)
     #
     diag_mask = tl.broadcast_to(tl.expand_dims(diag_mask, axis=0), (BLOCK_S, e, e))
     
-    grad_me = grad_l_aux * ce * e * e / e
+    grad_me = grad_l_aux_data * ce * e * e / e
     grad_gates_t = (tl.zeros((e, ), dtype=tl.float32) + 1) * grad_me / s
     grad_gates = grad_gates_t 
     
@@ -96,14 +97,14 @@ def bench_fn(grad_l_aux, locations, masks, gates, ce):
 # register
 name = '_topk_gating_bwd'
 for dtype in [torch.float16, torch.float32]:
-    for device in ['cuda']:
+    for device in ['cuda']: 
         seqLen, experts = SymVar('seqLen'), SymVar('experts')
         k, c= SymVar('k'), SymVar('c')
         # we dont' actually allocate tensor
-        # grad_combine = Tensor((seqLen, experts, c), dtype=dtype, device=device)
+        grad_l_aux = Tensor((), dtype=dtype, device=device)
         locations = Tensor((k, seqLen, experts), dtype=torch.int64, device=device)
         masks = Tensor((k, seqLen, experts), dtype=torch.int64, device=device)
         gates = Tensor((seqLen, experts), dtype=dtype, device=device)
         ce = Tensor((experts,), dtype=dtype, device=device)
-        register_dlblas_op(name, None, (torch.SymFloat, locations, masks, gates, ce),
+        register_dlblas_op(name, None, (grad_l_aux, locations, masks, gates, ce),
                            call, bench_fn, _topk_gating_bwd_kernel)

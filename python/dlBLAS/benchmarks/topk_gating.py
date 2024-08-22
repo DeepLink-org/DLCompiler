@@ -7,7 +7,7 @@ import triton
 import time
 
 import dlblas
-from dlblas.utils.op_collector import InnerCompilerOpCollectorContext 
+from dlblas.utils.gpu_helper import get_idle_device 
 
 def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> Tensor:
     # gates has shape of SE
@@ -192,7 +192,7 @@ def fused_topkgating_opt(
 
     #     return l_aux, combine_weights, dispatch_mask
 
-device_ = torch.device('cuda:1')
+device_ = torch.device(get_idle_device())
 torch.cuda.set_device(device_)
 
 

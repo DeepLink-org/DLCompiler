@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils.libentry import libentry
 from dlblas.op_registry import op_registry
 import dlblas
 
@@ -21,6 +22,7 @@ def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> T
     return capacity
 
 
+@libentry()
 @triton.jit
 def _topk_gating_fwd_part3(
     gates,
@@ -78,7 +80,7 @@ def _topk_gating_fwd_part3(
     tl.store(token_rearranged_ec_idx_ptrs, token_rearranged_ec_idx_data, mask=offs_k < K)
     # se
     invers_k_data = tl.load(invers_k_ptr + offs_k, mask=offs_k < K)
-    token_sel_exp_int_mask_data = masks_data * tl.broadcast_to(tl.reshape(invers_k_data,(BLOCK_K,1)), (BLOCK_K, EXPERTS))
+    token_sel_exp_int_mask_data = masks_data * tl.broadcast_to(tl.expand_dims(invers_k_data, axis=1), (BLOCK_K, EXPERTS))
     token_sel_exp_int_mask_data = tl.sum(token_sel_exp_int_mask_data, axis=0)
     token_sel_exp_int_mask_ptrs = token_sel_exp_int_mask_ptr + s_pid * stride_se_s + tl.arange(0, EXPERTS)
     tl.store(token_sel_exp_int_mask_ptrs, token_sel_exp_int_mask_data)
@@ -97,27 +99,28 @@ def topk_fwd_triton(gates: torch.Tensor, masks, locations, capacity):
     stride_se_s, _ = gates.stride()
     stride_ks_k, _ = gate_ks.stride()
     stride_kse_k, stride_kse_s, _ = masks.stride()
-    _topk_gating_fwd_part3[(s,)](
-        gates,
-        locations,
-        masks,
-        invers_k,
-        indices_ks,
-        denom_s, 
-        clamp_denom_s,
-        token_rearranged_ec_idx,
-        gate_ks,
-        token_sel_exp_int_mask,
-        stride_ks_k,
-        stride_se_s,
-        stride_kse_k,
-        stride_kse_s,
-        CAPACITY = capacity,
-        min_value = torch.finfo(gates.dtype).eps,
-        K = k,
-        EXPERTS = e,
-        BLOCK_K = triton.next_power_of_2(k),
-    )
+    with torch.cuda.device(gates.device):
+        _topk_gating_fwd_part3[(s,)](
+            gates,
+            locations,
+            masks,
+            invers_k,
+            indices_ks,
+            denom_s, 
+            clamp_denom_s,
+            token_rearranged_ec_idx,
+            gate_ks,
+            token_sel_exp_int_mask,
+            stride_ks_k,
+            stride_se_s,
+            stride_kse_k,
+            stride_kse_s,
+            CAPACITY = capacity,
+            min_value = torch.finfo(gates.dtype).eps,
+            K = k,
+            EXPERTS = e,
+            BLOCK_K = triton.next_power_of_2(k),
+        )
     expert_sel_top_c_token_idx = torch.topk(
             token_sel_exp_int_mask, k=capacity, dim=0, sorted=True
     )[1]
@@ -128,6 +131,7 @@ def topk_fwd_triton(gates: torch.Tensor, masks, locations, capacity):
     return token_rearranged_ec_idx, token_exp_weights, expert_select_token_idx, for_bwd
 
 
+@libentry()
 @triton.autotune(
     configs = [
         triton.Config({'BLOCK_S': BS}, num_stages=s, num_warps=w) \
@@ -169,6 +173,7 @@ def _topk_gating_bwd_kernel_0(
     tl.store(add_1_ks_ptrs, add_1, mask=offs_k[:,None] < k and offs_s[None,:] < s)
     
 
+@libentry()
 @triton.autotune(
     configs = [
         triton.Config({'BLOCK_S': BS}, num_stages=s, num_warps=w) \
@@ -212,15 +217,16 @@ def topk_bwd_triton(gates_se, ce, masks_kse, gates_ks, indices_ks, denom_s, clam
     stride_ks_k, _ = add_1_ks.stride()
     assert e == triton.next_power_of_2(e)
     grid = lambda META: (triton.cdiv(s, META["BLOCK_S"]), )
-    _topk_gating_bwd_kernel_0[grid](
-        gates_ks, denom_s, clamp_denom_s,
-        grad_token_exp_weights,
-        add_1_ks,
-        stride_ks_k,
-        torch.finfo(gates_se.dtype).eps,
-        k, s, e,
-        BLOCK_K=triton.next_power_of_2(k)
-    )
+    with torch.cuda.device(gates_se.device):
+        _topk_gating_bwd_kernel_0[grid](
+            gates_ks, denom_s, clamp_denom_s,
+            grad_token_exp_weights,
+            add_1_ks,
+            stride_ks_k,
+            torch.finfo(gates_se.dtype).eps,
+            k, s, e,
+            BLOCK_K=triton.next_power_of_2(k)
+        )
     # print(f"_bwd_kernel.best_config ", _topk_gating_bwd_kernel_0.best_config, flush = True)
     zeros_1 = torch.ops.aten.zeros.default([k, s, e], dtype = gates_se.dtype, layout = torch.strided, device = gates_se.device)
     scatter_kse = torch.ops.aten.scatter.src(zeros_1, 2, indices_ks.view(k,s,1), add_1_ks.view(k,s,1))  
@@ -228,14 +234,15 @@ def topk_bwd_triton(gates_se, ce, masks_kse, gates_ks, indices_ks, denom_s, clam
     stride_se_s, _ = add_2_se.stride()
     stride_kse_k, stride_kse_s, _ = masks_kse.stride()
     grid = lambda META: (triton.cdiv(s, META["BLOCK_S"]), )
-    _topk_gating_bwd_kernel_1[grid](
-        ce, masks_kse, grad_l_aux, scatter_kse,
-        add_2_se,
-        stride_se_s,
-        stride_kse_k, stride_kse_s,
-        k, s, e,
-        BLOCK_K=triton.next_power_of_2(k)
-    )
+    with torch.cuda.device(gates_se.device):
+        _topk_gating_bwd_kernel_1[grid](
+            ce, masks_kse, grad_l_aux, scatter_kse,
+            add_2_se,
+            stride_se_s,
+            stride_kse_k, stride_kse_s,
+            k, s, e,
+            BLOCK_K=triton.next_power_of_2(k)
+        )
     # print(f"_bwd_kernel.best_config ", _topk_gating_bwd_kernel_1.best_config, flush = True)
     return torch.ops.aten._softmax_backward_data.default(add_2_se, gates_se, 1, gates_se.dtype)
 
@@ -261,7 +268,6 @@ class TopKGatingFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: torch.Any, *grad_outputs: torch.Any) -> torch.Any:
-     
         if len(ctx.saved_tensors) == 4:
             grad_l_aux = grad_outputs[0]
             locations, masks, gates, ce = ctx.saved_tensors

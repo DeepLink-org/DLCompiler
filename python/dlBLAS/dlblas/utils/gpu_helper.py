@@ -1,4 +1,7 @@
 import subprocess
+import torch
+
+DEVICE_COUNT = torch.cuda.device_count()
 
 def is_gpu_idle(gpu_id):
     try:
@@ -23,7 +26,7 @@ def is_gpu_idle(gpu_id):
         raise RuntimeError("Failed to check GPU status:{e}")
 
 def get_idle_device():
-    for gpu_id in range(8):
+    for gpu_id in range(DEVICE_COUNT):
         if is_gpu_idle(gpu_id) == True:
             print(f"GPU {gpu_id} is idle, we will use cuda:{gpu_id}")
             return f"cuda:{gpu_id}"

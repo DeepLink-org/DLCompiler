@@ -3,7 +3,10 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor
+from dlblas.utils.libentry import libentry
 
+
+@libentry()
 @triton.autotune(
     configs = [
         triton.Config({'BLOCK_S': BS}, num_stages=s, num_warps=w) \
@@ -31,7 +34,6 @@ def _topk_gating_bwd_kernel(
     # pid_s = tl.program_id(axis=0)
     pid = tl.program_id(axis=0)
     offs_s = pid * BLOCK_S  + tl.arange(0, BLOCK_S)[:,None]
-
     e_offset = tl.arange(0, e)
     gates_ptrs = gates + offs_s * stride_kse_s + e_offset
     ce_ptrs = ce + e_offset
@@ -40,13 +42,10 @@ def _topk_gating_bwd_kernel(
     ce = tl.load(ce_ptrs)
     diag_mask = tl.load(diag_mask_ptrs)
     grad_l_aux_data = tl.load(grad_l_aux)
-    #
     diag_mask = tl.broadcast_to(tl.expand_dims(diag_mask, axis=0), (BLOCK_S, e, e))
-    
     grad_me = grad_l_aux_data * ce * e * e / e
     grad_gates_t = (tl.zeros((e, ), dtype=tl.float32) + 1) * grad_me / s
     grad_gates = grad_gates_t 
-    
     grad_gates_expand = tl.expand_dims(grad_gates, axis=0)
     grad_gates_expand = tl.broadcast_to(grad_gates_expand, (e, e))
     grad_gates_expand = tl.expand_dims(grad_gates_expand, axis=0)
@@ -61,29 +60,27 @@ def _topk_gating_bwd_kernel(
 
 
 def call(grad_l_aux, locations, masks, gates, ce):
-
     k = locations.shape[0]
     k, s, e = masks.shape
     stride_kse_k, stride_kse_s, _ = masks.stride()
-    
     grad_logits = torch.empty((s,e), dtype=gates.dtype, device=ce.device)
     diag_mask = torch.diag(torch.ones(e, device=ce.device))
     assert e == triton.next_power_of_2(e)
-    
     grid = lambda META: (triton.cdiv(s, META["BLOCK_S"]), )
-    _topk_gating_bwd_kernel[grid](
-        locations,
-        ce,
-        masks,
-        gates,
-        diag_mask,
-        grad_logits,
-        stride_kse_k, stride_kse_s,
-        grad_l_aux,
-        torch.finfo(gates.dtype).eps,
-        k, s, e, c,
-        BLOCK_K=triton.next_power_of_2(k)
-    )
+    with torch.cuda.device(gates.device):
+        _topk_gating_bwd_kernel[grid](
+            locations,
+            ce,
+            masks,
+            gates,
+            diag_mask,
+            grad_logits,
+            stride_kse_k, stride_kse_s,
+            grad_l_aux,
+            torch.finfo(gates.dtype).eps,
+            k, s, e, c,
+            BLOCK_K=triton.next_power_of_2(k)
+        )
     # print(f"_bwd_kernel.best_config ", _topk_gating_bwd_kernel.best_config, flush = True)
     return grad_logits
 

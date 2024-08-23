@@ -3,9 +3,10 @@ import triton
 import triton.language as tl
 import triton.language.core as tlc
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils.libentry import libentry
 # from tutel import moe as tutel_moe
 
-
+@libentry()
 @triton.jit
 def _topk_gating_fwd_part2(
     gates,
@@ -47,20 +48,21 @@ def call(gates: torch.Tensor, masks: torch.Tensor, k: int):
     locations = torch.empty((k, s, e), dtype=torch.int64, device=gates.device)
     res = torch.empty((e,), dtype=gates.dtype, device=logits.device)
     ce = torch.empty_like(res)
-    _topk_gating_fwd_part2[(e,)](
-        gates,
-        masks,
-        locations,
-        res,
-        ce,
-        stride_se_s,
-        SEQ_LEN = s,
-        BLOCK_S= triton.next_power_of_2(s),
-        K = k,
-        EXPERTS = e,
-        KS = k * s,
-        BLOCK_KS = triton.next_power_of_2(k * s),
-    )
+    with torch.cuda.device(gates.device):
+        _topk_gating_fwd_part2[(e,)](
+            gates,
+            masks,
+            locations,
+            res,
+            ce,
+            stride_se_s,
+            SEQ_LEN = s,
+            BLOCK_S= triton.next_power_of_2(s),
+            K = k,
+            EXPERTS = e,
+            KS = k * s,
+            BLOCK_KS = triton.next_power_of_2(k * s),
+        )
     return locations, res, ce
     # locations = tutel_moe.fast_cumsum_sub_one(masks.view(-1, e))
     # return locations.reshape(k,s,e), exp_counts, res, ce

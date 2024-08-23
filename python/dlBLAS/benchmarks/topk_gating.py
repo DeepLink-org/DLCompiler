@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from torch import Tensor
 import triton
 import time
-
+from torch.profiler import profile, record_function, ProfilerActivity
 import dlblas
-from dlblas.utils.op_collector import InnerCompilerOpCollectorContext 
+from dlblas.utils.gpu_helper import get_idle_device 
 
 def _capacity(gates: Tensor, capacity_factor: Tensor, min_capacity: Tensor) -> Tensor:
     # gates has shape of SE
@@ -192,7 +192,7 @@ def fused_topkgating_opt(
 
     #     return l_aux, combine_weights, dispatch_mask
 
-device_ = torch.device('cuda:1')
+device_ = torch.device(get_idle_device())
 torch.cuda.set_device(device_)
 
 
@@ -219,7 +219,7 @@ def test():
     output2_torch = out_torch_pack.token_rearranged_ec_idx
     output3_torch = out_torch_pack.token_exp_weights
     output4_torch = out_torch_pack.expert_select_token_idx
-    output1_triton, output2_triton, output3_triton, output4_triton = model_triton(logits_triton, k, capacity_factor, min_capacity, True)
+    output1_triton, output2_triton, output3_triton, output4_triton = model_triton(logits_triton, k, capacity_factor, min_capacity, False)
 
     assert output1_torch.shape == output1_triton.shape
     assert torch.allclose(output1_torch, output1_triton)
@@ -246,6 +246,28 @@ def test():
     
     assert logits_torch.grad.shape == logits_triton.grad.shape
     assert torch.allclose(logits_torch.grad, logits_triton.grad, rtol = 1e-8, atol = 1e-8)
+    
+    if False:
+        with profile(
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                    record_shapes = False,
+                    profile_memory = False,
+                    with_stack = False,
+                    with_flops = False,
+                    with_modules = False,) as prof:
+            output1_torch, out_torch_pack = model_torch(logits_torch, k, capacity_factor, min_capacity, enable_token_rearrange_opt)
+            output1_triton, output2_triton, output3_triton, output4_triton = model_triton(logits_triton, k, capacity_factor, min_capacity, True)
+            loss_torch = torch.sum(torch.mean(output1_torch * output3_torch))
+            loss_triton = torch.sum(torch.mean(output1_triton * output3_triton))
+            dout_torch = torch.randn_like(loss_torch)
+            with torch.no_grad():
+                dout_triton = dout_torch.clone()
+            loss_torch.backward(dout_torch, retain_graph=True)
+            loss_triton.backward(dout_triton, retain_graph=True)
+            assert torch.allclose(logits_torch.grad, logits_triton.grad, rtol = 1e-8, atol = 1e-8)
+        prof.export_chrome_trace(f"./trace_{time.time_ns()}.json")
+
+    
     # vary seq length for fixed head and batch=4
     configs = []
 
@@ -268,7 +290,7 @@ def test():
     @triton.testing.perf_report(configs)
     def bench_top2gating(SeqLen, op, provider, device=device_):
         warmup = 100
-        rep = 100
+        rep = 500
         shape = (SeqLen, NumberExperts)
         logits = torch.randn(shape, device=device, requires_grad=True)
 

@@ -63,3 +63,7 @@ def paged_attention(query: Tensor,  # [num_seqs, NUM_KV_HEADS * QUERY_GROUP_SIZE
                     max_context_len: int):
     op = get_op("paged_attention", (query, key_cache, value_cache, context_lens, block_tables, attn_scale, max_context_len))
     return op(query, key_cache, value_cache, context_lens, block_tables, attn_scale, max_context_len)
+
+def selective_scan(u, delta, A, B, C, D, initial_state):
+    op = get_op("selective_scan", (u, delta, A, B, C, D, initial_state))
+    return op(u, delta, A, B, C, D, initial_state)

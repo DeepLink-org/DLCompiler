@@ -107,7 +107,15 @@ def my_compiler(gm: torch.fx.GraphModule, example_inputs: List[torch.Tensor]):
 
 my_aot_backend = aot_autograd(fw_compiler=my_compiler)
 
-from tutel import moe as tutel_moe
+try:
+    # To enable Tutel MoE optimizations:
+    #   python3 -m pip install --user --upgrade git+https://github.com/microsoft/tutel@v0.3.x
+    from tutel import moe as tutel_moe
+    TUTEL_INSTALLED = True
+except (ModuleNotFoundError, ImportError):
+    # Fail silently so we don't spam logs unnecessarily if user isn't using tutel
+    TUTEL_INSTALLED = False
+    pass
 from collections import namedtuple
 GatingTokenRearrangeInfo = namedtuple(
     "GatingTokenRearrangeInfo", ["token_rearranged_ec_idx", "token_exp_weights", "expert_select_token_idx"]
@@ -118,8 +126,8 @@ def fused_topkgating_opt(
     k: int,
     capacity_factor: float,
     min_capacity: int,
-    enable_token_rearrange_opt: bool = False,
-    use_tutel: bool = False,
+    enable_token_rearrange_opt: bool = True,
+    use_tutel: bool = True,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """Implements TopKGating on logits."""
     # everything is in fp32 in this function
@@ -132,10 +140,10 @@ def fused_topkgating_opt(
     masks = F.one_hot(indices_s.reshape(-1), num_classes=num_experts)
 
     # Compute locations in capacity buffer
-    # if use_tutel and TUTEL_INSTALLED:
-    locations = tutel_moe.fast_cumsum_sub_one(masks)
-    # else:
-    # locations = torch.cumsum(masks, dim=0) - 1
+    if use_tutel and TUTEL_INSTALLED:
+        locations = tutel_moe.fast_cumsum_sub_one(masks)
+    else:
+        locations = torch.cumsum(masks, dim=0) - 1
 
     # reshape (s,e) to (k,s,e)
     masks = masks.reshape(-1, gates.shape[0], num_experts)
@@ -290,7 +298,7 @@ def test():
     @triton.testing.perf_report(configs)
     def bench_top2gating(SeqLen, op, provider, device=device_):
         warmup = 100
-        rep = 500
+        rep = 200
         shape = (SeqLen, NumberExperts)
         logits = torch.randn(shape, device=device, requires_grad=True)
 

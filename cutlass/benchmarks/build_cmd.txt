@@ -1,0 +1,4 @@
+make streamk_grouped_gemm  &&   ./examples/24_gemm_grouped/streamk_grouped_gemm --verbose=true --iterations=20 --benchmark=problem4.txt
+
+
+make 47_ampere_gemm_universal_streamk &&   ./examples/47_ampere_gemm_universal_streamk/47_ampere_gemm_universal_streamk --m=4608 --n=14336 --k=4096

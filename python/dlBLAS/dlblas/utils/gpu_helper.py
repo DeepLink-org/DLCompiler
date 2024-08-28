@@ -31,4 +31,4 @@ def get_idle_device():
             print(f"GPU {gpu_id} is idle, we will use cuda:{gpu_id}")
             return f"cuda:{gpu_id}"
     print("[WARN] All GPU device is busy, performance data maybe inaccurate.")
-    return "cuda"
+    return "cuda:0"

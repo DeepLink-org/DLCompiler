@@ -186,7 +186,8 @@ def _topk_gating_bwd_kernel_0(
 @triton.jit
 def _topk_gating_bwd_kernel_1(
     ce, masks_kse, grad_l_aux, scatter_kse,
-    add_2_se,
+    gates_se,
+    gates_se_grad,
     stride_se_s,
     stride_kse_k, stride_kse_s,
     k:tl.constexpr, s: tl.constexpr, e: tl.constexpr,
@@ -199,6 +200,8 @@ def _topk_gating_bwd_kernel_1(
     ce_ptrs = ce + offs_e
     ce_data = tl.load(ce_ptrs)
     grad_l_aux_data = tl.load(grad_l_aux)
+    gates_se_ptrs = gates_se + offs_s[:, None] * stride_se_s + offs_e[None,:]
+    gates_se_data = tl.load(gates_se_ptrs, mask=offs_s[:, None] < s)
     masks_kse_ptrs = masks_kse + offs_k[:,None,None] * stride_kse_k + offs_s[None,:,None] * stride_kse_s + offs_e[None,None,:]
     masks_kse_data = tl.load(masks_kse_ptrs, mask=offs_k[:,None,None] < k and offs_s[None,:,None] < s)
     scatter_kse_ptrs = scatter_kse + offs_k[:,None,None] * stride_kse_k + offs_s[None,:,None] * stride_kse_s + offs_e[None,None,:]
@@ -207,8 +210,12 @@ def _topk_gating_bwd_kernel_1(
     mul_14 = ce_data * grad_l_aux_data * e / s
     div_5 = tl.broadcast_to(tl.expand_dims(mul_14, axis=0), (BLOCK_S, e))
     add_2 = sum_5 + div_5
-    add_2_se_ptrs = add_2_se + offs_s[:, None] * stride_se_s + offs_e[None,:]
-    tl.store(add_2_se_ptrs, add_2, mask=offs_s[:, None] < s)
+    # softmax backward
+    dx = gates_se_data * add_2
+    sumdx = tl.sum(dx, axis=1, keep_dims=True)
+    gates_grad = dx - gates_se_data * sumdx
+    gates_se_grad_ptrs = gates_se_grad + offs_s[:, None] * stride_se_s + offs_e[None,:]
+    tl.store(gates_se_grad_ptrs, gates_grad, mask=offs_s[:, None] < s)
 
 
 def topk_bwd_triton(gates_se, ce, masks_kse, gates_ks, indices_ks, denom_s, clamp_denom_s, grad_l_aux, grad_token_exp_weights):
@@ -230,21 +237,23 @@ def topk_bwd_triton(gates_se, ce, masks_kse, gates_ks, indices_ks, denom_s, clam
     # print(f"_bwd_kernel.best_config ", _topk_gating_bwd_kernel_0.best_config, flush = True)
     zeros_1 = torch.ops.aten.zeros.default([k, s, e], dtype = gates_se.dtype, layout = torch.strided, device = gates_se.device)
     scatter_kse = torch.ops.aten.scatter.src(zeros_1, 2, indices_ks.view(k,s,1), add_1_ks.view(k,s,1))  
-    add_2_se = torch.empty([s,e], dtype=gates_se.dtype, device=gates_se.device)
-    stride_se_s, _ = add_2_se.stride()
+    gates_grad = torch.empty([s,e], dtype=gates_se.dtype, device=gates_se.device)
+    stride_se_s, _ = gates_grad.stride()
     stride_kse_k, stride_kse_s, _ = masks_kse.stride()
     grid = lambda META: (triton.cdiv(s, META["BLOCK_S"]), )
     with torch.cuda.device(gates_se.device):
         _topk_gating_bwd_kernel_1[grid](
             ce, masks_kse, grad_l_aux, scatter_kse,
-            add_2_se,
+            gates_se,
+            gates_grad,
             stride_se_s,
             stride_kse_k, stride_kse_s,
             k, s, e,
             BLOCK_K=triton.next_power_of_2(k)
         )
     # print(f"_bwd_kernel.best_config ", _topk_gating_bwd_kernel_1.best_config, flush = True)
-    return torch.ops.aten._softmax_backward_data.default(add_2_se, gates_se, 1, gates_se.dtype)
+    # return torch.ops.aten._softmax_backward_data.default(add_2_se, gates_se, 1, gates_se.dtype)
+    return gates_grad
 
 
 class TopKGatingFunc(torch.autograd.Function):

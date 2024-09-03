@@ -3,8 +3,10 @@ import triton
 import triton.language as tl
 from torch import Tensor
 from dlblas.utils import register_dlblas_op, SymVar, Tensor
+from dlblas.utils.libentry import libentry
 
 
+@libentry()
 @triton.jit
 def add_rms_norm_kernel(
     hidden_states,

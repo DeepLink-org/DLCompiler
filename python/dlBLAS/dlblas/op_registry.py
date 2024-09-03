@@ -41,8 +41,7 @@ class OpRegistry:
         this_file_dir = os.path.dirname(os.path.realpath(__file__))
         # kernel_file_name = call.__globals__['__name__']
         kernel_module_name = call.__module__
-        kernel_file = os.path.join(this_file_dir, 'kernels',
-                                   kernel_module_name + '.py')
+        kernel_file = os.path.join(this_file_dir, "kernels", kernel_module_name + ".py")
         impl = OpImpl(
             params,
             kernel_file,
@@ -55,7 +54,9 @@ class OpRegistry:
 
         # FIXME what if a kernel register twice? if appear seems to be a bug... de-duplication check
         if name in self.ops:
-            assert self.ops[name][0].params == params, f"Multiple implementations of a kernel:{name} must have the same parameters."
+            assert (
+                self.ops[name][0].params == params
+            ), f"Multiple implementations of a kernel:{name} must have the same parameters."
             self.ops[name].append(impl)
         else:
             self.ops[name] = [impl]
@@ -73,12 +74,12 @@ class OpRegistry:
         # 1. check cache
         if op := self.look_up_cache(op_name, args):
             # if op is not None, will hit the true branch
-            logger.debug(f'cache hit for op {op_name}')
+            logger.debug(f"cache hit for op {op_name}")
             return op
 
         # 2. if miss, tunning
         if configs is None:
-            logger.debug(f'use default autotune configs for op {op_name}')
+            logger.debug(f"use default autotune configs for op {op_name}")
             configs = AutotuneConfig()
         else:
             assert isinstance(configs, AutotuneConfig)
@@ -95,8 +96,7 @@ class OpRegistry:
         # fetch candidates
         candidates = self._get_candidates(op_name, args)
         if len(candidates) == 0:
-            raise LookupError(
-                f"no candidates for op {op_name} with args {args}")
+            raise LookupError(f"no candidates for op {op_name} with args")
 
         # run selection
         best_idx, _ = self._selection(args, candidates, configs)

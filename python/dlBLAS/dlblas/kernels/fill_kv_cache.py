@@ -1,152 +1,170 @@
-# modify from: https://github.com/InternLM/lmdeploy
 import torch
 import triton
 import triton.language as tl
 from torch import Tensor
+from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
+from dlblas.utils.libentry import libentry
 
 
-@triton.jit
-def _div_up(val, other):
-    return (val + other - 1) // other
-
-
+@libentry()
 @triton.jit
 def _fill_kv_cache_kernel(
-    KStates,
-    VStates,
-    KCaches,
-    VCaches,
-    QStartLoc,
-    QSeqLens,
-    KVSeqLens,
-    BlockOffsets,
-    num_heads: tl.constexpr,
-    head_dim: tl.constexpr,
-    stride_kss,
-    stride_ksh,
-    stride_ksd,
-    stride_vss,
-    stride_vsh,
-    stride_vsd,
-    stride_kcn: tl.constexpr,
-    stride_kcb: tl.constexpr,
-    stride_kch: tl.constexpr,
-    stride_kcd: tl.constexpr,
-    stride_vcn: tl.constexpr,
-    stride_vcb: tl.constexpr,
-    stride_vch: tl.constexpr,
-    stride_vcd: tl.constexpr,
-    stride_boff,
-    BLOCK: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-    BLOCK_DV: tl.constexpr,
-    BLOCK_H: tl.constexpr,
+    key,
+    value,
+    key_cache,
+    value_cache,
+    kv_indices,
+    stride_k_n,
+    stride_k_h,
+    stride_k_d,
+    stride_v_n,
+    stride_v_h,
+    stride_v_d,
+    stride_kcache_b,
+    stride_kcache_h,
+    stride_kcache_d,
+    stride_vcache_b,
+    stride_vcache_h,
+    stride_vcache_d,
+    num_tokens,
+    num_heads,
+    head_dim_k,
+    head_dim_v,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCK_HEADS: tl.constexpr,
+    BLOCK_DIM_K: tl.constexpr,
+    BLOCK_DIM_V: tl.constexpr,
 ):
-    """fill kv cache kernel."""
-    batch_id = tl.program_id(0)
-    block_id = tl.program_id(1)
-
-    # initialize
-    h_off = tl.arange(0, BLOCK_H)
-    d_off = tl.arange(0, BLOCK_D)
-
-    q_startloc = tl.load(QStartLoc + batch_id)
-    q_seqlen = tl.load(QSeqLens + batch_id)
-    kv_seqlen = tl.load(KVSeqLens + batch_id)
-    history_seqlen = kv_seqlen - q_seqlen
-
-    block0_first_tokenloc = history_seqlen % BLOCK
-
-    state_token_offset = tl.maximum(block_id * BLOCK - block0_first_tokenloc,
-                                    0)
-    kv_block_id = _div_up(history_seqlen + 1, BLOCK) - 1 + block_id
-    kv_block_id = min(kv_block_id, stride_boff - 1)
-    block_off = tl.load(BlockOffsets + batch_id * stride_boff + kv_block_id)
-
-    cur_startloc = q_startloc + state_token_offset
-    ks_ptr = KStates + cur_startloc * stride_kss
-    vs_ptr = VStates + cur_startloc * stride_vss
-
-    kc_ptr = KCaches + block_off * stride_kcn
-    vc_ptr = VCaches + block_off * stride_vcn
-
-    c_first_tokenloc = block0_first_tokenloc
-    if block_id != 0:
-        c_first_tokenloc *= 0
-    c_last_tokenloc = tl.minimum(
-        BLOCK, q_seqlen + block0_first_tokenloc - block_id * BLOCK)
-
-    for bidx in range(c_first_tokenloc, c_last_tokenloc):
-        sidx = bidx - c_first_tokenloc
-        mask = (h_off[:, None] < num_heads) & (d_off[None, :] < head_dim)
-        k = tl.load(ks_ptr + sidx * stride_kss + h_off[:, None] * stride_ksh +
-                    d_off[None, :] * stride_ksd,
-                    mask=mask)
-        tl.store(kc_ptr + bidx * stride_kcb + h_off[:, None] * stride_kch +
-                 d_off[None, :] * stride_kcd,
-                 k,
-                 mask=mask)
-
-        if BLOCK_DV > 0:
-            dv_off = tl.arange(0, BLOCK_DV)
-            maskv = (h_off[:, None] < num_heads) & (dv_off[None, :] < head_dim)
-            v = tl.load(vs_ptr + sidx * stride_vss +
-                        h_off[:, None] * stride_vsh +
-                        dv_off[None, :] * stride_vsd,
-                        mask=maskv)
-            tl.store(vc_ptr + bidx * stride_vcb + h_off[:, None] * stride_vch +
-                     dv_off[None, :] * stride_vcd,
-                     v,
-                     mask=maskv)
-
-
-def fill_kv_cache(k_states: Tensor, v_states: Tensor, k_caches: Tensor,
-                  v_caches: Tensor, q_start_loc: Tensor, q_seq_length: Tensor,
-                  kv_seq_length: Tensor, max_q_seq_length: int,
-                  block_offsets: Tensor):
-    """fill key/value state to cache for paged attention."""
-
-    block_offsets = block_offsets.contiguous()
-    batch_size = block_offsets.size(0)
-    block_size, num_heads, head_dim = k_caches.size()[1:]
-    head_dim_v = v_states.size(-1)
-    max_num_blocks = triton.cdiv(max_q_seq_length, block_size) + 1
-
-    BLOCK = block_size
-    BLOCK_H = triton.next_power_of_2(num_heads)
-    BLOCK_D = triton.next_power_of_2(head_dim)
-    BLOCK_DV = triton.next_power_of_2(head_dim_v)
-    grid = [batch_size, max_num_blocks]
-    _fill_kv_cache_kernel[grid](
-        k_states,
-        v_states,
-        k_caches,
-        v_caches,
-        q_start_loc,
-        q_seq_length,
-        kv_seq_length,
-        block_offsets,
-        num_heads=num_heads,
-        head_dim=head_dim,
-        stride_kss=k_states.stride(-3),
-        stride_ksh=k_states.stride(-2),
-        stride_ksd=k_states.stride(-1),
-        stride_vss=v_states.stride(-3),
-        stride_vsh=v_states.stride(-2),
-        stride_vsd=v_states.stride(-1),
-        stride_kcn=k_caches.stride(0),
-        stride_kcb=k_caches.stride(1),
-        stride_kch=k_caches.stride(2),
-        stride_kcd=k_caches.stride(3),
-        stride_vcn=v_caches.stride(0),
-        stride_vcb=v_caches.stride(1),
-        stride_vch=v_caches.stride(2),
-        stride_vcd=v_caches.stride(3),
-        stride_boff=block_offsets.stride(0),
-        BLOCK=BLOCK,
-        BLOCK_D=BLOCK_D,
-        BLOCK_DV=BLOCK_DV,
-        BLOCK_H=BLOCK_H,
-        num_warps=4,
-        num_stages=3,
+    block_id = tl.program_id(0)
+    offs_block = tl.arange(0, BLOCK_SIZE)
+    offs_heads = tl.arange(0, BLOCK_HEADS)[None, :, None]
+    offs_dim_k = tl.arange(0, BLOCK_DIM_K)[None, None, :]
+    offs_dim_v = tl.arange(0, BLOCK_DIM_V)[None, None, :]
+    kv_indices_ptrs = kv_indices + block_id * BLOCK_SIZE + offs_block
+    kv_indices_data = tl.load(
+        kv_indices_ptrs, mask=(block_id * BLOCK_SIZE + offs_block < num_tokens)
     )
+    offs_k = (
+        (block_id * BLOCK_SIZE + offs_block)[:, None, None] * stride_k_n
+        + offs_heads * stride_k_h
+        + offs_dim_k * stride_k_d
+    )
+
+    masks_k = (
+        (block_id * BLOCK_SIZE + offs_block[:, None, None] < num_tokens)
+        & (offs_heads < num_heads)
+        & (offs_dim_k < head_dim_k)
+    )
+    key_data = tl.load(key + offs_k, mask=masks_k)
+    offs_kcache = (
+        kv_indices_data[:, None, None] * stride_kcache_b
+        + offs_heads * stride_kcache_h
+        + offs_dim_k * stride_kcache_d
+    )
+    tl.store(key_cache + offs_kcache, key_data, mask=masks_k)
+    offs_v = (
+        (block_id * BLOCK_SIZE + offs_block)[:, None, None] * stride_v_n
+        + offs_heads * stride_v_h
+        + offs_dim_v * stride_v_d
+    )
+    masks_v = (
+        (block_id * BLOCK_SIZE + offs_block[:, None, None] < num_tokens)
+        & (offs_heads < num_heads)
+        & (offs_dim_v < head_dim_v)
+    )
+    value_data = tl.load(value + offs_v, mask=masks_v)
+    offs_vcache = (
+        kv_indices_data[:, None, None] * stride_vcache_b
+        + offs_heads * stride_vcache_h
+        + offs_dim_v * stride_vcache_d
+    )
+    tl.store(value_cache + offs_vcache, value_data, mask=masks_v)
+
+
+def call(
+    key: torch.Tensor,
+    value: torch.Tensor,
+    key_cache: torch.Tensor,
+    value_cache: torch.Tensor,
+    kv_indices: torch.Tensor,
+):
+    num_blocks, block_size, num_heads, head_dim_k = key_cache.shape
+    _, _, _, head_dim_v = value_cache.shape
+    num_tokens, _, _ = key.shape
+    assert key.shape[:2] == value.shape[:2]
+    assert key_cache.shape[:3] == value_cache.shape[:3]
+    assert block_size == triton.next_power_of_2(block_size)
+    _, stride_kcache_b, stride_kcache_h, stride_kcache_d = key_cache.stride()
+    _, stride_vcache_b, stride_vcache_h, stride_vcache_d = value_cache.stride()
+    stride_k_n, stride_k_h, stride_k_d = key.stride()
+    stride_v_n, stride_v_h, stride_v_d = value.stride()
+    total_blocks = (num_tokens + block_size - 1) // block_size
+    _fill_kv_cache_kernel[(total_blocks,)](
+        key,
+        value,
+        key_cache,
+        value_cache,
+        kv_indices,
+        stride_k_n,
+        stride_k_h,
+        stride_k_d,
+        stride_v_n,
+        stride_v_h,
+        stride_v_d,
+        stride_kcache_b,
+        stride_kcache_h,
+        stride_kcache_d,
+        stride_vcache_b,
+        stride_vcache_h,
+        stride_vcache_d,
+        num_tokens,
+        num_heads,
+        head_dim_k,
+        head_dim_v,
+        block_size,
+        triton.next_power_of_2(num_heads),
+        triton.next_power_of_2(head_dim_k),
+        triton.next_power_of_2(head_dim_v),
+    )
+    return key_cache, value_cache
+
+
+def bench_fn(
+    key: torch.Tensor,
+    value: torch.Tensor,
+    key_cache: torch.Tensor,
+    value_cache: torch.Tensor,
+    kv_indices: torch.Tensor,
+):
+    fn = lambda: call(key, value, key_cache, value_cache, kv_indices)
+    ms = triton.testing.do_bench(fn, warmup=10, rep=10)
+    return ms
+
+
+# register
+name = "fill_kv_cache"
+for dtype in [torch.float16, torch.float32]:
+    for device in ["cuda"]:
+        num_blocks, block_size = SymVar("num_blocks"), SymVar("block_size")
+        head_dim_k, head_dim_v = SymVar("head_dim_k"), SymVar("head_dim_v")
+        num_heads, num_tokens = SymVar("num_heads"), SymVar("num_tokens")
+
+        # we dont' actually allocate tensor
+        key = Tensor((num_tokens, num_heads, head_dim_k), dtype=dtype, device=device)
+        value = Tensor((num_tokens, num_heads, head_dim_v), dtype=dtype, device=device)
+        key_cache = Tensor(
+            (num_blocks, block_size, num_heads, head_dim_k), dtype=dtype, device=device
+        )
+        value_cache = Tensor(
+            (num_blocks, block_size, num_heads, head_dim_v), dtype=dtype, device=device
+        )
+        kv_indices = Tensor((num_tokens,), dtype=torch.int32, device=device)
+        # space = ChoiceSpace([])
+        register_dlblas_op(
+            name,
+            None,
+            (key, value, key_cache, value_cache, kv_indices),
+            call,
+            bench_fn,
+            call,
+        )

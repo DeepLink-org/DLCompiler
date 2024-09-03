@@ -144,3 +144,14 @@ def rms_norm(
 ):
     op = get_op("rms_norm", (hidden_states, weight, eps))
     return op(hidden_states, weight, eps)
+
+
+def fill_kv_cache(
+    key: torch.Tensor,
+    value: torch.Tensor,
+    key_cache: torch.Tensor,
+    value_cache: torch.Tensor,
+    kv_indices: torch.Tensor,
+):
+    op = get_op("fill_kv_cache", (key, value, key_cache, value_cache, kv_indices))
+    return op(key, value, key_cache, value_cache, kv_indices)

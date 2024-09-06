@@ -155,3 +155,8 @@ def fill_kv_cache(
 ):
     op = get_op("fill_kv_cache", (key, value, key_cache, value_cache, kv_indices))
     return op(key, value, key_cache, value_cache, kv_indices)
+
+
+def partial_rotary_emb(q, k_pe, kv, cos, sin):
+    op = get_op("partial_rotary_emb", (q, k_pe, kv, cos, sin))
+    return op(q, k_pe, kv, cos, sin)

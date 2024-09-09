@@ -5,11 +5,11 @@ from dlblas.utils.libentry import libentry
 from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 
 
-# @libentry()
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SEQ": BS}, num_stages=s, num_warps=w)
-        for BS in [2, 4, 8]
+        for BS in [1, 2, 4, 8]
         for s in [1]
         for w in [1, 2, 4]
     ],
@@ -277,7 +277,7 @@ def bench_fn(q, k_pe, kv, cos, sin):
 
 # register
 name = "partial_rotary_emb"
-for dtype in [torch.float16, torch.float32]:
+for dtype in [torch.bfloat16, torch.float16, torch.float32]:
     for device_ in ["cuda"]:
         num_heads = SymVar("num_heads")
         qk_nope_head_dim = SymVar("qk_nope_head_dim")
@@ -286,24 +286,18 @@ for dtype in [torch.float16, torch.float32]:
         q_head_dim = SymVar("q_head_dim")
         bsz, q_len = SymVar("bsz"), SymVar("q_len")
         # we dont' actually allocate tensor
-        q = Tensor(
-            (bsz, q_len, num_heads, q_head_dim), dtype=torch.float16, device=device_
-        )
+        q = Tensor((bsz, q_len, num_heads, q_head_dim), dtype=dtype, device=device_)
         k_pe = Tensor(
             (bsz, q_len, SymVar("one"), qk_rope_head_dim),
-            dtype=torch.float16,
+            dtype=dtype,
             device=device_,
         )
         kv = Tensor(
             (bsz, q_len, num_heads, SymVar("qk_nope_head_dim + v_head_dim")),
-            dtype=torch.float16,
+            dtype=dtype,
             device=device_,
         )
-        cos = Tensor(
-            (bsz, q_len, qk_rope_head_dim), dtype=torch.float16, device=device_
-        )
-        sin = Tensor(
-            (bsz, q_len, qk_rope_head_dim), dtype=torch.float16, device=device_
-        )
+        cos = Tensor((bsz, q_len, qk_rope_head_dim), dtype=dtype, device=device_)
+        sin = Tensor((bsz, q_len, qk_rope_head_dim), dtype=dtype, device=device_)
         # space = ChoiceSpace([])
         register_dlblas_op(name, None, (q, k_pe, kv, cos, sin), call, bench_fn, call)

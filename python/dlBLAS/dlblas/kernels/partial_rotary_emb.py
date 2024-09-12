@@ -59,7 +59,7 @@ def _get_cos_sin(
     key=["seq_len", "q_head_dim", "v_head_dim"],
 )
 @triton.jit
-def _fwd_kernel(
+def _partial_rotary_emb_fwd_kernel(
     q,
     k_pe,
     kv,
@@ -129,33 +129,6 @@ def _fwd_kernel(
         mask=(offs_seq[:, None] < seq_len)
         & (rope_dim1_interleaved[None, :] < q_head_dim),
     )
-
-    # offs_cs0 = (
-    #     batch_idx * stride_cos_bsz
-    #     + offs_seq[:, None] * stride_cos_seq
-    #     + rope_dim_range0[None, :] * stride_cos_dim
-    # )
-    # offs_cs1 = (
-    #     batch_idx * stride_cos_bsz
-    #     + offs_seq[:, None] * stride_cos_seq
-    #     + rope_dim_range1[None, :] * stride_cos_dim
-    # )
-    # cos0_data = tl.load(
-    #     cos + offs_cs0,
-    #     mask=(offs_seq[:, None] < seq_len) & (rope_dim_range0[None, :] < rope_head_dim),
-    # )
-    # cos1_data = tl.load(
-    #     cos + offs_cs1,
-    #     mask=(offs_seq[:, None] < seq_len) & (rope_dim_range1[None, :] < rope_head_dim),
-    # )
-    # sin0_data = tl.load(
-    #     sin + offs_cs0,
-    #     mask=(offs_seq[:, None] < seq_len) & (rope_dim_range0[None, :] < rope_head_dim),
-    # )
-    # sin1_data = tl.load(
-    #     sin + offs_cs1,
-    #     mask=(offs_seq[:, None] < seq_len) & (rope_dim_range1[None, :] < rope_head_dim),
-    # )
     cos0_data, cos1_data, sin0_data, sin1_data = _get_cos_sin(
         batch_idx,
         offs_seq,
@@ -280,7 +253,7 @@ def _fwd_kernel(
     key=["seq_len", "q_head_dim", "rope_head_dim"],
 )
 @triton.jit
-def _bwd_kernel(
+def _partial_rotary_emb_bwd_kernel(
     d_q,
     d_kv,
     cos,
@@ -443,6 +416,13 @@ def _bwd_kernel(
 class PartialRotaryEmb(torch.autograd.Function):
     @staticmethod
     def forward(ctx: torch.Any, q, k_pe, kv, cos, sin):
+        assert (
+            q.is_contiguous()
+            and k_pe.is_contiguous()
+            and kv.is_contiguous()
+            and cos.is_contiguous()
+            and sin.is_contiguous()
+        )
         bsz, seq_len, num_heads, q_head_dim = q.shape
         assert bsz == k_pe.shape[0] and seq_len == k_pe.shape[1] and 1 == k_pe.shape[2]
         qk_rope_head_dim = k_pe.shape[3]
@@ -469,7 +449,7 @@ class PartialRotaryEmb(torch.autograd.Function):
                 triton.cdiv(seq_len, META["BLOCK_SEQ"]),
                 num_heads,
             )
-            _fwd_kernel[grid](
+            _partial_rotary_emb_fwd_kernel[grid](
                 q,
                 k_pe,
                 kv,
@@ -530,7 +510,7 @@ class PartialRotaryEmb(torch.autograd.Function):
                 triton.cdiv(seq_len, META["BLOCK_SEQ"]),
                 num_heads,
             )
-            _bwd_kernel[grid](
+            _partial_rotary_emb_bwd_kernel[grid](
                 d_q,
                 d_kv,
                 cos,

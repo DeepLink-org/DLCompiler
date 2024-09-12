@@ -1,7 +1,9 @@
+import time
 from typing import List
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.profiler import profile, record_function, ProfilerActivity
 import triton
 import dlblas
 from dlblas.utils.gpu_helper import get_idle_device
@@ -290,6 +292,31 @@ def test():
     assert torch.allclose(q.grad, q_tri.grad)
     assert torch.allclose(k_pe.grad, k_pe_tri.grad)
     assert torch.allclose(kv.grad, kv_tri.grad)
+    if False:
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            record_shapes=False,
+            profile_memory=False,
+            with_stack=False,
+            with_flops=False,
+            with_modules=False,
+        ) as prof:
+            out_q, out_kv = partial_rotary_emb(q, k_pe, kv, cos, sin)
+            torch.cuda.synchronize()
+            loss_torch = torch.sum(torch.mean(out_q) * torch.mean(out_kv))
+            loss_torch.backward(retain_graph=True)
+            torch.cuda.synchronize()
+            out_tri_q, out_tri_kv = dlblas.partial_rotary_emb(
+                q_tri, k_pe_tri, kv_tri, cos, sin
+            )
+            torch.cuda.synchronize()
+            loss_tri = torch.sum(torch.mean(out_tri_q) * torch.mean(out_tri_kv))
+            loss_tri.backward(retain_graph=True)
+            torch.cuda.synchronize()
+            assert torch.allclose(q.grad, q_tri.grad)
+            assert torch.allclose(k_pe.grad, k_pe_tri.grad)
+            assert torch.allclose(kv.grad, kv_tri.grad)
+        prof.export_chrome_trace(f"./trace_partial_rotary_emb_{time.time_ns()}.json")
 
     configs = []
     configs.append(

@@ -53,8 +53,8 @@ def _get_cos_sin(
     configs=[
         triton.Config({"BLOCK_SEQ": BS}, num_stages=s, num_warps=w)
         for BS in [1, 2, 4, 8]
-        for s in [1]
-        for w in [1, 2, 4]
+        for s in [1, 2]
+        for w in [1, 2]
     ],
     key=["seq_len", "q_head_dim", "v_head_dim"],
 )
@@ -274,8 +274,8 @@ def _fwd_kernel(
     configs=[
         triton.Config({"BLOCK_SEQ": BS}, num_stages=s, num_warps=w)
         for BS in [1, 2, 4, 8]
-        for s in [1]
-        for w in [1, 2, 4]
+        for s in [1, 2]
+        for w in [1, 2]
     ],
     key=["seq_len", "q_head_dim", "rope_head_dim"],
 )
@@ -397,7 +397,11 @@ def _bwd_kernel(
     )
     do_kpe0_data = d_k_pe1_data * sin1_data + d_k_pe0_data * cos0_data
     do_kpe1_data = d_k_pe1_data * cos1_data - d_k_pe0_data * sin0_data
-    offs_do_kpe = batch_idx * stride_dokpe_bsz + offs_seq[:, None] * stride_dokpe_seq
+    offs_do_kpe = (
+        batch_idx * stride_dokpe_bsz
+        + offs_seq[:, None] * stride_dokpe_seq
+        + head_idx * stride_dokpe_head
+    )
     tl.store(
         do_k_pe + offs_do_kpe + rope_dim0_interleaved[None, :],
         do_kpe0_data,
@@ -409,6 +413,30 @@ def _bwd_kernel(
         do_kpe1_data,
         mask=(offs_seq[:, None] < seq_len)
         & (rope_dim1_interleaved[None, :] < rope_head_dim),
+    )
+    # for do_kv
+    d_k_nope_data = tl.load(
+        d_kv + offs_d_kv + nope_dim_range[None, :] * stride_dkv_dim,
+        mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
+    )
+    d_v_data = tl.load(
+        d_kv + offs_d_kv + stride_dkv_kv + v_dims[None, :] * stride_dkv_dim,
+        mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
+    )
+    offs_do_kv = (
+        batch_idx * stride_kv_bsz
+        + offs_seq[:, None] * stride_kv_seq
+        + head_idx * stride_kv_head
+    )
+    tl.store(
+        do_kv + offs_do_kv + nope_dim_range[None, :],
+        d_k_nope_data,
+        mask=(offs_seq[:, None] < seq_len) & (nope_dim_range[None, :] < nope_head_dim),
+    )
+    tl.store(
+        do_kv + offs_do_kv + nope_head_dim + v_dims[None, :],
+        d_v_data,
+        mask=(offs_seq[:, None] < seq_len) & (v_dims[None, :] < v_head_dim),
     )
 
 
@@ -494,7 +522,7 @@ class PartialRotaryEmb(torch.autograd.Function):
         nope_head_dim = q_head_dim - rope_head_dim
         v_head_dim = kv.shape[3] - nope_head_dim
         do_q = d_q.new_empty(bsz, seq_len, num_heads, q_head_dim)
-        do_k_pe = d_q.new_empty(bsz, seq_len, 1, rope_head_dim)
+        do_k_pe_tmp = d_q.new_empty(bsz, seq_len, num_heads, rope_head_dim)
         do_kv = torch.empty_like(kv)
         with torch.cuda.device(d_q.device):
             grid = lambda META: (
@@ -508,7 +536,7 @@ class PartialRotaryEmb(torch.autograd.Function):
                 cos,
                 sin,
                 do_q,
-                do_k_pe,
+                do_k_pe_tmp,
                 do_kv,
                 stride_dq_bsz=d_q.stride(0),
                 stride_dq_seq=d_q.stride(1),
@@ -522,10 +550,10 @@ class PartialRotaryEmb(torch.autograd.Function):
                 stride_cos_bsz=cos.stride(0),
                 stride_cos_seq=cos.stride(1),
                 stride_cos_dim=cos.stride(2),
-                stride_dokpe_bsz=do_k_pe.stride(0),
-                stride_dokpe_seq=do_k_pe.stride(1),
-                stride_dokpe_head=do_k_pe.stride(2),
-                stride_dokpe_dim=do_k_pe.stride(3),
+                stride_dokpe_bsz=do_k_pe_tmp.stride(0),
+                stride_dokpe_seq=do_k_pe_tmp.stride(1),
+                stride_dokpe_head=do_k_pe_tmp.stride(2),
+                stride_dokpe_dim=do_k_pe_tmp.stride(3),
                 stride_kv_bsz=kv.stride(0),
                 stride_kv_seq=kv.stride(1),
                 stride_kv_head=kv.stride(2),
@@ -539,6 +567,7 @@ class PartialRotaryEmb(torch.autograd.Function):
                 BLOCK_NOPE_DIM=triton.next_power_of_2(nope_head_dim),
                 BLOCK_V_DIM=triton.next_power_of_2(v_head_dim),
             )
+        do_k_pe = torch.sum(do_k_pe_tmp, dim=2, keepdim=True)
         return do_q, do_k_pe, do_kv, None, None
 
 

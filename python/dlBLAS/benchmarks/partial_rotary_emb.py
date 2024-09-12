@@ -25,13 +25,6 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-def rotate_half_conj(x):
-    """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
-    return torch.cat((x2, -x1), dim=-1)
-
-
 my_aot_backend = aot_autograd(fw_compiler=my_compiler)
 
 
@@ -49,20 +42,7 @@ def _apply_rotary_compile(
     return out1, out2
 
 
-@torch.compile(backend=my_aot_backend)
-def _test_compile(q: torch.Tensor):
-    b, h, s, d = q.shape
-    q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
-    return q
-
-
-def _test_func(q: torch.Tensor):
-    b, h, s, d = q.shape
-    q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
-    return q
-
-
-def apply_rotary_pos_emb(q, k, cos, sin, conj=False, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -92,16 +72,10 @@ def apply_rotary_pos_emb(q, k, cos, sin, conj=False, unsqueeze_dim=1):
     b, h, s, d = k.shape
     k = k.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
 
-    if conj:
-        # out1.copy_(x1 * cos + x2 * sin)
-        # out2.copy_(x2 * cos - x1 * sin)
-        q_embed = (q * cos) + (rotate_half_conj(q) * sin)
-        k_embed = (k * cos) + (rotate_half_conj(k) * sin)
-    else:
-        # out1.copy_(x1 * cos - x2 * sin)
-        # out2.copy_(x2 * cos + x1 * sin)
-        q_embed = (q * cos) + (rotate_half(q) * sin)
-        k_embed = (k * cos) + (rotate_half(k) * sin)
+    # out1.copy_(x1 * cos - x2 * sin)
+    # out2.copy_(x2 * cos + x1 * sin)
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
 
@@ -122,7 +96,6 @@ def partial_rotary_emb(q, k_pe, kv, cos, sin):
     kv = kv.transpose(1, 2)
     k_nope, v = torch.split(kv, [qk_nope_head_dim, v_head_dim], dim=-1)
     q_pe, k_pe = apply_rotary_pos_emb(q_pe, k_pe, cos, sin)
-    # return q_pe, k_pe
 
     q_out = k_pe.new_empty(bsz, num_heads, q_len, q_head_dim)
     q_out[:, :, :, :qk_nope_head_dim] = q_nope
@@ -186,28 +159,6 @@ class ApplyRotaryEmb(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, q, k_pe, kv, cos, sin):
-
-        # x1 = q[..., : q.shape[-1] // 2]
-        # x2 = q[..., q.shape[-1] // 2 :]
-        # out = _torch_apply_rotary_func(x1, x2, cos, sin, False)
-        # return out
-        # cos = torch.cat((cos, cos), dim=-1)
-        # sin = torch.cat((sin, sin), dim=-1)
-        # out_q, _ = apply_rotary_pos_emb(q, q, cos, sin, False)
-        # (
-        #     transpose_9,
-        #     cat_2,
-        #     unsqueeze,
-        #     unsqueeze_1,
-        #     _unsafe_view,
-        #     _unsafe_view_1,
-        #     cat,
-        #     cat_1,
-        # ) = emb_fwd(q, k_pe, kv, cos, sin)
-        # ctx.save_for_backward(
-        #     unsqueeze, unsqueeze_1, _unsafe_view, _unsafe_view_1, cat, cat_1
-        # )
-        # return transpose_9, cat_2
         out_q, out_kv, q_pe, k_pe = test_emb(q, k_pe, kv, cos, sin)
         ctx.save_for_backward(kv, cos, sin, q_pe, k_pe)
         return out_q, out_kv
@@ -225,25 +176,21 @@ class ApplyRotaryEmb(torch.autograd.Function):
         do_k_pe = do_k[:, :, :, nope_head_dim:]
         d_q_nope = d_q[:, :, :, :nope_head_dim]
         d_q_pe = d_q[:, :, :, nope_head_dim:]
-
-        # bwd for
+        # bwd for rotary
         cos = cos.unsqueeze(2)
         sin = sin.unsqueeze(2)
-        # import pdb
-
-        # pdb.set_trace()
         dx_q_pe = rotary_bwd(q_pe.transpose(1, 2), d_q_pe, cos, sin)
         dx_k_pe = rotary_bwd(k_pe.transpose(1, 2), do_k_pe, cos, sin)
-
-        b, h, s, d = dx_q_pe.shape
-        dx_q_pe = dx_q_pe.view(b, h, s, 2, d // 2).transpose(4, 3).reshape(b, h, s, d)
-
-        b, h, s, d = dx_k_pe.shape
-        dx_k_pe = dx_k_pe.view(b, h, s, 2, d // 2).transpose(4, 3).reshape(b, h, s, d)
-
         dx_kv = torch.concat([do_k_nope, do_v], dim=-1)
         dx_q = torch.concat((d_q_nope, dx_q_pe), dim=-1)
-        return dx_q, dx_k_pe, dx_kv, None, None
+        dx_k_pe = torch.sum(dx_k_pe, dim=2, keepdim=True)
+        return (
+            dx_q,
+            dx_k_pe,
+            dx_kv,
+            None,
+            None,
+        )
 
 
 def rotary_bwd(q_pe, do_q, cos, sin):
@@ -257,7 +204,10 @@ def rotary_bwd(q_pe, do_q, cos, sin):
     sin1 = sin[:, :, :, sin.shape[-1] // 2 :]
     dx_q_0 = do1 * sin1 + do0 * cos0
     dx_q_1 = do1 * cos1 - do0 * sin0
-    return torch.concat((dx_q_0, dx_q_1), dim=-1)
+    dx_q = torch.concat((dx_q_0, dx_q_1), dim=-1)
+    b, h, s, d = dx_q.shape
+    dx_q = dx_q.view(b, h, s, 2, d // 2).transpose(4, 3).reshape(b, h, s, d)
+    return dx_q
     # mul_4 = torch.ops.aten.mul.Tensor(do1, x1)
     mul_5 = torch.ops.aten.mul.Tensor(do1, cos1)
     # mul_6 = torch.ops.aten.mul.Tensor(do1, x0)
@@ -274,12 +224,12 @@ def rotary_bwd(q_pe, do_q, cos, sin):
 
 
 def test():
-    num_heads = 2  # 128
-    nope_head_dim = 4  # 128
-    rope_head_dim = 4  # 64
-    v_head_dim = 4  # 128
+    num_heads = 128
+    nope_head_dim = 128
+    rope_head_dim = 64
+    v_head_dim = 128
     q_head_dim = nope_head_dim + rope_head_dim
-    bsz, q_len = 1, 2  # 1, 4096
+    bsz, q_len = 1, 4096
     q = torch.randn(
         (bsz, q_len, num_heads, q_head_dim), dtype=torch.bfloat16, device=device_
     )
@@ -299,64 +249,53 @@ def test():
             k_pe.clone(),
             kv.clone(),
         )
-        q_test, k_pe_test, kv_test = (
+        q_test, k_pe_test, kv_test, cos_test, sin_test = (
             q.clone(),
             k_pe.clone(),
             kv.clone(),
+            cos.clone(),
+            sin.clone(),
         )
     q_tri.requires_grad = True
     k_pe_tri.requires_grad = True
     kv_tri.requires_grad = True
-
     q.requires_grad = True
     k_pe.requires_grad = True
     kv.requires_grad = True
     q_test.requires_grad = True
     k_pe_test.requires_grad = True
     kv_test.requires_grad = True
+    cos_test.requires_grad = True
+    sin_test.requires_grad = True
 
     out_q, out_kv = partial_rotary_emb(q, k_pe, kv, cos, sin)
     loss_torch = torch.sum(torch.mean(out_q) * torch.mean(out_kv))
     loss_torch.backward(retain_graph=True)
-    out_q_test, out_kv_test = ApplyRotaryEmb.apply(q_test, k_pe_test, kv_test, cos, sin)
+    out_q_test, out_kv_test = ApplyRotaryEmb.apply(
+        q_test, k_pe_test, kv_test, cos_test, sin_test
+    )
     loss_test = torch.sum(torch.mean(out_q_test) * torch.mean(out_kv_test))
     loss_test.backward(retain_graph=True)
-    print(f"q grad max diff: {(q.grad - q_test.grad).abs().max().item()}")
-    print(f"k_pe grad mean diff: {(k_pe.grad - k_pe_test.grad).abs().mean().item()}")
-    print(f"kv grad mean diff: {(kv.grad - kv_test.grad).abs().mean().item()}")
-
     assert torch.allclose(q.grad, q_test.grad)
-
+    assert torch.allclose(k_pe.grad, k_pe_test.grad)
+    assert torch.allclose(kv.grad, kv_test.grad)
     out_tri_q, out_tri_kv = dlblas.partial_rotary_emb(q_tri, k_pe_tri, kv_tri, cos, sin)
     assert torch.allclose(out_q, out_tri_q)
-    # print(out_kv)
-    # print(out_tri_kv)
-    out_k = out_kv[:, :, 0, :, :]
-    out_v = out_kv[:, :, 1, :, :][:, :, :, :v_head_dim]
-    out_tri_k = out_tri_kv[:, :, 0, :, :]
-    out_tri_v = out_tri_kv[:, :, 1, :, :][:, :, :, :v_head_dim]
-    assert torch.allclose(out_k, out_tri_k)
-    assert torch.allclose(out_v, out_tri_v)
     assert torch.allclose(out_kv, out_tri_kv)
     loss_tri = torch.sum(torch.mean(out_tri_q) * torch.mean(out_tri_kv))
     loss_tri.backward(retain_graph=True)
-
-    print(k_pe.grad)
-    print(k_pe_tri.grad)
-
     print(f"q grad max diff: {(q.grad - q_tri.grad).abs().max().item()}")
     print(f"k_pe grad max diff: {(k_pe.grad - k_pe_tri.grad).abs().max().item()}")
-
-    # assert torch.allclose(q.grad, q_tri.grad)
-    # return
+    print(f"kv grad max diff: {(kv.grad - kv_tri.grad).abs().max().item()}")
+    assert torch.allclose(q.grad, q_tri.grad)
+    assert torch.allclose(k_pe.grad, k_pe_tri.grad)
+    assert torch.allclose(kv.grad, kv_tri.grad)
 
     configs = []
     configs.append(
         triton.testing.Benchmark(
             x_names=["op"],
-            x_vals=[
-                "fwd",
-            ],
+            x_vals=["fwd", "bwd"],
             line_arg="provider",
             line_vals=["triton", "pytorch"],
             line_names=["Triton", "PyTorch"],
@@ -376,25 +315,30 @@ def test():
                 fn = lambda: dlblas.partial_rotary_emb(
                     q_tri, k_pe_tri, kv_tri, cos, sin
                 )
-                ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
-
+            elif "bwd" == op:
+                out_tri_q, out_tri_kv = dlblas.partial_rotary_emb(
+                    q_tri, k_pe_tri, kv_tri, cos, sin
+                )
+                loss_tri = torch.sum(torch.mean(out_tri_q) * torch.mean(out_tri_kv))
+                fn = lambda: loss_tri.backward(retain_graph=True)
             else:
                 raise Exception()
 
         if "pytorch" in provider:
             if "fwd" == op:
                 fn = lambda: partial_rotary_emb(q, k_pe, kv, cos, sin)
-                ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+            elif "bwd" == op:
+                out_q, out_kv = partial_rotary_emb(q, k_pe, kv, cos, sin)
+                loss_torch = torch.sum(torch.mean(out_q) * torch.mean(out_kv))
+                fn = lambda: loss_torch.backward(retain_graph=True)
             else:
                 raise Exception()
-
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
         return ms
 
     bench_fn.run(show_plots=True, print_data=True)
 
 
 if __name__ == "__main__":
-
     test()
-    # test2()
     print("sucessfully!")

@@ -160,3 +160,18 @@ def fill_kv_cache(
 def partial_rotary_emb(q, k_pe, kv, cos, sin):
     op = get_op("partial_rotary_emb", (q, k_pe, kv, cos, sin))
     return op(q, k_pe, kv, cos, sin)
+
+
+def fused_rotary_and_fa(q, k, v, cos, sin):
+    op = get_op("fused_rotary_and_fa", (q, k, v, cos, sin))
+    return op(q, k, v, cos, sin)
+
+
+def flash_attention_v2(q, k, v):
+    op = get_op("flash_attention_v2", (q, k, v))
+    return op(q, k, v)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids_1d):
+    op = get_op("apply_rotary_pos_emb", (q, k, cos, sin, position_ids_1d))
+    return op(q, k, cos, sin, position_ids_1d)

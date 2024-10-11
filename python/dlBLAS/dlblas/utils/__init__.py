@@ -13,7 +13,7 @@ from dlblas.autotune.configs import AutotuneConfig
 
 register_dlblas_op = op_registry.register
 
-def get_list_op_names() -> list[str]:
+def get_list_op_names() -> [str]:
     return op_registry.get_list_op_names()
 
 

@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 @dataclass(frozen=True)
 class OpParams:
     n_args: int
-    args_types: list[str]
+    args_types: [str]
     args: tuple
     
     def __eq__(self, __value: object) -> bool:

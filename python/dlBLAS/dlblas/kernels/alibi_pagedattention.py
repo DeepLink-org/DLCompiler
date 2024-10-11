@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 from dlblas.utils import register_dlblas_op, SymVar, Tensor
 
-assert triton.__version__ >= '3.0.0'
 
 LOG2 = math.log(2)
 
@@ -516,6 +515,7 @@ def alibi_paged_attention_fwd(q: torch.Tensor,
 
 
 def benchfn(*args, **kwargs):
+    assert triton.__version__ >= '3.0.0'
     fn = lambda: alibi_paged_attention_fwd(*args, **kwargs)
     ms = triton.testing.do_bench(fn, warmup=20, rep=20)
     return ms

@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 from dlblas.utils import register_dlblas_op, SymVar, Tensor
 
-assert triton.__version__ != '2.1.0', 'Triton 2.1.0 is missing enable_fp_fusion. Triton 2.2.0 is required for numerical stability of this implementation.'
 
 inv_ln2 = 1.44269504
 
@@ -243,6 +242,7 @@ def call(u, delta, A, B, C, D, initial_state=None):
 
 
 def bench_fn(u, delta, A, B, C, D, initial_state=None):
+    assert triton.__version__ != '2.1.0', 'Triton 2.1.0 is missing enable_fp_fusion. Triton 2.2.0 is required for numerical stability of this implementation.'
     fn = lambda: call(u, delta, A, B, C, D, initial_state=None)
     ms = triton.testing.do_bench(fn, warmup=100, rep=100)
     return ms

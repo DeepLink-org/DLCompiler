@@ -116,7 +116,7 @@ class DictSpace:
 
 @dataclass(frozen=True)
 class ChoiceSpace:
-    choices: list[Config]
+    choices: [Config]
 
     def __post_init__(self):
         assert len(self.choices) > 0, f'empty choices: {self.choices}'

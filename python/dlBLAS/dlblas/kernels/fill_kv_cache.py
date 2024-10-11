@@ -6,7 +6,6 @@ from dlblas.utils import register_dlblas_op, SymVar, Tensor, ChoiceSpace
 from dlblas.utils.libentry import libentry
 
 
-@libentry()
 @triton.jit
 def _fill_kv_cache_kernel(
     key,

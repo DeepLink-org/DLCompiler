@@ -20,15 +20,14 @@ def is_gpu_idle(gpu_id):
             return True  # GPU is idle
         else:
             return False  # GPU is not idle
-    except subprocess.CalledProcessError:
-        raise RuntimeError("Failed to check GPU status.")
     except Exception as e:
-        raise RuntimeError("Failed to check GPU status:{e}")
+        print("Failed to check GPU status")
+        return False
 
 def get_idle_device():
     for gpu_id in range(DEVICE_COUNT):
         if is_gpu_idle(gpu_id) == True:
             print(f"GPU {gpu_id} is idle, we will use cuda:{gpu_id}")
             return f"cuda:{gpu_id}"
-    print("[WARN] All GPU device is busy, performance data maybe inaccurate.")
+    print("[WARN] All GPU device is busy, will use cuda:0 as default, performance data maybe inaccurate.")
     return "cuda:0"

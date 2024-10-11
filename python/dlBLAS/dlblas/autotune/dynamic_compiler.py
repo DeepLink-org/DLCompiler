@@ -25,9 +25,9 @@ class Parser:
     call_name: str = None
     tunable_params: set = field(default_factory=set)
     src_code: str = None
-    kernel_call_start_end_idx: list[tuple[int]] = field(default_factory=list)
-    kernel_args_names: list[str] = field(default_factory=list)
-    kernel_constexprs_idx: list[int] = field(default_factory=list)
+    kernel_call_start_end_idx: [[int]] = field(default_factory=list)
+    kernel_args_names: [str] = field(default_factory=list)
+    kernel_constexprs_idx: [int] = field(default_factory=list)
 
     def get_tunable_params(self, op: OpImpl):
         space = op.spaces

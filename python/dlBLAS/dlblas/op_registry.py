@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 @dataclass
 class OpRegistry:
     # ops: name -> list[OpImpl]
-    ops: dict[str, OpImpl] = field(default_factory=dict)
+    ops: [str, OpImpl] = field(default_factory=dict)
     cache: Cache = field(default_factory=Cache)
 
     def __post_init__(self):
@@ -118,7 +118,7 @@ class OpRegistry:
                 candidates.append(op)
         return candidates
 
-    def _selection(self, args, candidates: list[OpImpl], configs) -> int:
+    def _selection(self, args, candidates: [OpImpl], configs) -> int:
         # NOTE: for now we only bench each one locally and in serial
         # for parallel benchmark, see:
         # https://github.com/pytorch/pytorch/blob/a0dac3de31b50a19e503652ffe257b314fa005a6/torch/_inductor/autotune_process.py#L282

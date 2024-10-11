@@ -38,7 +38,7 @@ class RandomPolicy(Policy):
 
 @dataclass
 class EnumerationPolicy(Policy):
-    args_names: list[str] = field(default_factory=list)
+    args_names: [str] = field(default_factory=list)
     iters: Iterable = None
 
     def __post_init__(self):

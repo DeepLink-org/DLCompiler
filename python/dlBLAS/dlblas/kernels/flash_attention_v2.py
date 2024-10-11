@@ -33,8 +33,6 @@ def _fwd_kernel(
     Q,
     K,
     V,
-    COS,
-    SIN,
     Bias,
     Out,
     Lse,
@@ -55,8 +53,6 @@ def _fwd_kernel(
     stride_ob,
     stride_oh,
     stride_om,
-    stride_cs_b,
-    stride_cs_s,
     nheads,
     seqlen_q,
     seqlen_k,
@@ -79,10 +75,7 @@ def _fwd_kernel(
     # initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
-    # offs_d = tl.arange(0, BLOCK_HEADDIM)
-    half_head_dim: tl.constexpr = head_dim // 2
-    offs_d0 = tl.arange(0, half_head_dim)
-    offs_d1 = tl.arange(half_head_dim, head_dim)
+    offs_d = tl.arange(0, head_dim)
 
     # Initialize pointers to Q, K, V
     # Adding parenthesis around indexing might use int32 math instead of int64 math?
@@ -92,10 +85,6 @@ def _fwd_kernel(
     q_off = Q + off_b * stride_qb + off_h * stride_qh + (offs_m[:, None] * stride_qm)
     k_off = K + off_b * stride_kb + off_h * stride_kh + (offs_n[:, None] * stride_kn)
     v_off = V + off_b * stride_vb + off_h * stride_vh + (offs_n[:, None] * stride_vn)
-    cos_off_q = COS + off_b * stride_cs_b + (offs_m[:, None] * stride_cs_s)
-    sin_off_q = SIN + off_b * stride_cs_b + (offs_m[:, None] * stride_cs_s)
-    cos_off_k = COS + off_b * stride_cs_b + (offs_n[:, None] * stride_cs_s)
-    sin_off_k = SIN + off_b * stride_cs_b + (offs_n[:, None] * stride_cs_s)
 
     if BIAS_TYPE == "vector":
         b_ptrs = Bias + off_b * stride_bb + off_h * stride_bh + offs_n
@@ -110,77 +99,29 @@ def _fwd_kernel(
     t_ptrs = TMP + off_hb * seqlen_q_rounded + offs_m
     lse_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    acc_o0 = tl.zeros([BLOCK_M, half_head_dim], dtype=tl.float16)
-    acc_o1 = tl.zeros([BLOCK_M, half_head_dim], dtype=tl.float16)
+    acc_o = tl.zeros([BLOCK_M, head_dim], dtype=tl.float16)
     # load q: it will stay in SRAM throughout
     # [2022-10-30] TD: Triton bug - in the case of EVEN_M=True and EVEN_N=False, if we just call
     # tl.load(q_ptrs), we get the wrong output!
     if EVEN_M & EVEN_N:
-        q0 = tl.load(q_off + offs_d0[None, :])
-        q1 = tl.load(q_off + offs_d1[None, :])
-        cos0_q = tl.load(cos_off_q + offs_d0[None, :])
-        cos1_q = tl.load(cos_off_q + offs_d1[None, :])
-        sin0_q = tl.load(sin_off_q + offs_d0[None, :])
-        sin1_q = tl.load(sin_off_q + offs_d1[None, :])
+        q = tl.load(q_off + offs_d[None, :])
     else:
-        q0 = tl.load(q_off + offs_d0[None, :], mask=offs_m[:, None] < seqlen_q)
-        q1 = tl.load(q_off + offs_d1[None, :], mask=offs_m[:, None] < seqlen_q)
-        cos0_q = tl.load(cos_off_q + offs_d0[None, :], mask=offs_m[:, None] < seqlen_q)
-        cos1_q = tl.load(cos_off_q + offs_d1[None, :], mask=offs_m[:, None] < seqlen_q)
-        sin0_q = tl.load(sin_off_q + offs_d0[None, :], mask=offs_m[:, None] < seqlen_q)
-        sin1_q = tl.load(sin_off_q + offs_d1[None, :], mask=offs_m[:, None] < seqlen_q)
-    q0_emb = q0 * cos0_q - q1 * sin0_q
-    q1_emb = q0 * sin1_q + q1 * cos1_q
+        q = tl.load(q_off + offs_d[None, :], mask=offs_m[:, None] < seqlen_q)
     # loop over k, v and update accumulator
     end_n = seqlen_k if not IS_CAUSAL else tl.minimum((start_m + 1) * BLOCK_M, seqlen_k)
     for start_n in range(0, end_n, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         if EVEN_N & EVEN_M:
-            k0 = tl.load(k_off + offs_d0[None, :] + start_n * stride_kn)
-            k1 = tl.load(k_off + offs_d1[None, :] + start_n * stride_kn)
-            cos0_k = tl.load(cos_off_k + offs_d0[None, :] + start_n * stride_cs_s)
-            sin0_k = tl.load(sin_off_k + offs_d0[None, :] + start_n * stride_cs_s)
-            cos1_k = tl.load(cos_off_k + offs_d1[None, :] + start_n * stride_cs_s)
-            sin1_k = tl.load(sin_off_k + offs_d1[None, :] + start_n * stride_cs_s)
+            k = tl.load(k_off + offs_d[None, :] + start_n * stride_kn)
         else:
-            k0 = tl.load(
-                k_off + offs_d0[None, :] + start_n * stride_kn,
+            k = tl.load(
+                k_off + offs_d[None, :] + start_n * stride_kn,
                 mask=(start_n + offs_n)[:, None] < seqlen_k,
                 other=0.0,
             )
-            k1 = tl.load(
-                k_off + offs_d1[None, :] + start_n * stride_kn,
-                mask=(start_n + offs_n)[:, None] < seqlen_k,
-                other=0.0,
-            )
-            cos0_k = tl.load(
-                cos_off_k + offs_d0[None, :] + start_n * stride_cs_s,
-                mask=(start_n + offs_n)[:, None] < seqlen_k,
-                other=0.0,
-            )
-            sin0_k = tl.load(
-                sin_off_k + offs_d0[None, :] + start_n * stride_cs_s,
-                mask=(start_n + offs_n)[:, None] < seqlen_k,
-                other=0.0,
-            )
-            cos1_k = tl.load(
-                cos_off_k + offs_d1[None, :] + start_n * stride_cs_s,
-                mask=(start_n + offs_n)[:, None] < seqlen_k,
-                other=0.0,
-            )
-            sin1_k = tl.load(
-                sin_off_k + offs_d1[None, :] + start_n * stride_cs_s,
-                mask=(start_n + offs_n)[:, None] < seqlen_k,
-                other=0.0,
-            )
-        k0_emb = k0 * cos0_k - k1 * sin0_k
-        k1_emb = k0 * sin1_k + k1 * cos1_k
 
-        qk = tl.dot(q0_emb, tl.trans(k0_emb), out_dtype=tl.float16)
-        qk += tl.dot(q1_emb, tl.trans(k1_emb), out_dtype=tl.float16)
-        # qk = tl.dot(q0, tl.trans(k0), out_dtype=tl.float16)
-        # qk += tl.dot(q1, tl.trans(k1), out_dtype=tl.float16)
+        qk = tl.dot(q, tl.trans(k), out_dtype=tl.float16)
 
         # Trying to combine the two masks seem to make the result wrong
         if not EVEN_N:
@@ -229,43 +170,28 @@ def _fwd_kernel(
         acc_o_scale = tl_exp(m_i - m_ij).to(tl.float16)
         # # -- update output accumulator --
 
-        acc_o0 = acc_o0 * acc_o_scale[:, None]
-        acc_o1 = acc_o1 * acc_o_scale[:, None]
+        acc_o = acc_o * acc_o_scale[:, None]
 
         # update acc_o
         if (
             EVEN_N & EVEN_M
         ):  # If we just do "if EVEN_N", there seems to be some race condition
-            v0 = tl.load(v_off + offs_d0[None, :] + start_n * stride_vn)
+            v = tl.load(v_off + offs_d[None, :] + start_n * stride_vn)
         else:
-            v0 = tl.load(
-                v_off + offs_d0[None, :] + start_n * stride_vn,
+            v = tl.load(
+                v_off + offs_d[None, :] + start_n * stride_vn,
                 mask=(start_n + offs_n)[:, None] < seqlen_k,
                 other=0.0,
             )
-        p = p.to(v0.dtype)
-        acc_o0 += tl.dot(p, v0, out_dtype=tl.float16)
-
-        if (
-            EVEN_N & EVEN_M
-        ):  # If we just do "if EVEN_N", there seems to be some race condition
-            v1 = tl.load(v_off + offs_d1[None, :] + start_n * stride_vn)
-        else:
-            v1 = tl.load(
-                v_off + offs_d1[None, :] + start_n * stride_vn,
-                mask=(start_n + offs_n)[:, None] < seqlen_k,
-                other=0.0,
-            )
-        acc_o1 += tl.dot(p, v1, out_dtype=tl.float16)
+        p = p.to(v.dtype)
+        acc_o += tl.dot(p, v, out_dtype=tl.float16)
         # -- update statistics
         m_i = m_ij
         l_i_new = tl_exp(lse_i - m_ij) + l_ij
         lse_i = m_ij + tl_log(l_i_new)
 
     o_scale = tl_exp(m_i - lse_i)
-    acc_o0 = acc_o0 * o_scale[:, None]
-    acc_o1 = acc_o1 * o_scale[:, None]
-
+    acc_o = acc_o * o_scale[:, None]
     #
     # store
     # rematerialize offsets to save registers
@@ -281,18 +207,15 @@ def _fwd_kernel(
         Out + off_b * stride_ob + off_h * stride_oh + (offs_m[:, None] * stride_om)
     )
     if EVEN_M:
-        tl.store(out_off + offs_d0[None, :], acc_o0)
-        tl.store(out_off + offs_d1[None, :], acc_o1)
+        tl.store(out_off + offs_d[None, :], acc_o)
     else:
-        tl.store(out_off + offs_d0[None, :], acc_o0, mask=offs_m[:, None] < seqlen_q)
-        tl.store(out_off + offs_d1[None, :], acc_o1, mask=offs_m[:, None] < seqlen_q)
+        tl.store(out_off + offs_d[None, :], acc_o, mask=offs_m[:, None] < seqlen_q)
 
 
-def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scale=None):
+def _flash_attn_forward(q, k, v, bias=None, causal=False, softmax_scale=None):
     # shape constraints
     batch, seqlen_q, nheads, d = q.shape
     _, seqlen_k, _, _ = k.shape
-    assert cos.shape == sin.shape
     assert k.shape == (batch, seqlen_k, nheads, d)
     assert v.shape == (batch, seqlen_k, nheads, d)
     assert d <= 128, "FlashAttention only support head dimensions up to 128"
@@ -341,8 +264,6 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
         q,
         k,
         v,
-        cos,
-        sin,
         bias,
         o,
         lse,
@@ -361,8 +282,6 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
         o.stride(0),
         o.stride(2),
         o.stride(1),
-        cos.stride(0),
-        cos.stride(1),
         nheads,
         seqlen_q,
         seqlen_k,
@@ -377,29 +296,29 @@ def _flash_attn_forward(q, k, v, cos, sin, bias=None, causal=False, softmax_scal
         # num_warps=num_warps,
         # num_stages=1,
     )
-    # print(f"_fwd_kernel.best_config ", _fwd_kernel.best_config, flush=True)
+    # print(f"_fwd_kernel.best_config ", _fwd_kernel.best_config, flush = True)
     return o, lse, softmax_scale  # softmax_scale could have been updated
 
 
-class FusedRotaryAndFA(torch.autograd.Function):
+class FlashAttentionV2(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: torch.Any, q, k, v, cos, sin):
-        o, lse, softmax_scale = _flash_attn_forward(q, k, v, cos, sin)
+    def forward(ctx: torch.Any, q, k, v):
+        o, lse, softmax_scale = _flash_attn_forward(q, k, v)
         return o
 
 
-def call(q, k, v, cos, sin):
-    return FusedRotaryAndFA.apply(q, k, v, cos, sin)
+def call(q, k, v):
+    return FlashAttentionV2.apply(q, k, v)
 
 
-def bench_fn(q, k, v, cos, sin):
-    fn = lambda: call(q, k, v, cos, sin)
+def bench_fn(q, k, v):
+    fn = lambda: call(q, k, v)
     ms = triton.testing.do_bench(fn, warmup=100, rep=100)
     return ms
 
 
 # register
-name = "fused_rotary_and_fa"
+name = "flash_attention_v2"
 for dtype in [torch.bfloat16, torch.float16, torch.float32]:
     for device_ in ["cuda"]:
         b, s, h, d = SymVar("b"), SymVar("s"), SymVar("h"), SymVar("d")
@@ -407,7 +326,5 @@ for dtype in [torch.bfloat16, torch.float16, torch.float32]:
         q = Tensor((b, s, h, d), dtype=dtype, device=device_)
         k = Tensor((b, s, h, d), dtype=dtype, device=device_)
         v = Tensor((b, s, h, d), dtype=dtype, device=device_)
-        cos = Tensor((b, s, d), dtype=dtype, device=device_)
-        sin = Tensor((b, s, d), dtype=dtype, device=device_)
         # space = ChoiceSpace([])
-        register_dlblas_op(name, None, (q, k, v, cos, sin), call, bench_fn, call)
+        register_dlblas_op(name, None, (q, k, v), call, bench_fn, call)

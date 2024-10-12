@@ -1,19 +1,6 @@
 """
-Copyright 2023-2024 SGLang Team
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+modify from: https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/triton_ops/decode_attention.py
 
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
-
-"""
 Memory-efficient attention for decoding.
 It supports page size = 1.
 """
@@ -31,6 +18,15 @@ def tanh(x):
     return 2 * tl.sigmoid(2 * x) - 1
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_N": BN}, num_stages=s, num_warps=w)
+        for BN in [32, 64]
+        for s in [1, 2]
+        for w in [4, 8]
+    ],
+    key=["kv_group_num", "Lk"],
+)
 @triton.jit
 def _fwd_kernel_stage1(
     Q,
@@ -49,9 +45,9 @@ def _fwd_kernel_stage1(
     att_stride_h,
     kv_group_num: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
-    BLOCK_N: tl.constexpr,
     logit_cap: tl.constexpr,
     Lk: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_head = tl.program_id(1)
@@ -188,19 +184,14 @@ def _decode_att_m_fwd(
     sm_scale,
     logit_cap,
 ):
-    BLOCK = 32
     Lk = k_buffer.shape[-1]
-
     batch, head_num = B_req_idx.shape[0], q.shape[1]
-
-    grid = (batch, head_num, triton.cdiv(max_len_in_batch, BLOCK))
+    grid = lambda META: (
+        batch,
+        head_num,
+        triton.cdiv(max_len_in_batch, META["BLOCK_N"]),
+    )
     kv_group_num = q.shape[1] // k_buffer.shape[1]
-
-    if kv_group_num == 1:
-        num_warps = 4
-    else:
-        num_warps = 2
-
     BLOCK_DMODEL = triton.next_power_of_2(Lk)
 
     _fwd_kernel_stage1[grid](
@@ -220,10 +211,7 @@ def _decode_att_m_fwd(
         att_out.stride(0),
         kv_group_num=kv_group_num,
         BLOCK_DMODEL=BLOCK_DMODEL,
-        BLOCK_N=BLOCK,
         logit_cap=logit_cap,
-        num_warps=num_warps,
-        num_stages=1,
         Lk=Lk,
     )
 
@@ -270,6 +258,15 @@ def _decode_softmax_reducev_fwd(
     )
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_N": BN}, num_stages=s, num_warps=w)
+        for BN in [32]
+        for s in [1]
+        for w in [4]
+    ],
+    key=["kv_group_num", "Lk"],
+)
 @triton.jit
 def _fwd_grouped_kernel_stage1(
     Q,
@@ -290,10 +287,10 @@ def _fwd_grouped_kernel_stage1(
     q_head_num: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     BLOCK_DPE: tl.constexpr,
-    BLOCK_N: tl.constexpr,
     BLOCK_H: tl.constexpr,
     logit_cap: tl.constexpr,
     Lk: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_kv_head = tl.program_id(1)
@@ -469,9 +466,7 @@ def _decode_grouped_att_m_fwd(
     sm_scale,
     logit_cap,
 ):
-    BLOCK = 64
     Lk = k_buffer.shape[-1]
-
     if Lk == 576:
         BLOCK_DMODEL = 512
         BLOCK_DPE = 64
@@ -486,14 +481,11 @@ def _decode_grouped_att_m_fwd(
     kv_group_num = q.shape[1] // k_buffer.shape[1]
 
     BLOCK_H = max(16, triton.next_power_of_2(kv_group_num))
-    grid = (
+    grid = lambda META: (
         batch,
         triton.cdiv(head_num, min(BLOCK_H, kv_group_num)),
-        triton.cdiv(max_len_in_batch, BLOCK),
+        triton.cdiv(max_len_in_batch, META["BLOCK_N"]),
     )
-
-    num_warps = 4
-
     _fwd_grouped_kernel_stage1[grid](
         q,
         k_buffer,
@@ -513,11 +505,8 @@ def _decode_grouped_att_m_fwd(
         q_head_num=head_num,
         BLOCK_DMODEL=BLOCK_DMODEL,
         BLOCK_DPE=BLOCK_DPE,
-        BLOCK_N=BLOCK,
         BLOCK_H=BLOCK_H,
         logit_cap=logit_cap,
-        num_warps=num_warps,
-        num_stages=1,
         Lk=Lk,
     )
 

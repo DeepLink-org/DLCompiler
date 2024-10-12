@@ -1,19 +1,6 @@
 """
-Copyright 2023-2024 SGLang Team
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+modify from: https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/triton_ops/extend_attention.py
 
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
-
-"""
 Memory-efficient attention for prefill.
 It supports page size = 1 and prefill with KV cache (i.e. extend).
 """
@@ -26,8 +13,6 @@ from dlblas.kernels.prefill_attention import (
     context_attention_fwd,
 )
 
-CUDA_CAPABILITY = torch.cuda.get_device_capability()
-
 
 @triton.jit
 def tanh(x):
@@ -35,6 +20,16 @@ def tanh(x):
     return 2 * tl.sigmoid(2 * x) - 1
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
+        for BM in [32, 64]
+        for BN in [32, 64]
+        for s in [1, 2]
+        for w in [4, 8]
+    ],
+    key=["Lq"],
+)
 @triton.jit
 def _fwd_kernel(
     Q_Extend,
@@ -285,30 +280,15 @@ def extend_attention_fwd(
         BLOCK_DMODEL = triton.next_power_of_2(Lq)
         BLOCK_DPE = 0
     BLOCK_DV = triton.next_power_of_2(Lv)
-
-    if CUDA_CAPABILITY[0] >= 9:
-        if Lq <= 256:
-            BLOCK_M, BLOCK_N = (128, 64)
-        else:
-            BLOCK_M, BLOCK_N = (32, 64)
-    elif CUDA_CAPABILITY[0] >= 8:
-        if Lq <= 128:
-            BLOCK_M, BLOCK_N = (128, 128)
-        elif Lq <= 256:
-            BLOCK_M, BLOCK_N = (64, 64)
-        else:
-            BLOCK_M, BLOCK_N = (32, 64)
-    else:
-        BLOCK_M, BLOCK_N = (64, 64) if Lq <= 128 else (32, 32)
-
     sm_scale = sm_scale or 1.0 / (Lq**0.5)
     batch_size, head_num = b_seq_len.shape[0], q_extend.shape[1]
     kv_group_num = q_extend.shape[1] // k_extend.shape[1]
 
-    grid = (batch_size, head_num, triton.cdiv(max_len_extend, BLOCK_M))
-    num_warps = 4 if Lk <= 64 else 8
-    num_stages = 1
-
+    grid = lambda META: (
+        batch_size,
+        head_num,
+        triton.cdiv(max_len_extend, META["BLOCK_M"]),
+    )
     _fwd_kernel[grid](
         q_extend,
         k_extend,
@@ -337,15 +317,11 @@ def extend_attention_fwd(
         v_buffer.stride(1),
         req_to_tokens.stride(0),
         logit_cap=logit_cap,
+        Lq=Lq,
+        Lv=Lv,
         BLOCK_DMODEL=BLOCK_DMODEL,
         BLOCK_DPE=BLOCK_DPE,
         BLOCK_DV=BLOCK_DV,
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
-        Lq=Lq,
-        Lv=Lv,
-        num_warps=num_warps,
-        num_stages=num_stages,
     )
 
 

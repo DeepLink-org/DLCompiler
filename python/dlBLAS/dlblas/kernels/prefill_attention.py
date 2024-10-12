@@ -24,9 +24,17 @@ import torch
 import triton
 import triton.language as tl
 
-CUDA_CAPABILITY = torch.cuda.get_device_capability()
 
-
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
+        for BM in [32]
+        for BN in [32]
+        for s in [1, 2, 3]
+        for w in [4, 8]
+    ],
+    key=["B_Seqlen", "Lk"],
+)
 @triton.jit
 def _fwd_kernel(
     Q,
@@ -45,10 +53,10 @@ def _fwd_kernel(
     stride_obs,
     stride_oh,
     kv_group_num: tl.constexpr,
-    BLOCK_M: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
-    BLOCK_N: tl.constexpr,
     Lk: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_head = tl.program_id(1)
@@ -145,20 +153,12 @@ def _fwd_kernel(
 
 
 def context_attention_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
-    if CUDA_CAPABILITY[0] >= 8:
-        BLOCK = 64
-    else:
-        BLOCK = 32
-
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
-
     sm_scale = 1.0 / (Lq**0.5)
     batch, head = b_seq_len.shape[0], q.shape[1]
     kv_group_num = q.shape[1] // k.shape[1]
 
-    grid = (batch, head, triton.cdiv(max_input_len, BLOCK))
-    num_warps = 4 if Lk <= 64 else 8
-
+    grid = lambda META: (batch, head, triton.cdiv(max_input_len, META["BLOCK_M"]))
     _fwd_kernel[grid](
         q,
         k,
@@ -176,10 +176,6 @@ def context_attention_fwd(q, k, v, o, b_start_loc, b_seq_len, max_input_len):
         o.stride(0),
         o.stride(1),
         kv_group_num=kv_group_num,
-        BLOCK_M=BLOCK,
         BLOCK_DMODEL=triton.next_power_of_2(Lk),
-        BLOCK_N=BLOCK,
-        num_warps=num_warps,
-        num_stages=1,
         Lk=Lk,
     )

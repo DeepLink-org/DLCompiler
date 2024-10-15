@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import setuptools
 
+from .utils import quiet
+
 def ty_to_cpp(ty):
     if ty[0] == '*':
         return "CNaddr"
@@ -271,8 +273,7 @@ def _build_mlu_ext(name, src, srcdir):
         return so
     # fallback on setuptools
     extra_compile_args = []
-    library_dirs = cuda_lib_dirs
-    include_dirs = [srcdir, cu_include_dir]
+    include_dirs = [srcdir]
     libraries = ['mlu']
     # extra arguments
     extra_link_args = []
@@ -284,7 +285,6 @@ def _build_mlu_ext(name, src, srcdir):
         include_dirs=include_dirs,
         extra_compile_args=extra_compile_args + ['-O3'],
         extra_link_args=extra_link_args,
-        library_dirs=library_dirs,
         libraries=libraries,
     )
     # build extension module
@@ -459,14 +459,12 @@ def ttir_to_cnfatbin(mod: Any, metadata: dict, arch_desc: dict, tuning_mode: boo
         return _triton.compile_ttir_to_cnfatbin(mod2, arch_desc["isa_version"])
 
 
-def get_architecture_descriptor(driver, **kwargs):
+def get_architecture_descriptor(driver, options):
     # Currently only support Block task.
     device = driver.get_current_device()
-    num_warps = kwargs.get("num_warps", 1)
-    num_stages = kwargs.get("num_stages", 1)
+    num_warps = options.num_warps
+    num_stages = options.num_stages
     isa_version = driver.utils.get_device_properties(device).get('isa_version')
-    isa_version_passed = kwargs.get("isa_version", None)
-    isa_version = isa_version if isa_version_passed is None else isa_version_passed
     capability = {
         "num_warps": num_warps,
         "isa_version": isa_version,

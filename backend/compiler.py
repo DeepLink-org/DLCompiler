@@ -113,10 +113,12 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "ttlinalgdir"
         elif self.driver.target == 'mlu':
             self.binary_ext = "cnbin"
+        elif self.driver.target == 'maca':
+            self.binary_ext = "mcfatbin"
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ['dicp', 'mlu']
+        return target.backend in ['dicp', 'mlu', 'maca']
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -141,7 +143,17 @@ class DICPBackend(BaseBackend):
             stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
         elif self.driver.target == 'mlu':
             from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
-            stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver), False, True)
+            stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver, options), False, True)
+        elif self.driver.target == 'maca':
+            from triton.backends.dicp_triton.maca import ttir_to_ttgir, optimize_ttgir, ttgir_to_llir, llir_to_mcfatbin, get_architecture_descriptor
+            arch = get_architecture_descriptor()
+            extern_libs = dict()
+            stages["ttgir"] = lambda src, metadata: optimize_ttgir(ttir_to_ttgir(src, 4), options.num_stages, arch)
+            stages["llir"] = lambda src, metadata: ttgir_to_llir(src, arch)
+            mxcc_arch = os.environ.get('MACA_PATH') + "/mxgpu_llvm/bin/mxcc"
+            if mxcc_arch is None:
+                raise RuntimeError('mxcc_arch is None (not specified)')
+            stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
         else:
             raise RuntimeError("backend not supported")
 

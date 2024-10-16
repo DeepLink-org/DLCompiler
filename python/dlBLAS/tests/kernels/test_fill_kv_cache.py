@@ -1,99 +1,173 @@
+# https://github.com/InternLM/lmdeploy/blob/v0.6.1/tests/pytorch/kernel/test_fill_kv_cache.py
+import pytest
 import torch
-import dlblas
-import triton
+
+from dlblas.kernels.fill_kv_cache import fill_kv_cache
 
 
-class ReshapePagedCache(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
+def _div_up(a, b):
+    return (a + b - 1) // b
 
-    def forward(
+
+class TestFillKVCache:
+
+    @pytest.fixture
+    def num_heads(self):
+        yield 4
+
+    @pytest.fixture
+    def head_dim(self):
+        yield 32
+
+    @pytest.fixture
+    def block_size(self):
+        yield 16
+
+    @pytest.fixture
+    def seq_lens(self, request):
+        yield request.param
+
+    @pytest.fixture
+    def history_lens(self, request):
+        yield request.param
+
+    @pytest.fixture
+    def batch_size(self, seq_lens):
+        yield len(seq_lens)
+
+    @pytest.fixture
+    def kv_lens(self, seq_lens, history_lens):
+        yield [s + h for s, h in zip(seq_lens, history_lens)]
+
+    @pytest.fixture
+    def max_q_seq_length(self, seq_lens):
+        yield max(seq_lens)
+
+    @pytest.fixture
+    def num_tokens(self, seq_lens):
+        yield sum(seq_lens)
+
+    @pytest.fixture
+    def num_blocks_per_input(self, kv_lens, block_size):
+        yield [_div_up(kv_len, block_size) for kv_len in kv_lens]
+
+    @pytest.fixture
+    def max_num_blocks(self, num_blocks_per_input):
+        yield max(num_blocks_per_input)
+
+    @pytest.fixture
+    def q_seq_length(self, seq_lens):
+        yield torch.tensor(seq_lens).cuda()
+
+    @pytest.fixture
+    def q_start_loc(self, q_seq_length):
+        cum_seq_length = q_seq_length.cumsum(0)
+        yield cum_seq_length - q_seq_length
+
+    @pytest.fixture
+    def kv_seq_length(self, kv_lens):
+        yield torch.tensor(kv_lens).cuda()
+
+    @pytest.fixture
+    def k_states(self, num_tokens, num_heads, head_dim):
+        yield torch.rand(num_tokens, num_heads, head_dim).cuda()
+
+    @pytest.fixture
+    def v_states(self, k_states):
+        yield torch.rand_like(k_states)
+
+    @pytest.fixture
+    def k_caches(self, batch_size, max_num_blocks, block_size, num_heads, head_dim):
+        shape = (batch_size * max_num_blocks, block_size, num_heads, head_dim)
+        yield torch.full(shape, 0.0).cuda()
+
+    @pytest.fixture
+    def v_caches(self, k_caches):
+        yield torch.rand_like(k_caches)
+
+    @pytest.fixture
+    def block_offsets(self, num_blocks_per_input):
+        batch_size = len(num_blocks_per_input)
+        max_num_blocks = max(num_blocks_per_input)
+        batch_ids = torch.arange(batch_size)
+        ret = torch.arange(max_num_blocks)
+        ret = batch_ids[:, None] + ret[None, :] * batch_size
+        yield ret.cuda()
+
+    @pytest.fixture
+    def gt(
         self,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        k_cache: torch.Tensor,
-        v_cache: torch.Tensor,
-        slot_mapping: torch.Tensor,
+        k_states,
+        v_states,
+        k_caches,
+        v_caches,
+        seq_lens,
+        history_lens,
+        block_offsets,
+        block_size,
     ):
-        num_tokens = k.shape[0]
-        block_size = k_cache.shape[1]
-        for i in range(num_tokens):
-            if slot_mapping[i] >= 0:
-                block_id = torch.div(slot_mapping[i], block_size, rounding_mode="floor")
-                block_offset = slot_mapping[i] % block_size
-                k_cache[block_id, block_offset, :, :] = k[i]
-                v_cache[block_id, block_offset, :, :] = v[i]
+        batch_size = len(seq_lens)
+        k_caches = k_caches.clone()
+        v_caches = v_caches.clone()
+        splited_k_states = k_states.split(seq_lens)
+        splited_v_states = v_states.split(seq_lens)
+        for bidx in range(batch_size):
+            k_state = splited_k_states[bidx]
+            v_state = splited_v_states[bidx]
+            h_len = history_lens[bidx]
+            b_offs = block_offsets[bidx]
+            block_id = _div_up(h_len + 1, block_size) - 1
+            fill_start = h_len % block_size
+            fill_size = min(block_size - fill_start, k_state.size(0))
+            while True:
+                boff = b_offs[block_id]
+                tmp_ks = k_state[:fill_size]
+                tmp_vs = v_state[:fill_size]
+                fill_end = fill_start + fill_size
+                k_caches[boff, fill_start:fill_end] = tmp_ks
+                v_caches[boff, fill_start:fill_end] = tmp_vs
+                k_state = k_state[fill_size:]
+                v_state = v_state[fill_size:]
+                block_id += 1
+                fill_start = 0
+                fill_size = min(block_size, k_state.size(0))
+                if fill_size == 0:
+                    break
 
+        yield k_caches, v_caches
 
-def test_fill_kv_cache_0():
-    test_cases = 10
-
-    num_tokens_list = torch.randint(
-        low=1, high=1024, size=(test_cases,), dtype=torch.int32
+    @pytest.mark.parametrize(
+        ["seq_lens", "history_lens"],
+        [
+            ((1, 1, 1, 1), (1, 16, 31, 24)),
+            ((1, 8, 16, 24), (1, 16, 31, 24)),
+        ],
+        indirect=True,
     )
-    num_heads_list = torch.randint(
-        low=1, high=64, size=(test_cases,), dtype=torch.int32
-    )
-    head_size_list = torch.randint(
-        low=1, high=16, size=(test_cases,), dtype=torch.int32
-    )
-    block_size_list = torch.randint(
-        low=1, high=4, size=(test_cases,), dtype=torch.int32
-    )
-    block_size_list *= 16
-
-    for i in range(test_cases):
-        num_tokens = num_tokens_list[i]
-        num_heads = num_heads_list[i]
-        head_dim_k = head_size_list[i]
-        head_dim_v = head_size_list[test_cases - i - 1]
-        block_size = block_size_list[i]
-        if block_size != triton.next_power_of_2(block_size):
-            continue
-
-        num_blocks = (int)((num_tokens + block_size - 1) / block_size)
-        print(
-            f"num_tokens: {num_tokens}, num_heads: {num_heads}, head_dim_k: {head_dim_k}, head_dim_v:{head_dim_v}, num_blocks: {num_blocks}, block_size: {block_size}, testing..."
+    def test_fill_kv_cache(
+        self,
+        k_states,
+        v_states,
+        k_caches,
+        v_caches,
+        block_offsets,
+        q_start_loc,
+        q_seq_length,
+        kv_seq_length,
+        max_q_seq_length,
+        gt,
+    ):
+        fill_kv_cache(
+            k_states,
+            v_states,
+            k_caches,
+            v_caches,
+            q_start_loc,
+            q_seq_length,
+            kv_seq_length,
+            max_q_seq_length,
+            block_offsets,
         )
-        key = torch.randn(num_tokens, num_heads, head_dim_k, dtype=torch.half).cuda()
-        value = torch.randn(num_tokens, num_heads, head_dim_v, dtype=torch.half).cuda()
-        key_cache = torch.randn(
-            num_blocks, block_size, num_heads, head_dim_k, dtype=torch.half
-        ).cuda()
-        value_cache = torch.randn(
-            num_blocks, block_size, num_heads, head_dim_v, dtype=torch.half
-        ).cuda()
 
-        # num_slots = num_blocks * block_size
-        # slot_mapping = random.sample(range(num_tokens), num_tokens)
-        # slot_mapping = torch.tensor(slot_mapping, dtype=torch.int).cuda()
-        slot_mapping = torch.tensor(range(num_tokens), dtype=torch.int).cuda()
-        if num_blocks > 2:
-            tmp = slot_mapping[0:block_size].clone()
-            slot_mapping[0:block_size] = slot_mapping[block_size : 2 * block_size]
-            slot_mapping[block_size : 2 * block_size] = tmp
-
-        ref_key_cache, ref_value_cache = key_cache.clone(), value_cache.clone()
-        reshape_paged_cache = ReshapePagedCache()
-
-        reshape_paged_cache(key, value, ref_key_cache, ref_value_cache, slot_mapping)
-        key_cache, value_cache = dlblas.fill_kv_cache(
-            key, value, key_cache, value_cache, slot_mapping
-        )
-        key_cache = key_cache.cpu().float()
-        ref_key_cache = ref_key_cache.cpu().float()
-        value_cache = value_cache.cpu().float()
-        ref_value_cache = ref_value_cache.cpu().float()
-        assert torch.allclose(key_cache, ref_key_cache) and torch.allclose(
-            value_cache, ref_value_cache
-        )
-        max_diff = max(
-            torch.max(torch.abs(key_cache - ref_key_cache)),
-            torch.max(torch.abs(value_cache - ref_value_cache)),
-        )
-        assert max_diff < 0.0001
-
-
-if __name__ == "__main__":
-    test_fill_kv_cache_0()
-    print("success!")
+        torch.testing.assert_close(k_caches, gt[0])
+        torch.testing.assert_close(v_caches, gt[1])

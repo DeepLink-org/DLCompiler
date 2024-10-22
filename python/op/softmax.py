@@ -172,5 +172,4 @@ src = tc.ASTSource(
 )
 ret = triton.compile(src)
 src_path = "softmax_optimize_kernel.mlir"
-str = ret.asm["ttlinalgdir"]
 Path(src_path).write_bytes(ret.asm["ttlinalgdir"])

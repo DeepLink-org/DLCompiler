@@ -25,9 +25,9 @@ def _get_llvm_bin_path(bin_name: str) -> str:
 
 def _get_triton_linalg_opt_path() -> str:
     # path = os.getenv("TRITON_LINALG_OPT_PATH", "")
-    path = "triton-linalg-opt"
+    path = "triton-shared-opt"
     if path == "":
-        raise Exception("TRITON_LINALG_OPT_PATH is not set.")
+        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
     return path 
 
 def _ttir_to_linalgdir(mod):

@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 from packaging import version
 from dlblas.utils import logger
-
+from python.dlBLAS.dlblas.utils.device_utils import is_mlu_592
 
 TRITON_VERSION = version.parse(triton.__version__)
 
@@ -26,12 +26,19 @@ else:
     fast_dividef = tl.math.fast_dividef
 
 
+def get_autotune_config():
+    if is_mlu_592():
+        return [triton.Config({}, num_stages=s, num_warps=w) for s in [2] for w in [4]]
+    else:
+        return [
+            triton.Config({}, num_stages=s, num_warps=w)
+            for s in [2]
+            for w in [4, 8, 16]
+        ]
+
+
 @triton.autotune(
-    configs=[
-        triton.Config({}, num_stages=2, num_warps=16),
-        triton.Config({}, num_stages=2, num_warps=8),
-        triton.Config({}, num_stages=2, num_warps=4),
-    ],
+    configs=get_autotune_config(),
     key=["BLOCK_H", "BLOCK_N", "BLOCK_DMODEL", "BLOCK_DV"],
 )
 @triton.jit
@@ -403,7 +410,7 @@ def _fwd_kernel(
             + cur_head * stride_qh
             + offs_d1[None, :] * stride_qd
         )
-        q1 = tl.load(Q + off_q1, mask=(offs_m[:, None] < q_seqlen) & mask_d1)
+        q1 = tl.load(Q + off_q1, mask=(offs_m[:, None] < q_seqlen) & mask_d1, other=0.0)
         off_k1 = (
             cur_kv_head * stride_kh
             + offs_d1[:, None] * stride_kd

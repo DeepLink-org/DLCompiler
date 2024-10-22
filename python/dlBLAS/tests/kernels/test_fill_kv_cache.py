@@ -13,15 +13,15 @@ class TestFillKVCache:
 
     @pytest.fixture
     def num_heads(self):
-        yield 4
+        yield 8
 
     @pytest.fixture
     def head_dim(self):
-        yield 32
+        yield 128
 
     @pytest.fixture
     def block_size(self):
-        yield 16
+        yield 64
 
     @pytest.fixture
     def seq_lens(self, request):

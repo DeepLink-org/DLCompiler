@@ -2,8 +2,27 @@
 import torch
 import triton
 import triton.language as tl
+from python.dlBLAS.dlblas.utils.device_utils import is_mlu_592
 
 
+def get_autotune_config():
+    if is_mlu_592():
+        return [triton.Config({}, num_stages=s, num_warps=w) for s in [1] for w in [4]]
+    else:
+        return [
+            triton.Config({}, num_stages=s, num_warps=w) for s in [1, 2, 3] for w in [8]
+        ]
+
+
+@triton.jit
+def _div_up(val, other):
+    return (val + other - 1) // other
+
+
+@triton.autotune(
+    configs=get_autotune_config(),
+    key=["num_heads"],
+)
 @triton.jit
 def _multinomial_sampling_kernel(
     Scores,
@@ -27,12 +46,12 @@ def _multinomial_sampling_kernel(
     n_off = tl.arange(0, BLOCK_N)
 
     off_mask = off < num_batchs
-    seed = tl.load(Seeds + off, mask=off_mask)
-    offset = tl.load(Offsets + off, mask=off_mask).to(tl.int32)
+    seed = tl.load(Seeds + off, mask=off_mask, other=0.0)
+    offset = tl.load(Offsets + off, mask=off_mask, other=0.0).to(tl.int32)
 
     samp = tl.rand(seed, offset)[:, None]
     acc = tl.zeros((BLOCK,), dtype=tl.float32)
-    output = tl.load(Indices + off * stride_ib, mask=off_mask)
+    output = tl.load(Indices + off * stride_ib, mask=off_mask, other=0.0)
 
     for b_idx in range(0, num_tokens, BLOCK_N):
         s_off = b_idx + n_off
@@ -102,7 +121,6 @@ def multinomial_sampling(
         num_tokens=num_tokens,
         BLOCK=BLOCK,
         BLOCK_N=BLOCK_N,
-        num_warps=8,
     )
 
     return outputs

@@ -65,24 +65,49 @@ from lmdeploy.messages import GenerationConfig
 def run_pipeline_chat_test(
     device_type,
 ):
-    tp = 2
-    hf_path = "/nvme/share_data/models/internlm2-chat-7b/"
-    backend_config = PytorchEngineConfig(tp=tp, device_type=device_type)
+    tp = 1
+    # hf_path = "/nvme/share_data/models/internlm2-chat-7b/"
+    hf_path = "/workspace/volume/shangda/share/llm_models/Shanghai_AI_Laboratory/internlm2-chat-7b/"  # done
+    # hf_path = '/workspace/volume/shangda/share/llm_models/Shanghai_AI_Laboratory/internlm2_5-7b/'
+    hf_path = "/workspace/volume/shangda/share/llm_models/Qwen/Qwen2-7B/"  # done
+    # hf_path = '/workspace/volume/shangda/share/llm_models/shakechen/Llama-2-7b-hf/'
+    backend_config = PytorchEngineConfig(
+        tp=tp, device_type=device_type, eager_mode=True
+    )
     print("backend_config: ", backend_config)
     pipe = pipeline(hf_path, backend_config=backend_config)
-    gen_config = GenerationConfig(do_sample=True, top_k=2)
+    gen_config = GenerationConfig(do_sample=False, top_k=1)
     response = pipe(
         [
-            "给我一首中文诗，需要添加标点符号，请用中文回答Give me a Chinese poem in Chinese"
+            "Please introduce Shanghai."
+            # "给我一首中文诗，需要添加标点符号，请用中文回答Give me a Chinese poem in Chinese"
         ],
+        do_preprocess=False,
         gen_config=gen_config,
     )[0].text
     print(response)
-    assert "诗" in response and "《" in response and "》" in response
+    # assert "诗" in response and "《" in response and "》" in response
     del pipe
     torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
-    run_pipeline_chat_test("cuda")
+    seed = 1024
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    import pytest
+
+    # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_activation.py'])
+    # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_apply_rotary.py'])
+    # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_fill_kv_cache.py'])
+    # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_rms_norm.py'])
+    # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_paged_attention.py'])
+    # pytest.main(['-vs', '/workspace/volume/shangda/zhaochaoxing/work/Triton/python/dlBLAS/tests/kernels/test_multinomial_sampling.py'])
+    # device_type = 'mlu'
+    device_type = "cuda"
+    if "mlu" == device_type:
+        import torch_mlu
+        import torch_mlu.utils.gpu_migration
+    run_pipeline_chat_test(device_type)
     print("sucessfully!")

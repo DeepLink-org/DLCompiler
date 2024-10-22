@@ -1,7 +1,7 @@
 import triton
 import torch
 import dlblas
-from dlblas.utils.gpu_helper import get_idle_device
+from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
 
 
 def _rotate_half(x):

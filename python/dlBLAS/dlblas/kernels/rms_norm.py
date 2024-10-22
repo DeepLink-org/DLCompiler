@@ -30,10 +30,10 @@ def rms_norm_kernel(
     prog_id = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
 
-    w = tl.load(weight + offsets, mask=offsets < N_COLS)
+    w = tl.load(weight + offsets, mask=offsets < N_COLS, other=0.0)
 
     x_ptr = input + prog_id * input_row_stride
-    x = tl.load(x_ptr + offsets, mask=offsets < N_COLS)
+    x = tl.load(x_ptr + offsets, mask=offsets < N_COLS, other=0.0)
     out = _compute_rms_norm(x, w, eps, N_COLS)
 
     out_ptr = output + prog_id * input_row_stride
@@ -57,13 +57,13 @@ def add_rms_norm_kernel(
     prog_id = tl.program_id(0)
     offsets = tl.arange(0, BLOCK_N)
 
-    w = tl.load(weight + offsets, mask=offsets < N_COLS)
+    w = tl.load(weight + offsets, mask=offsets < N_COLS, other=0.0)
 
     x_ptr = input + prog_id * input_row_stride
-    x = tl.load(x_ptr + offsets, mask=offsets < N_COLS)
+    x = tl.load(x_ptr + offsets, mask=offsets < N_COLS, other=0.0)
 
     res_ptr = residual + prog_id * residual_row_stride
-    res = tl.load(res_ptr + offsets, mask=offsets < N_COLS)
+    res = tl.load(res_ptr + offsets, mask=offsets < N_COLS, other=0.0)
 
     new_x = x + res
     out_res_ptr = out_residual + prog_id * residual_row_stride

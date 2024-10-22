@@ -1,19 +1,11 @@
 # Triton
 triton for dsa
 
-## Usage
-
-## 安装 clang
-```
-apt-get update
-apt-get install clang
-```
-
 ## compile llvm project
 ```
 git clone https://github.com/llvm/llvm-project.git
 // triton下的llvm-hash.txt commit id
-git reset --hard 6f44bb7717897191be25aa01161831c67cdf5b84
+git reset --hard ed4e505c219fe6c7464ea5a056e90d8cd94c7332
 
 cmake -G Ninja ../llvm  -DLLVM_ENABLE_PROJECTS="llvm;mlir"    -DLLVM_BUILD_EXAMPLES=ON    -DLLVM_TARGETS_TO_BUILD="X86"     -DCMAKE_BUILD_TYPE=Release  -DLLVM_ENABLE_ASSERTIONS=ON       -DLLVM_INSTALL_UTILS=ON
 

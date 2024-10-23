@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch.profiler import profile, record_function, ProfilerActivity
 import triton
 import dlblas
-from dlblas.utils.gpu_helper import get_idle_device
+from python.dlBLAS.dlblas.utils.device_utils import get_idle_device
 
 from functorch.compile import aot_module, make_boxed_func, aot_function
 from torch._dynamo.backends.common import aot_autograd

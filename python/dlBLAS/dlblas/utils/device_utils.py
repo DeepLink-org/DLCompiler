@@ -44,4 +44,4 @@ def is_cuda():
 
 def is_mlu_592():
     target = triton.runtime.driver.active.get_current_target()
-    return target.backend == "mlu" and target.arch == "592"
+    return target.backend == "mlu" and target.arch == 592

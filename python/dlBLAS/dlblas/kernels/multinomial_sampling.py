@@ -2,7 +2,7 @@
 import torch
 import triton
 import triton.language as tl
-from python.dlBLAS.dlblas.utils.device_utils import is_mlu_592
+from dlblas.utils.device_utils import is_mlu_592
 
 
 def get_autotune_config():
@@ -21,7 +21,7 @@ def _div_up(val, other):
 
 @triton.autotune(
     configs=get_autotune_config(),
-    key=["num_heads"],
+    key=[],
 )
 @triton.jit
 def _multinomial_sampling_kernel(

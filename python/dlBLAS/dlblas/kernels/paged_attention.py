@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 from packaging import version
 from dlblas.utils import logger
-from python.dlBLAS.dlblas.utils.device_utils import is_mlu_592
+from dlblas.utils.device_utils import is_mlu_592
 
 TRITON_VERSION = version.parse(triton.__version__)
 

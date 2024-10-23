@@ -1,7 +1,7 @@
 import triton
 import triton.language as tl
 from torch import Tensor
-from python.dlBLAS.dlblas.utils.device_utils import is_mlu_592
+from dlblas.utils.device_utils import is_mlu_592
 
 
 def get_autotune_config():
@@ -17,7 +17,7 @@ def _div_up(val, other):
 
 
 @triton.autotune(
-    configs=get_autotune_config,
+    configs=get_autotune_config(),
     key=["num_heads"],
 )
 @triton.jit
@@ -182,6 +182,4 @@ def fill_kv_cache(
         BLOCK_D=BLOCK_D,
         BLOCK_DV=BLOCK_DV,
         BLOCK_H=BLOCK_H,
-        num_warps=4,
-        num_stages=3,
     )

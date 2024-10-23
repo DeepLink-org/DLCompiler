@@ -73,7 +73,7 @@ def _silu_and_mul_no_align_kernel(
     for n in range(0, N, BLOCK_SIZE_N):
         mask = n + offs_n < N
         gate = tl.load(gate_ptrs, mask=mask, other=0.0).to(tl.float32)
-        up = tl.load(up_ptrs, mask=mask, mask=0.0).to(tl.float32)
+        up = tl.load(up_ptrs, mask=mask, other=0.0).to(tl.float32)
 
         gate = gate / (1 + fast_expf(-gate))
         out = gate * up

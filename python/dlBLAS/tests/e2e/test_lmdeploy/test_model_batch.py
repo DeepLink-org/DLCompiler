@@ -33,6 +33,7 @@ def get_model_paths(config):
         model_paths.append({"name": model["name"], "path": path})
     return model_paths
 
+
 def batch_test_models(config, checkpoint_file="checkpoint.json"):
     model_paths = get_model_paths(config)
     tested_result = load_checkpoint(checkpoint_file)
@@ -42,10 +43,11 @@ def batch_test_models(config, checkpoint_file="checkpoint.json"):
         model_path = model_info["path"]
         print("model_name: ", model_name)
         print("model_path: ", model_path)
-        if model_name in tested_result and (tested_result[model_name]["status"] == "completed" or True):
+        if model_name in tested_result and (tested_result[model_name].get("status", "") == "completed"):
             print(f"---------Skipping already tested model: {model_name}")
             continue
         subprocess.run(["python", "test_model_once.py", f"{model_name}", f"{model_path}", f"{checkpoint_file}", f"{common_prefix}"])
+
 
 
 

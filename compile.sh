@@ -7,9 +7,6 @@ cd $DICP_TRITON_DIR/third_party/triton
 rm -rf build
 mkdir build && cd build
 
-cp $DICP_TRITON_DIR/cmake/CMakeLists.txt.1 $DICP_TRITON_DIR/third_party/triton/CMakeLists.txt
-cp $DICP_TRITON_DIR/cmake/CMakeLists.txt.2 $DICP_TRITON_DIR/third_party/triton/lib/Conversion/TritonGPUToLLVM/CMakeLists.txt
-
 cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON \
     -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$DICP_TRITON_DIR/third_party/triton/python/triton/_C \
     -DTRITON_BUILD_TUTORIALS=OFF -DTRITON_BUILD_PYTHON_MODULE=ON -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DTRITON_CODEGEN_BACKENDS="nvidia;amd" \

@@ -28,6 +28,11 @@ cd python/op
 python softmax.py
 ```
 
+## 刷新code格式
+```
+bash format.sh
+```
+
 # 支持模型框架列表
 
 ## LMDeploy

@@ -1,0 +1,1 @@
+add_dicp_compiler_dialect(DICPLinalgExt NPU)

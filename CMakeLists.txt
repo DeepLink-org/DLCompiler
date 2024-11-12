@@ -12,8 +12,6 @@ if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton)
     file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton")
 endif()
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/lib)
-
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
@@ -22,5 +20,15 @@ ${dialect_libs}
 ${conversion_libs}
 )
 
+list(APPEND CMAKE_MODULE_PATH 
+  ${CMAKE_CURRENT_LIST_DIR}/cmake/
+)
+
+include(utils)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/compiler)
+
 add_triton_plugin(DICPTriton ${CMAKE_CURRENT_SOURCE_DIR}/dicp_triton.cc LINK_LIBS ${LIBS})
 target_include_directories(DICPTriton PUBLIC "${pybind11_INCLUDE_DIRS}")
+
+

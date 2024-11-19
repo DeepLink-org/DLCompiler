@@ -5,7 +5,7 @@ git submodule update --init
 cd $DICP_TRITON_DIR/third_party/triton
 
 rm -rf build
-mkdir build && cd build
+mkdir -p build && cd build
 
 cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON \
     -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=$DICP_TRITON_DIR/third_party/triton/python/triton/_C \

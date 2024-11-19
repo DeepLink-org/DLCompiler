@@ -1,0 +1,23 @@
+#pragma once
+
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeSupport.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+
+// #include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
+
+/// Include the auto-generated header file containing the declaration of the toy
+/// dialect.
+#include "compiler/include/Dialect/NPU/IR/NPUDialect.h.inc"
+/// Include the auto-generated header file containing the declarations of the
+/// toy operations.
+#define GET_OP_CLASSES
+#include "compiler/include/Dialect/NPU/IR/NPUOps.h.inc"

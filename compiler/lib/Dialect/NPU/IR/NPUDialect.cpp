@@ -1,4 +1,4 @@
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
+#include "Dialect/NPU/IR/NPUDialect.h"
 
 using namespace mlir;
 using namespace mlir::npu;
@@ -8,7 +8,7 @@ using namespace mlir::npu;
 void NPUDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "compiler/include/Dialect/NPU/IR/NPUOps.cpp.inc"
+#include "Dialect/NPU/IR/NPUOps.cpp.inc"
       >();
 }
 
@@ -17,5 +17,5 @@ void NPUDialect::initialize() {
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.cpp.inc"
-#include "compiler/include/Dialect/NPU/IR/NPUOps.cpp.inc"
+#include "Dialect/NPU/IR/NPUDialect.cpp.inc"
+#include "Dialect/NPU/IR/NPUOps.cpp.inc"

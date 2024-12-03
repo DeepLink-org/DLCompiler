@@ -1,28 +1,29 @@
-function(add_dicp_triton_library name)
-  cmake_parse_arguments(ARG
-    ""
-    ""
-    "DEPENDS;INCLUDE_DIRS;LINK_LIBS;LINK_COMPONENTS"
-    ${ARGN}
-    )
+function(add_dicp_object name)
+  cmake_parse_arguments(ARG "" "" "DEPENDS;LINK_LIBS" ${ARGN})
+  add_library(${name} OBJECT)
+  target_sources(${name}
+    PRIVATE ${ARG_UNPARSED_ARGUMENTS}
+    INTERFACE $<TARGET_OBJECTS:${name}>
+  )
 
-  add_library(${name} ${ARG_UNPARSED_ARGUMENTS})
-
-  if (ARG_DEPENDS)
+  if(ARG_DEPENDS)
     add_dependencies(${name} ${ARG_DEPENDS})
   endif()
-
   if (ARG_INCLUDE_DIRS)
     target_include_directories(${name} PUBLIC ${ARG_INCLUDE_DIRS})
   endif()
-  target_include_directories(${name} PUBLIC ${DC_TRITON_INCLUDE_DIR})
 
-  if (ARG_LINK_LIBS)
+  if(ARG_LINK_LIBS)
     target_link_libraries(${name} PUBLIC ${ARG_LINK_LIBS})
   endif()
-  target_link_libraries(${name} PUBLIC ${DC_TRITON_LINK_DIR})
-  set_property(TARGET ${name} PROPERTY POSITION_INDEPENDENT_CODE ON)
-endfunction(add_dicp_triton_library)
+endfunction(add_dicp_object)
+
+set_property(GLOBAL PROPERTY POLARIS_LIBS "")
+function(add_dicp_triton_library name)
+  set_property(GLOBAL APPEND PROPERTY POLARIS_LIBS ${name})
+  add_dicp_object(${name} ${ARGN})
+  llvm_update_compile_flags(${name})
+endfunction()
 
 
 function(add_dicp_triton_executable name)
@@ -72,14 +73,14 @@ macro(dicp_add_all_subdirs)
   endforeach()
 endmacro()
 
-function(add_dicp_compiler_dialect target_prefix FileName)
-  set(LLVM_TARGET_DEFINITIONS ${FileName}_ops.td)
-  mlir_tablegen(${FileName}_ops.h.inc -gen-op-decls)
-  mlir_tablegen(${FileName}_ops.cpp.inc -gen-op-defs)
-  mlir_tablegen(${FileName}_types.h.inc -gen-typedef-decls -typedefs-dialect=${FileName})
-  mlir_tablegen(${FileName}_types.cpp.inc -gen-typedef-defs -typedefs-dialect=${FileName})
-  mlir_tablegen(${FileName}_dialect.h.inc -gen-dialect-decls)
-  mlir_tablegen(${FileName}_dialect.cpp.inc -gen-dialect-defs)
+function(add_dicp_compiler_dialect target_prefix FileName DialectName)
+  set(LLVM_TARGET_DEFINITIONS ${FileName}Ops.td)
+  mlir_tablegen(${FileName}Ops.h.inc -gen-op-decls)
+  mlir_tablegen(${FileName}Ops.cpp.inc -gen-op-defs)
+  mlir_tablegen(${FileName}Types.h.inc -gen-typedef-decls -typedefs-dialect=${DialectName})
+  mlir_tablegen(${FileName}Types.cpp.inc -gen-typedef-defs -typedefs-dialect=${DialectName})
+  mlir_tablegen(${FileName}Dialect.h.inc -gen-dialect-decls -dialect=${DialectName})
+  mlir_tablegen(${FileName}Dialect.cpp.inc -gen-dialect-defs -dialect=${DialectName})
   add_public_tablegen_target(${target_prefix}IncGen)
   add_dependencies(mlir-headers ${target_prefix}IncGen)
 endfunction()

@@ -9,13 +9,13 @@
 #include "mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "linalg-to-npu"
-#include "compiler/include/Conversion/LinalgToNPU/ConversionPatterns.hpp"
+#include "Conversion/LinalgToNPU/ConversionPatterns.hpp"
 
 using namespace mlir;
 using namespace npu;
 
 #define GEN_PASS_CLASSES
-#include "compiler/include/Conversion/LinalgToNPU/Passes.h.inc"
+#include "Conversion/LinalgToNPU/Passes.h.inc"
 
 namespace {
 

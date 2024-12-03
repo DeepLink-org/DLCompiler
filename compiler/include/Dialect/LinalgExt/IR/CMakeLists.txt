@@ -1,6 +1,1 @@
-# add_dicp_triton_library(DICPLinalgExt
-    
-#     LINK_LIBS PUBLIC
-#     MLIRLinalgDialect
-# )
-dicp_add_all_subdirs()
+add_dicp_compiler_dialect(DICPLinalgExt LinalgExt linalgext)

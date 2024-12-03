@@ -1,5 +1,6 @@
-#include "compiler/include/Conversion/LinalgToNPU/Passes.h"
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
+#include "Conversion/LinalgToNPU/Passes.h"
+#include "Dialect/LinalgExt/IR/LinalgExtOps.h"
+#include "Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
@@ -14,6 +15,7 @@ using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   mlir::npu::registerLinalgToNPUPass();
   registry.insert<bufferization::BufferizationDialect, mlir::npu::NPUDialect,
+                  mlir::dicp::LinalgExt::LinalgExtDialect,
                   mlir::arith::ArithDialect, cf::ControlFlowDialect,
                   func::FuncDialect, gpu::GPUDialect, linalg::LinalgDialect,
                   index::IndexDialect, LLVM::LLVMDialect, math::MathDialect,

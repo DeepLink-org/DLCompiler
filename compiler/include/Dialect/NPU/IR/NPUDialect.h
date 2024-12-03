@@ -15,6 +15,6 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 #define GET_OP_CLASSES
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h.inc"
+#include "Dialect/NPU/IR/NPUDialect.h.inc"
 #define GET_OP_CLASSES
-#include "compiler/include/Dialect/NPU/IR/NPUOps.h.inc"
+#include "Dialect/NPU/IR/NPUOps.h.inc"

@@ -23,7 +23,7 @@ using namespace mlir;
 using namespace npu;
 
 #define GEN_PASS_CLASSES
-#include "compiler/include/Conversion/LinalgToNPU/Passes.h.inc"
+#include "Conversion/LinalgToNPU/Passes.h.inc"
 
 void mlir::npu::populateLinalgToNPUConversionPatterns(
     RewritePatternSet &patterns) {

@@ -17,7 +17,7 @@
 #include <string>
 
 #define GET_OP_CLASSES
-#include "compiler/include/Dialect/NPU/IR/NPUOps.h.inc"
+#include "Dialect/NPU/IR/NPUOps.h.inc"
 
 using namespace mlir;
 using namespace mlir::npu;

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h.inc"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -15,5 +14,7 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
+#define GET_OP_CLASSES
+#include "compiler/include/Dialect/NPU/IR/NPUDialect.h.inc"
 #define GET_OP_CLASSES
 #include "compiler/include/Dialect/NPU/IR/NPUOps.h.inc"

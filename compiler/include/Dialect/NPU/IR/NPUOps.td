@@ -1,4 +1,3 @@
-
 #ifndef NPU_DIALECT
 #define NPU_DIALECT
 
@@ -68,9 +67,9 @@ def CopyOp : NPU_Op<"copy"> {
                            >:$target
                     );
 
-  let assemblyFormat = [
-    {$source `,` $target attr - dict `:` type($source) `to` type($target)}
-  ];
+  let assemblyFormat = [{
+    $source `,` $target attr-dict `:` type($source) `to` type($target)
+  }];
 
   // let builders = [
   //  Build a SubViewOp with static entries and inferred result type.

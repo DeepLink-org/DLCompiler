@@ -20,13 +20,12 @@ def NPU_Dialect : Dialect {
 //   * The parent dialect of the operation.
 //   * The mnemonic for the operation, or the name without the dialect prefix.
 //   * A list of traits for the operation.
-class NPU_Op<string mnemonic, list<Trait> traits = []> :
-    Op<NPU_Dialect, mnemonic, traits>;
+class NPU_Op<string mnemonic, list<Trait> traits = []>
+    : Op<NPU_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // NPU Operations
 //===----------------------------------------------------------------------===//
-
 
 //===----------------------------------------------------------------------===//
 // AddOp
@@ -34,23 +33,20 @@ class NPU_Op<string mnemonic, list<Trait> traits = []> :
 
 def AddOp : NPU_Op<"add"> {
   let summary = "element-wise addition operation";
-  let description = [{
-    The "add" operation performs element-wise addition between two tensors.
-    The shapes of the tensor operands are expected to match.
-  }];
+  let description =
+      [{The "add" operation performs element -
+        wise addition between two
+            tensors.The shapes of the tensor operands are expected to match.}];
 
-  let arguments = (ins F16Tensor:$lhs, F16Tensor:$rhs);
+  let arguments = (ins F16Tensor : $lhs, F16Tensor : $rhs);
   let results = (outs F16Tensor);
 
   // Indicate that the operation has a custom parser and printer method.
   let hasCustomAssemblyFormat = 1;
 
   // Allow building an AddOp with from the two input operands.
-  let builders = [
-    OpBuilder<(ins "Value":$lhs, "Value":$rhs)>
-  ];
+  let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
 }
-
 
 //===----------------------------------------------------------------------===//
 // CopyOp
@@ -58,12 +54,13 @@ def AddOp : NPU_Op<"add"> {
 
 def CopyOp : NPU_Op<"copy"> {
 
-  let description = [{
-    Copies the data from the source to the destination.
+  let description =
+      [{Copies the data from the source to the destination
+            .
 
-    Source and destination are expected to have the same element type and shape.
-    Otherwise, the result is undefined. They may have different layouts.
-  }];
+        Source and destination are expected to have the same element type and
+            shape.Otherwise,
+        the result is undefined.They may have different layouts.}];
 
   let arguments = (ins Arg<AnyRankedOrUnrankedMemRef, "the memref to copy from"
                            >:$source,
@@ -71,12 +68,12 @@ def CopyOp : NPU_Op<"copy"> {
                            >:$target
                     );
 
-  let assemblyFormat = [{
-    $source `,` $target attr-dict `:` type($source) `to` type($target) 
-  }];
+  let assemblyFormat = [
+    {$source `,` $target attr - dict `:` type($source) `to` type($target)}
+  ];
 
-  //let builders = [
-    // Build a SubViewOp with static entries and inferred result type.
+  // let builders = [
+  //  Build a SubViewOp with static entries and inferred result type.
   //  OpBuilder<(ins "MemRefType":$resultType, "Value":$source,
   //    "ArrayRef<int64_t>":$offsets, "ArrayRef<int64_t>":$sizes,
   //    "ArrayRef<int64_t>":$strides)>

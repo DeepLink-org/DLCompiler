@@ -17,5 +17,5 @@ void NPUDialect::initialize() {
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "compiler/include/Dialect/NPU/IR/NPUOps.cpp.inc"
 #include "compiler/include/Dialect/NPU/IR/NPUDialect.cpp.inc"
+#include "compiler/include/Dialect/NPU/IR/NPUOps.cpp.inc"

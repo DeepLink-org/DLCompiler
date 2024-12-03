@@ -1,11 +1,11 @@
 #include "compiler/include/Conversion/LinalgToNPU/LinalgToNPU.h"
 #include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -27,5 +27,5 @@ using namespace npu;
 
 void mlir::npu::populateLinalgToNPUConversionPatterns(
     RewritePatternSet &patterns) {
-//   patterns.add<AddFConverter>(patterns.getContext());
+  //   patterns.add<AddFConverter>(patterns.getContext());
 }

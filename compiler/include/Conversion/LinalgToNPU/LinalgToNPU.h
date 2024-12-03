@@ -5,12 +5,9 @@
 
 namespace mlir {
 namespace npu {
-void populateLinalgToNPUConversionPatterns(
-    RewritePatternSet &patterns);
+void populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns);
 
 std::unique_ptr<OperationPass<ModuleOp>> createLinalgToNPUPass();
 
 } // namespace npu
 } // namespace mlir
-
-

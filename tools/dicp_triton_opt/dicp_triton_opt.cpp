@@ -1,6 +1,5 @@
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
 #include "compiler/include/Conversion/LinalgToNPU/Passes.h"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
+#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
@@ -9,6 +8,7 @@
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {

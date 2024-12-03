@@ -19,16 +19,15 @@ using namespace npu;
 
 namespace {
 
-class LinalgToNPUPass
-    : public LinalgToNPUBase<LinalgToNPUPass> {
+class LinalgToNPUPass : public LinalgToNPUBase<LinalgToNPUPass> {
 
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
-        .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect, npu::NPUDialect,
-                linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
-                tensor::TensorDialect, bufferization::BufferizationDialect,
-                memref::MemRefDialect>();
+        .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
+                npu::NPUDialect, linalg::LinalgDialect, affine::AffineDialect,
+                scf::SCFDialect, tensor::TensorDialect,
+                bufferization::BufferizationDialect, memref::MemRefDialect>();
   }
 
   void runOnOperation() override {
@@ -40,18 +39,17 @@ public:
     //     return !isa<Fload16>(op.getResult().getType());
     //   });
     // target.addIllegalOp<arith::AddFOp>();
-    
+
     // triton::populateLinalgToNPUConversionPatterns(patterns);
     patterns.add<CopyConverter>(patterns.getContext());
 
-     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
 };
 } // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>>
-mlir::npu::createLinalgToNPUPass() {
+std::unique_ptr<OperationPass<ModuleOp>> mlir::npu::createLinalgToNPUPass() {
   return std::make_unique<LinalgToNPUPass>();
 }

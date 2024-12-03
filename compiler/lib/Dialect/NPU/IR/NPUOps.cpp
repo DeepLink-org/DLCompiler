@@ -77,7 +77,6 @@ static void printBinaryOp(mlir::OpAsmPrinter &printer, mlir::Operation *op) {
 // AddOp
 //===----------------------------------------------------------------------===//
 
-
 void AddOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                   mlir::Value lhs, mlir::Value rhs) {
   state.addTypes(UnrankedTensorType::get(builder.getF16Type()));
@@ -91,8 +90,7 @@ mlir::ParseResult AddOp::parse(mlir::OpAsmParser &parser,
 
 void AddOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
 
-
-// void Copy::build(OpBuilder &b, OperationState &state, 
+// void Copy::build(OpBuilder &b, OperationState &state,
 //                 ArrayRef<int64_t> offsets,
 //                             ArrayRef<int64_t> sizes,
 //                             ArrayRef<int64_t> strides
@@ -113,7 +111,8 @@ void AddOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
 //   }
 //   // block pointer
 //   else {
-//     resType = triton::PointerType::get(RankedTensorType::get(sizes, elemType),
+//     resType = triton::PointerType::get(RankedTensorType::get(sizes,
+//     elemType),
 //                                        basePtr.getAddressSpace());
 //   }
 
@@ -122,5 +121,5 @@ void AddOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
 //         b.getDenseI64ArrayAttr(staticOffsets),
 //         b.getDenseI64ArrayAttr(staticShape), order);
 // }
-} // namespace ascend
+} // namespace npu
 } // namespace mlir

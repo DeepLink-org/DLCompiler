@@ -1,4 +1,4 @@
-#include "Dialect/LinalgExt/IR/LinalgExtOps.h"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -13,7 +13,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 
-#include "Dialect/LinalgExt/IR/LinalgExtDialect.cpp.inc"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtDialect.cpp.inc"
 
 using namespace mlir;
 namespace mlir::dicp::LinalgExt {
@@ -21,7 +21,7 @@ namespace mlir::dicp::LinalgExt {
 void LinalgExtDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "Dialect/LinalgExt/IR/LinalgExtOps.cpp.inc"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.cpp.inc"
       >();
 }
 } // namespace mlir::dicp::LinalgExt

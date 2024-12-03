@@ -3,11 +3,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir {
-namespace npu {
+namespace mlir::dicp::npu {
 void populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns);
 
 std::unique_ptr<OperationPass<ModuleOp>> createLinalgToNPUPass();
 
-} // namespace npu
-} // namespace mlir
+} // namespace mlir::dicp::npu

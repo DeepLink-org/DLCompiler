@@ -3,7 +3,7 @@
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/BuiltinTypeInterfaces.td"
-include "compiler/include/Dialect/NPU/IR/NPUOps.td"
+include "dicp/Dialect/NPU/IR/NPUOps.td"
 
 class NPUTypeDef<string name, string _mnemonic, list<Trait> traits = []>
     : TypeDef<NPU_Dialect, name, traits> {

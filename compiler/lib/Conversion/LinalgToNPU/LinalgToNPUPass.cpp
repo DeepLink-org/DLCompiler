@@ -1,5 +1,5 @@
-#include "compiler/include/Conversion/LinalgToNPU/LinalgToNPU.h"
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Conversion/LinalgToNPU/LinalgToNPU.h"
+#include "dicp/Dialect/NPU/IR/NPUDialect.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -9,13 +9,13 @@
 #include "mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "linalg-to-npu"
-#include "Conversion/LinalgToNPU/ConversionPatterns.hpp"
+#include "dicp/Conversion/LinalgToNPU/ConversionPatterns.hpp"
 
 using namespace mlir;
-using namespace npu;
+using namespace dicp;
 
 #define GEN_PASS_CLASSES
-#include "Conversion/LinalgToNPU/Passes.h.inc"
+#include "dicp/Conversion/LinalgToNPU/Passes.h.inc"
 
 namespace {
 
@@ -50,6 +50,6 @@ public:
 };
 } // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> mlir::npu::createLinalgToNPUPass() {
+std::unique_ptr<OperationPass<ModuleOp>> npu::createLinalgToNPUPass() {
   return std::make_unique<LinalgToNPUPass>();
 }

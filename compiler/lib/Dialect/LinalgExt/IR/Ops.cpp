@@ -1,4 +1,4 @@
-#include "Dialect/LinalgExt/IR/LinalgExtOps.h"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -21,7 +21,7 @@
 #include <cstdint>
 
 #define GET_OP_CLASSES
-#include "Dialect/LinalgExt/IR/LinalgExtOps.cpp.inc"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.cpp.inc"
 
 using namespace mlir;
 namespace mlir::dicp::LinalgExt {}

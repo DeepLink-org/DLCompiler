@@ -1,5 +1,5 @@
 #pragma once
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
@@ -16,7 +16,7 @@
 #include <type_traits>
 
 using namespace mlir;
-using namespace npu;
+using namespace dicp;
 
 namespace {
 

@@ -1,4 +1,4 @@
-add_triton_library(NPUIR
+add_dicp_triton_library(NPUIR
   NPUOps.cpp
   NPUDialect.cpp
 

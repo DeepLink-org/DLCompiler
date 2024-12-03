@@ -1,5 +1,5 @@
-#include "compiler/include/Conversion/LinalgToNPU/LinalgToNPU.h"
-#include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Conversion/LinalgToNPU/LinalgToNPU.h"
+#include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
@@ -17,15 +17,14 @@
 #include <type_traits>
 
 #define DEBUG_TYPE "linalg-to-NPU"
-#include "compiler/include/Conversion/LinalgToNPU/ConversionPatterns.hpp"
+#include "dicp/Conversion/LinalgToNPU/ConversionPatterns.hpp"
 
 using namespace mlir;
-using namespace npu;
+using namespace dicp;
 
 #define GEN_PASS_CLASSES
-#include "Conversion/LinalgToNPU/Passes.h.inc"
+#include "dicp/Conversion/LinalgToNPU/Passes.h.inc"
 
-void mlir::npu::populateLinalgToNPUConversionPatterns(
-    RewritePatternSet &patterns) {
+void npu::populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns) {
   //   patterns.add<AddFConverter>(patterns.getContext());
 }

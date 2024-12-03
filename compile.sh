@@ -4,7 +4,7 @@ git submodule update --init
 
 cd $DICP_TRITON_DIR/third_party/triton
 
-rm -rf build
+rm -rf build/third_party/dicp_triton/
 mkdir -p build && cd build
 
 cmake .. -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DLLVM_ENABLE_WERROR=ON \

@@ -10,7 +10,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 // can define our operations.
 def NPU_Dialect : Dialect {
   let name = "npu";
-  let cppNamespace = "::mlir::npu";
+  let cppNamespace = "::mlir::dicp::npu";
   let usePropertiesForAttributes = 1;
 }
 

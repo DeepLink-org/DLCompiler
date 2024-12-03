@@ -17,13 +17,12 @@
 #include <string>
 
 #define GET_OP_CLASSES
-#include "Dialect/NPU/IR/NPUOps.h.inc"
+#include "dicp/Dialect/NPU/IR/NPUOps.h.inc"
 
 using namespace mlir;
-using namespace mlir::npu;
+using namespace mlir::dicp;
 
-namespace mlir {
-namespace npu {
+namespace mlir::dicp::npu {
 
 /// A generalized parser for binary operations. This parses the different forms
 /// of 'printBinaryOp' below.
@@ -121,5 +120,4 @@ void AddOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
 //         b.getDenseI64ArrayAttr(staticOffsets),
 //         b.getDenseI64ArrayAttr(staticShape), order);
 // }
-} // namespace npu
-} // namespace mlir
+} // namespace mlir::dicp::npu

@@ -1,1 +1,1 @@
-add_subdirectory(IR)
+dicp_add_all_subdirs()

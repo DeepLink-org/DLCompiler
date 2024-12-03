@@ -9,15 +9,11 @@
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-
-// #include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
-
-/// Include the auto-generated header file containing the declaration of the toy
-/// dialect.
+#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "compiler/include/Dialect/NPU/IR/NPUDialect.h.inc"
-/// Include the auto-generated header file containing the declarations of the
-/// toy operations.
+
 #define GET_OP_CLASSES
 #include "compiler/include/Dialect/NPU/IR/NPUOps.h.inc"

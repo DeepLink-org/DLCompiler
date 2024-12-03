@@ -5,7 +5,7 @@ include "mlir/Pass/PassBase.td"
 
 def LinalgToNPU : Pass<"linalg-to-npu", "mlir::ModuleOp"> {
   let summary = "Convert Linalg to NPU dialect";
-  let constructor = "triton::createLinalgToNPUPass()";
+  let constructor = "npu::createLinalgToNPUPass()";
 }
 
 #endif

@@ -9,9 +9,14 @@ target_link_libraries(dicp_opt PRIVATE
   TritonAnalysis
   TritonTransforms
   TritonGPUTransforms
+  TritonSharedAnalysis
   ${dialect_libs}
   ${conversion_libs}
+  NPUIR
+  LinalgToNPU
 
+  TritonToLinalg
+  TritonTilingExtIR
   MLIROptLib
   MLIRPass
   MLIRTransforms

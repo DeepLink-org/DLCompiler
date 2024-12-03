@@ -1,4 +1,4 @@
-add_dicp_triton_library(LinalgToNPU
+add_triton_library(LinalgToNPU
   LinalgToNPUPass.cpp
   LinalgToNPU.cpp
 
@@ -7,7 +7,7 @@ add_dicp_triton_library(LinalgToNPU
   LinalgToNPUConversionPassIncGen
 
   LINK_LIBS PUBLIC
-  
+  TritonTilingExtIR
   MLIRArithDialect
   MLIRDialectUtils
   MLIRIR
@@ -16,5 +16,13 @@ add_dicp_triton_library(LinalgToNPU
   MLIRTensorDialect
   MLIRTransforms
   MLIRSupport
+  TritonAnalysis
+  TritonIR
+  TritonTransforms
+  TritonSharedAnalysis
   NPUIR
+
+  TritonArithToLinalg
+  StructuredToMemref
+  TritonToStructured
 )

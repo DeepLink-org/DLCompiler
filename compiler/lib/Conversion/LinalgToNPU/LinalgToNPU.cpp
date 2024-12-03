@@ -1,5 +1,3 @@
-
-
 #include "compiler/include/Conversion/LinalgToNPU/LinalgToNPU.h"
 #include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -22,12 +20,12 @@
 #include "compiler/include/Conversion/LinalgToNPU/ConversionPatterns.hpp"
 
 using namespace mlir;
-using namespace triton;
+using namespace npu;
 
 #define GEN_PASS_CLASSES
 #include "compiler/include/Conversion/LinalgToNPU/Passes.h.inc"
 
-void mlir::deeplink::npu::populateLinalgToNPUConversionPatterns(
+void mlir::npu::populateLinalgToNPUConversionPatterns(
     RewritePatternSet &patterns) {
   //   patterns.add<AddFConverter>(patterns.getContext());
 }

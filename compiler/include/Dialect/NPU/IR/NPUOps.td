@@ -1,27 +1,31 @@
 
-
 #ifndef NPU_DIALECT
 #define NPU_DIALECT
 
 include "mlir/IR/OpBase.td"
-// include "NPUOpBase.td"
 // include "mlir/Interfaces/FunctionInterfaces.td"
 // include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
+// Provide a definition of the 'NPU' dialect in the ODS framework so that we
+// can define our operations.
 def NPU_Dialect : Dialect {
-  let name = "NPU";
-  let description = [{NPU Dialect}];
-  let cppNamespace = "::mlir::deeplink::npu";
+  let name = "npu";
+  let cppNamespace = "::mlir::npu";
   let usePropertiesForAttributes = 1;
 }
+
+// Base class for NPU dialect operations. This operation inherits from the base
+// `Op` class in OpBase.td, and provides:
+//   * The parent dialect of the operation.
+//   * The mnemonic for the operation, or the name without the dialect prefix.
+//   * A list of traits for the operation.
+class NPU_Op<string mnemonic, list<Trait> traits = []>
+    : Op<NPU_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // NPU Operations
 //===----------------------------------------------------------------------===//
-
-class NPU_Op<string mnemonic, list<Trait> traits = []>
-    : Op<NPU_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // AddOp
@@ -64,9 +68,9 @@ def CopyOp : NPU_Op<"copy"> {
                            >:$target
                     );
 
-  // let assemblyFormat = [
-  //   {$source `,` $target attr - dict `:` type($source) `to` type($target)}
-  // ];
+  let assemblyFormat = [
+    {$source `,` $target attr - dict `:` type($source) `to` type($target)}
+  ];
 
   // let builders = [
   //  Build a SubViewOp with static entries and inferred result type.

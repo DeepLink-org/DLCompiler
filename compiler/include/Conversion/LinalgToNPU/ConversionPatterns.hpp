@@ -1,13 +1,10 @@
 #pragma once
-
-
 #include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
-
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
@@ -19,7 +16,7 @@
 #include <type_traits>
 
 using namespace mlir;
-using namespace deeplink;
+using namespace npu;
 
 namespace {
 
@@ -29,9 +26,6 @@ struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
   LogicalResult
   matchAndRewrite(memref::CopyOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // assert(false);
-    
-
     auto args = adaptor.getOperands();
     auto subview0 = dyn_cast_or_null<memref::SubViewOp>(
           args[0].getDefiningOp());
@@ -50,7 +44,7 @@ struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
       // dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
       // dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
 
-      //  auto replacement = rewriter.create<ascend::CopyOp>(
+      //  auto replacement = rewriter.create<npu::CopyOp>(
       //   op.getLoc(), args[0],args[1], staticOffsets, staticSizes, staticStrides);
 
       // rewriter.replaceOp(op, replacement);

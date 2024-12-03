@@ -20,10 +20,9 @@
 #include "compiler/include/Dialect/NPU/IR/NPUOps.h.inc"
 
 using namespace mlir;
-using namespace mlir::deeplink::npu;
+using namespace mlir::npu;
 
 namespace mlir {
-namespace deeplink {
 namespace npu {
 
 /// A generalized parser for binary operations. This parses the different forms
@@ -123,5 +122,4 @@ void AddOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
 //         b.getDenseI64ArrayAttr(staticShape), order);
 // }
 } // namespace npu
-} // namespace deeplink
 } // namespace mlir

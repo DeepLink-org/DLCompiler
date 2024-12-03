@@ -6,8 +6,10 @@ set(DC_TRITON_LINK_DIR "")
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/third_party/triton_shared/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_shared/include)
 
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton)
     file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton")
@@ -28,8 +30,7 @@ list(APPEND CMAKE_MODULE_PATH
 include(utils)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/compiler)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_shared)
 
 add_triton_plugin(DICPTriton ${CMAKE_CURRENT_SOURCE_DIR}/dicp_triton.cc LINK_LIBS ${LIBS})
 target_include_directories(DICPTriton PUBLIC "${pybind11_INCLUDE_DIRS}")
-
-

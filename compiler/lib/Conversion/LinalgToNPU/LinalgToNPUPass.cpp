@@ -1,27 +1,19 @@
-
-
-// #include "triton-shared/Conversion/StructuredToMemref/StructuredToMemref.h"
-// #include "triton-shared/Conversion/TritonArithToLinalg/TritonArithToLinalg.h"
 #include "compiler/include/Conversion/LinalgToNPU/LinalgToNPU.h"
-// #include "triton-shared/Conversion/TritonToStructured/TritonToStructured.h"
-// #include
-// "triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.h"
-// #include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 #include "compiler/include/Dialect/NPU/IR/NPUDialect.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
-#define DEBUG_TYPE "linalg-to-NPU"
+#define DEBUG_TYPE "linalg-to-npu"
 #include "compiler/include/Conversion/LinalgToNPU/ConversionPatterns.hpp"
 
 using namespace mlir;
-using namespace deeplink;
+using namespace npu;
+
 #define GEN_PASS_CLASSES
 #include "compiler/include/Conversion/LinalgToNPU/Passes.h.inc"
 
@@ -32,8 +24,9 @@ class LinalgToNPUPass : public LinalgToNPUBase<LinalgToNPUPass> {
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
-        .insert<arith::ArithDialect, npu::NPUDialect, linalg::LinalgDialect,
-                affine::AffineDialect, scf::SCFDialect, tensor::TensorDialect,
+        .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
+                npu::NPUDialect, linalg::LinalgDialect, affine::AffineDialect,
+                scf::SCFDialect, tensor::TensorDialect,
                 bufferization::BufferizationDialect, memref::MemRefDialect>();
   }
 
@@ -57,6 +50,6 @@ public:
 };
 } // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> npu::createLinalgToNPUPass() {
+std::unique_ptr<OperationPass<ModuleOp>> mlir::npu::createLinalgToNPUPass() {
   return std::make_unique<LinalgToNPUPass>();
 }

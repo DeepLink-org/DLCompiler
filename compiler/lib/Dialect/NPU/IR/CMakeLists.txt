@@ -1,4 +1,4 @@
-add_dicp_triton_library(NPUIR
+add_triton_library(NPUIR
   NPUOps.cpp
   NPUDialect.cpp
 
@@ -6,5 +6,6 @@ add_dicp_triton_library(NPUIR
   NPUTableGen
 
   LINK_LIBS PUBLIC
+  TritonIR
   MLIRIR
   )

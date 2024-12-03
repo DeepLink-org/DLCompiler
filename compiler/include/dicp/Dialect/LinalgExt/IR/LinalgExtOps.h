@@ -1,7 +1,7 @@
 #ifndef DIALECT_LINALGEXT_IR_LINALGEXT_OPS_H_
 #define DIALECT_LINALGEXT_IR_LINALGEXT_OPS_H_
 
-#include "Dialect/LinalgExt/IR/Traits.h"
+#include "dicp/Dialect/LinalgExt/IR/Traits.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -24,11 +24,11 @@
 #include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Support/LLVM.h"
 
-#include "Dialect/LinalgExt/IR/LinalgExtDialect.h.inc"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtDialect.h.inc"
 
 #define GET_OP_CLASSES
-#include "Dialect/LinalgExt/IR/LinalgExtOps.h.inc"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h.inc"
 #define GET_TYPEDEF_CLASSES
-#include "Dialect/LinalgExt/IR/LinalgExtTypes.h.inc"
+#include "dicp/Dialect/LinalgExt/IR/LinalgExtTypes.h.inc"
 
 #endif // DIALECT_LINALGEXT_IR_LINALGEXT_OPS_H_

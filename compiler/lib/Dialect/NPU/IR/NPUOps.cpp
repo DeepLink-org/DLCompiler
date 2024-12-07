@@ -1,3 +1,5 @@
+#include "dicp/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Dialect/NPU/IR/NPUTypes.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -16,8 +18,13 @@
 #include <algorithm>
 #include <string>
 
+// #define GET_OP_CLASSES
+// #include "dicp/Dialect/NPU/IR/NPUOps.h.inc"
+
+// #define GET_OP_CLASSES
+// #include "dicp/Dialect/NPU/IR/NPUDialect.cpp.inc"
 #define GET_OP_CLASSES
-#include "dicp/Dialect/NPU/IR/NPUOps.h.inc"
+#include "dicp/Dialect/NPU/IR/NPUOps.cpp.inc"
 
 using namespace mlir;
 using namespace mlir::dicp;
@@ -76,18 +83,23 @@ static void printBinaryOp(mlir::OpAsmPrinter &printer, mlir::Operation *op) {
 // AddOp
 //===----------------------------------------------------------------------===//
 
-void AddOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+void AddFOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                   mlir::Value lhs, mlir::Value rhs) {
   state.addTypes(UnrankedTensorType::get(builder.getF16Type()));
   state.addOperands({lhs, rhs});
 }
 
-mlir::ParseResult AddOp::parse(mlir::OpAsmParser &parser,
+mlir::ParseResult AddFOp::parse(mlir::OpAsmParser &parser,
                                mlir::OperationState &result) {
   return parseBinaryOp(parser, result);
 }
 
-void AddOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
+void AddFOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
+
+// void CreateTQueueOp::print(mlir::OpAsmPrinter &p) {
+//   //  printBinaryOp(p, *this); 
+//    p.printFunctionalType((*this)->getResultTypes());
+// }
 
 // void Copy::build(OpBuilder &b, OperationState &state,
 //                 ArrayRef<int64_t> offsets,

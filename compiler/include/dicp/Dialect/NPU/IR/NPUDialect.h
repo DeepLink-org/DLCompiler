@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dicp/Dialect/NPU/IR/NPUTypes.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -18,3 +19,4 @@
 #include "dicp/Dialect/NPU/IR/NPUDialect.h.inc"
 #define GET_OP_CLASSES
 #include "dicp/Dialect/NPU/IR/NPUOps.h.inc"
+

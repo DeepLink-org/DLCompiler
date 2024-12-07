@@ -1,5 +1,6 @@
 #pragma once
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Dialect/NPU/IR/NPUTypes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
@@ -61,6 +62,31 @@ struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
     // }
     auto replacement = rewriter.create<npu::CopyOp>(
         op.getLoc(), args[0],args[1]);
+
+    rewriter.replaceOp(op, replacement);
+    return success();
+  }
+};
+
+
+struct AddFConverter : public OpConversionPattern<arith::AddFOp> {
+  using OpConversionPattern<arith::AddFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::AddFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = op.getLoc();
+    auto args = adaptor.getOperands();
+    Type resultType = op.getResult().getType();
+    
+    auto tPipType = npu::TPipType::get(resultType.getContext(), 1);
+    auto tpip = rewriter.create<npu::CreateTPipOp>(loc,tPipType);//, rewriter.getI32IntegerAttr(1));
+
+    auto tQueueType = npu::TQueueType::get(resultType.getContext(), 1);
+    rewriter.create<npu::CreateTQueueOp>(loc,tQueueType);//, rewriter.getI32IntegerAttr(1));
+
+    Value replacement = rewriter.create<npu::AddFOp>(
+        loc, resultType, args[0], args[1]);
 
     rewriter.replaceOp(op, replacement);
     return success();

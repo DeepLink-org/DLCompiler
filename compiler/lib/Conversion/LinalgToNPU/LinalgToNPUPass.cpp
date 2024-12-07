@@ -36,7 +36,6 @@ public:
     // builder.setInsertionPointToStart(builder.getBlock());
     // builder.create<npu::CreateTpipOp>(builder.getUnknownLoc());
 
-
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<npu::NPUDialect>();

@@ -1,9 +1,9 @@
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
-#include "dicp/Dialect/NPU/IR/NPUTypes.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.cpp.inc"
+#include "dicp/Dialect/NPU/IR/NPUTypes.h"
 #include "mlir/IR/DialectImplementation.h" // required by `Types.cpp.inc`
-#include "llvm/ADT/TypeSwitch.h" // required by `Types.cpp.inc`
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/TypeSwitch.h" // required by `Types.cpp.inc`
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -13,7 +13,6 @@
 
 using namespace mlir;
 using namespace mlir::dicp::npu;
-
 
 // Type parseType(DialectAsmParser &parser) const {
 //   StringRef typeKind;
@@ -51,5 +50,3 @@ void NPUDialect::initialize() {
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
-
-

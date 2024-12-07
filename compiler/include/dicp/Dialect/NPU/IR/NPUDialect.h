@@ -19,4 +19,3 @@
 #include "dicp/Dialect/NPU/IR/NPUDialect.h.inc"
 #define GET_OP_CLASSES
 #include "dicp/Dialect/NPU/IR/NPUOps.h.inc"
-

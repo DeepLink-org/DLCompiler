@@ -84,20 +84,20 @@ static void printBinaryOp(mlir::OpAsmPrinter &printer, mlir::Operation *op) {
 //===----------------------------------------------------------------------===//
 
 void AddFOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
-                  mlir::Value lhs, mlir::Value rhs) {
+                   mlir::Value lhs, mlir::Value rhs) {
   state.addTypes(UnrankedTensorType::get(builder.getF16Type()));
   state.addOperands({lhs, rhs});
 }
 
 mlir::ParseResult AddFOp::parse(mlir::OpAsmParser &parser,
-                               mlir::OperationState &result) {
+                                mlir::OperationState &result) {
   return parseBinaryOp(parser, result);
 }
 
 void AddFOp::print(mlir::OpAsmPrinter &p) { printBinaryOp(p, *this); }
 
 // void CreateTQueueOp::print(mlir::OpAsmPrinter &p) {
-//   //  printBinaryOp(p, *this); 
+//   //  printBinaryOp(p, *this);
 //    p.printFunctionalType((*this)->getResultTypes());
 // }
 

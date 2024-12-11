@@ -81,6 +81,18 @@ def CreateTQueueOp : NPU_Op<"create_tqueue"> {
   // Allow building an AddOp with from the two input operands.
   // let builders = [OpBuilder<(ins "Value" : $queue_type)>];
 }
+
+def CreateGlobalTensorOp : NPU_Op<"create_global_tensor"> {
+  let summary = "create npu global tensor";
+  let description =
+      [{Create npu global tensor.}];
+  let results = (outs NPU_GlobalTensorType : $result);
+  let assemblyFormat = [{
+    attr-dict `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
 //===----------------------------------------------------------------------===//
 // AddFOp
 //===----------------------------------------------------------------------===//
@@ -92,14 +104,23 @@ def AddFOp : NPU_Op<"addf"> {
         wise addition between two
             tensors.The shapes of the tensor operands are expected to match.}];
 
-  let arguments = (ins FloatLike : $lhs, FloatLike : $rhs);
-  let results = (outs FloatLike);
+  let arguments = (ins Arg<AnyRankedOrUnrankedMemRef, "the memref to copy from"
+                           > : $lhs, 
+                       Arg<AnyRankedOrUnrankedMemRef, "the memref to copy from"
+                           > : $rhs,
+                       AnyRankedOrUnrankedMemRef: $out);
+  // let results = (outs AnyRankedOrUnrankedMemRef);
 
   // Indicate that the operation has a custom parser and printer method.
-  let hasCustomAssemblyFormat = 1;
+  // let hasCustomAssemblyFormat = 1;
 
   // Allow building an AddOp with from the two input operands.
-  let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
+  // let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
+  let assemblyFormat = [{
+    $lhs `,` $rhs `->` $out attr-dict `:` type($lhs) `,` type($rhs) `to` type($out)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -109,9 +130,7 @@ def AddFOp : NPU_Op<"addf"> {
 def CopyOp : NPU_Op<"copy"> {
 
   let description =
-      [{Copies the data from the source to the destination
-            .
-
+      [{Copies the data from the source to the destination.
         Source and destination are expected to have the same element type and
             shape.Otherwise,
         the result is undefined.They may have different layouts.}];
@@ -123,7 +142,7 @@ def CopyOp : NPU_Op<"copy"> {
                     );
 
   let assemblyFormat = [{
-    $source `,` $target attr-dict `:` type($source) `to` type($target)
+    $source `->` $target attr-dict `:` type($source) `to` type($target)
   }];
 
   // let builders = [

@@ -14,8 +14,12 @@ Type TQueueType::parse(AsmParser &parser) {
   if (parser.parseLess())
     return Type();
 
-  int type = 1;
-  if (parser.parseInteger(type)) {
+  int position = 1;
+  if (parser.parseInteger(position)) {
+    return Type();
+  }
+  int bufferNumber = 1;
+  if (parser.parseInteger(bufferNumber)) {
     return Type();
   }
 
@@ -23,11 +27,11 @@ Type TQueueType::parse(AsmParser &parser) {
     return Type();
   }
 
-  return TQueueType::get(parser.getContext(), type);
+  return TQueueType::get(parser.getContext(), position, bufferNumber);
 }
 
 void TQueueType::print(AsmPrinter &printer) const {
-  printer << "npu.tqueue<" << getType() << ">";
+  printer << "npu.tqueue<" << getPosition() << ", " << getBufferNumber() << ">";
 }
 
 Type TPipType::parse(AsmParser &parser) {
@@ -48,6 +52,26 @@ Type TPipType::parse(AsmParser &parser) {
 
 void TPipType::print(AsmPrinter &printer) const {
   printer << "npu.tpip<" << getType() << ">";
+}
+
+Type GlobalTensorType::parse(AsmParser &parser) {
+  if (parser.parseLess())
+    return Type();
+
+  int type = 1;
+  if (parser.parseInteger(type)) {
+    return Type();
+  }
+
+  if (parser.parseGreater()) {
+    return Type();
+  }
+
+  return GlobalTensorType::get(parser.getContext(), type);
+}
+
+void GlobalTensorType::print(AsmPrinter &printer) const {
+  printer << "npu.global_tensor<" << getType() << ">";
 }
 
 //===----------------------------------------------------------------------===//

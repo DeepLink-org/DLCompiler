@@ -26,6 +26,7 @@ using namespace dicp;
 #include "dicp/Conversion/LinalgToNPU/Passes.h.inc"
 
 void npu::populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<AddFConverter>(patterns.getContext());
+  // patterns.add<AddFConverter>(patterns.getContext());
   patterns.add<CopyConverter>(patterns.getContext());
+  patterns.add<LinalgGenericConverter>(patterns.getContext());
 }

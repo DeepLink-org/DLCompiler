@@ -21,6 +21,15 @@ using namespace dicp;
 
 namespace {
 
+template <typename T, typename OP>
+static Value insertFront(T type, Location loc,
+                          PatternRewriter &rewriter) {
+  auto tq = rewriter.create<OP>(loc, type);
+  auto *parentBlock = tq->getBlock();
+  tq->moveBefore(&parentBlock->front());
+  return tq;
+}
+
 struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
   using OpConversionPattern<memref::CopyOp>::OpConversionPattern;
 
@@ -69,26 +78,60 @@ struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
 };
 
 
-struct AddFConverter : public OpConversionPattern<arith::AddFOp> {
-  using OpConversionPattern<arith::AddFOp>::OpConversionPattern;
+// struct AddFConverter : public OpConversionPattern<arith::AddFOp> {
+//   using OpConversionPattern<arith::AddFOp>::OpConversionPattern;
+
+//   LogicalResult
+//   matchAndRewrite(arith::AddFOp op, OpAdaptor adaptor,
+//                   ConversionPatternRewriter &rewriter) const override {
+//     auto loc = op.getLoc();
+//     auto args = adaptor.getOperands();
+//     Type resultType = op.getResult().getType();
+    
+//     auto tPipType = npu::TPipType::get(resultType.getContext(), 1);
+//     auto tpip = rewriter.create<npu::CreateTPipOp>(loc,tPipType);//, rewriter.getI32IntegerAttr(1));
+
+//     auto tQueueType = npu::TQueueType::get(resultType.getContext(), 1);
+//     rewriter.create<npu::CreateTQueueOp>(loc,tQueueType);//, rewriter.getI32IntegerAttr(1));
+
+//     Value replacement = rewriter.create<npu::AddFOp>(
+//         loc, resultType, args[0], args[1]);
+
+//     rewriter.replaceOp(op, replacement);
+//     return success();
+//   }
+// };
+
+struct LinalgGenericConverter : public OpConversionPattern<linalg::GenericOp> {
+  using OpConversionPattern<linalg::GenericOp>::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(arith::AddFOp op, OpAdaptor adaptor,
+  matchAndRewrite(linalg::GenericOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
     auto args = adaptor.getOperands();
-    Type resultType = op.getResult().getType();
-    
-    auto tPipType = npu::TPipType::get(resultType.getContext(), 1);
-    auto tpip = rewriter.create<npu::CreateTPipOp>(loc,tPipType);//, rewriter.getI32IntegerAttr(1));
-
-    auto tQueueType = npu::TQueueType::get(resultType.getContext(), 1);
-    rewriter.create<npu::CreateTQueueOp>(loc,tQueueType);//, rewriter.getI32IntegerAttr(1));
-
-    Value replacement = rewriter.create<npu::AddFOp>(
-        loc, resultType, args[0], args[1]);
-
+    Value lhs = op->getOperand(0);
+    Value rhs = op->getOperand(1);
+    ValueRange outputs = op.getOutputs();
+    auto replacement = rewriter.create<npu::AddFOp>(loc, lhs, rhs, outputs[0]);
     rewriter.replaceOp(op, replacement);
+    // todo::move to front
+    auto tPipType = npu::TPipType::get(getContext(), 1);
+    auto tpip = rewriter.create<npu::CreateTPipOp>(loc,tPipType);
+
+    auto lhsQueueType = npu::TQueueType::get(getContext(), 0, 2);
+    insertFront<npu::TQueueType, npu::CreateTQueueOp>(lhsQueueType, loc, rewriter);
+    auto rhsQueueType = npu::TQueueType::get(getContext(), 0, 2);
+    insertFront<npu::TQueueType, npu::CreateTQueueOp>(rhsQueueType, loc, rewriter);
+    auto outQueueType = npu::TQueueType::get(getContext(), 1, 2);
+    insertFront<npu::TQueueType, npu::CreateTQueueOp>(outQueueType, loc, rewriter);
+
+    auto lhsGlobalType = npu::GlobalTensorType::get(getContext(), 0);
+    insertFront<npu::GlobalTensorType, npu::CreateGlobalTensorOp>(lhsGlobalType, loc, rewriter);
+    auto rhsGlobalType = npu::GlobalTensorType::get(getContext(), 0);
+    insertFront<npu::GlobalTensorType, npu::CreateGlobalTensorOp>(rhsGlobalType, loc, rewriter);
+    auto outGlobalType = npu::GlobalTensorType::get(getContext(), 0);
+    insertFront<npu::GlobalTensorType, npu::CreateGlobalTensorOp>(outGlobalType, loc, rewriter);
     return success();
   }
 };

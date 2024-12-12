@@ -115,13 +115,17 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "cnbin"
         elif self.driver.target == 'maca':
             self.binary_ext = "mcfatbin"
+        elif self.driver.target == 'ascend':
+            self.binary_ext = "so"
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ['dicp', 'mlu', 'maca']
+        return target.backend in ['dicp', 'mlu', 'maca', 'ascend']
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
+        key = hashlib.md5(str(mod).encode("utf-8")).hexdigest()
+        metadata['hash'] = key
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         passes.common.add_inliner(pm)
@@ -154,6 +158,11 @@ class DICPBackend(BaseBackend):
             if mxcc_arch is None:
                 raise RuntimeError('mxcc_arch is None (not specified)')
             stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
+        elif self.driver.target == 'ascend':
+            from triton.backends.dicp_triton.ascend import llir_to_ascendc, generate_launcher_so
+            stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
+            stages["ascendc"] = lambda src, metadata: llir_to_ascendc(src, metadata)
+            stages["so"] = lambda src, metadata: generate_launcher_so(src, metadata)
         else:
             raise RuntimeError("backend not supported")
 

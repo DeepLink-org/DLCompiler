@@ -5,9 +5,10 @@ triton for dsa
 ```
 git clone https://github.com/llvm/llvm-project.git
 // triton下的llvm-hash.txt commit id
-git reset --hard ed4e505c219fe6c7464ea5a056e90d8cd94c7332
+git checkout ed4e505c219fe6c7464ea5a056e90d8cd94c7332
+mkdir build && cd build
 
-cmake -G Ninja ../llvm  -DLLVM_ENABLE_PROJECTS="llvm;mlir"    -DLLVM_BUILD_EXAMPLES=ON    -DLLVM_TARGETS_TO_BUILD="X86X86;NVPTX;AMDGPU"     -DCMAKE_BUILD_TYPE=Release  -DLLVM_ENABLE_ASSERTIONS=ON       -DLLVM_INSTALL_UTILS=ON
+cmake -G Ninja ../llvm  -DLLVM_ENABLE_PROJECTS="llvm;mlir"    -DLLVM_BUILD_EXAMPLES=ON    -DLLVM_TARGETS_TO_BUILD="X86;NVPTX;AMDGPU"     -DCMAKE_BUILD_TYPE=Release  -DLLVM_ENABLE_ASSERTIONS=ON       -DLLVM_INSTALL_UTILS=ON
 
 ninja -j64
 ```
@@ -18,7 +19,7 @@ ninja -j64
 export LLVM_BUILD_DIR=...
 bash compile.sh
 export PYTHONPATH=$PWD/third_party/triton/python
-export PATH=$PWD/third_party/triton/build/third_party/triton_shared/tools/triton-shared-opt/:$PATH
+export PATH=$PWD/third_party/triton/build/third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt:$PATH
 ```
 
 

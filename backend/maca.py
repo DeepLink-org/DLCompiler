@@ -693,7 +693,7 @@ class MacaLauncher(object):
         cst_key = lambda i: src.fn.arg_names.index(i) if isinstance(i, str) else i
         constants = {cst_key(key): value for key, value in constants.items()}
         signature = {cst_key(key): value for key, value in src.signature.items()}
-        so_cache_key = src.hash()
+        so_cache_key = metadata['hash']
         self.so_path = self.make_launcher_stub(name, so_cache_key, signature, constants)
         spec = importlib.util.spec_from_file_location("__triton_launcher", self.so_path)
         mod = importlib.util.module_from_spec(spec)

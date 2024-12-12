@@ -116,8 +116,11 @@ def AddFOp : NPU_Op<"addf"> {
 
   // Allow building an AddOp with from the two input operands.
   // let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
+  // $lhs `,` $rhs `->` $out attr-dict `:` type($lhs) `,` type($rhs) `to` type($out)
   let assemblyFormat = [{
-    $lhs `,` $rhs `->` $out attr-dict `:` type($lhs) `,` type($rhs) `to` type($out)
+    attr-dict
+    `ins` `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)`
+    `outs` `(` $out `:` type($out) `)`
   }];
   let hasCanonicalizer = 0;
   let hasFolder = 0;
@@ -142,9 +145,10 @@ def CopyOp : NPU_Op<"copy"> {
                     );
 
   let assemblyFormat = [{
-    $source `->` $target attr-dict `:` type($source) `to` type($target)
+    attr-dict
+    `ins` `(` $source `:` type($source)`)`
+    `outs` `(` $target `:` type($target) `)`
   }];
-
   // let builders = [
   //  Build a SubViewOp with static entries and inferred result type.
   //  OpBuilder<(ins "MemRefType":$resultType, "Value":$source,

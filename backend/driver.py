@@ -144,7 +144,7 @@ class DICPDriver(DriverBase):
             if device is None:
                 device = self.get_current_device()
             return torch.mlu.current_stream(device).mlu_stream
-        elif self.target == "maca":
+        elif self.target in ["maca", "ascend"]:
             if device is None:
                 device = self.get_current_device()
             return torch.cuda.current_stream(device).cuda_stream
@@ -154,7 +154,7 @@ class DICPDriver(DriverBase):
         # dicp doesn't have a device to return. Return something.
         if self.target == "mlu":
             return torch.mlu.current_device()
-        elif self.target == "maca":
+        elif self.target in ["maca", "ascend"]:
             return torch.cuda.current_device()
         return "dicp"
 
@@ -162,7 +162,7 @@ class DICPDriver(DriverBase):
         # dicp doesn't have a device to set
         if self.target == "mlu":
             return torch.mlu.set_device(device)
-        elif self.target == "maca":
+        elif self.target in ["maca", "ascend"]:
             return torch.cuda.set_device(device)
         #assert device == "dicp"
         return

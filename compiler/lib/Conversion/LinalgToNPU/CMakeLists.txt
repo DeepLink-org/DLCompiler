@@ -3,7 +3,7 @@ add_triton_library(LinalgToNPU
   LinalgToNPU.cpp
 
   DEPENDS
-  NPUTableGen
+  DICPNPUIncGen
   LinalgToNPUConversionPassIncGen
 
   LINK_LIBS PUBLIC
@@ -20,7 +20,7 @@ add_triton_library(LinalgToNPU
   TritonIR
   TritonTransforms
   TritonSharedAnalysis
-  NPUIR
+  DICPNPU
 
   TritonArithToLinalg
   StructuredToMemref

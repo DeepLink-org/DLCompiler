@@ -16,7 +16,7 @@
 #include <numeric>
 #include <type_traits>
 
-#define DEBUG_TYPE "linalg-to-NPU"
+#define DEBUG_TYPE "linalg-to-npu"
 #include "dicp/Conversion/LinalgToNPU/ConversionPatterns.hpp"
 
 using namespace mlir;
@@ -26,5 +26,7 @@ using namespace dicp;
 #include "dicp/Conversion/LinalgToNPU/Passes.h.inc"
 
 void npu::populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns) {
-  //   patterns.add<AddFConverter>(patterns.getContext());
+  // patterns.add<AddFConverter>(patterns.getContext());
+  patterns.add<CopyConverter>(patterns.getContext());
+  patterns.add<LinalgGenericConverter>(patterns.getContext());
 }

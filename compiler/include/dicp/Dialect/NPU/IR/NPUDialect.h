@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dicp/Dialect/NPU/IR/NPUTypes.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"

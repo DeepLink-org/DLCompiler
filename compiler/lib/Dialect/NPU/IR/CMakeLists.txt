@@ -1,9 +1,10 @@
-add_dicp_triton_library(NPUIR
+add_dicp_triton_library(DICPNPU
   NPUOps.cpp
   NPUDialect.cpp
+  NPUTypes.cpp
 
   DEPENDS
-  NPUTableGen
+  DICPNPUIncGen
 
   LINK_LIBS PUBLIC
   TritonIR

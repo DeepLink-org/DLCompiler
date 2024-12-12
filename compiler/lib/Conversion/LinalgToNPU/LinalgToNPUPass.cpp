@@ -32,6 +32,10 @@ public:
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
+    // OpBuilder builder(moduleOp.getBodyRegion());
+    // builder.setInsertionPointToStart(builder.getBlock());
+    // builder.create<npu::CreateTpipOp>(builder.getUnknownLoc());
+
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<npu::NPUDialect>();
@@ -40,8 +44,8 @@ public:
     //   });
     // target.addIllegalOp<arith::AddFOp>();
 
-    // triton::populateLinalgToNPUConversionPatterns(patterns);
-    patterns.add<CopyConverter>(patterns.getContext());
+    npu::populateLinalgToNPUConversionPatterns(patterns);
+    // patterns.add<CopyConverter>(patterns.getContext());
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();

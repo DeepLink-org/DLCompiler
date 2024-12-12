@@ -1,18 +1,29 @@
-#ifndef NPU_DIALECT
-#define NPU_DIALECT
+#ifndef NPU_DIALECT_OPS
+#define NPU_DIALECT_OPS
 
+include "dicp/Dialect/NPU/IR/NPUDialect.td"
+include "dicp/Dialect/NPU/IR/NPUTypes.td"
 include "mlir/IR/OpBase.td"
-// include "mlir/Interfaces/FunctionInterfaces.td"
-// include "mlir/IR/SymbolInterfaces.td"
-include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/SymbolInterfaces.td" // SymbolUserOpInterface
+include "mlir/IR/OpAsmInterface.td" // OpAsmOpInterface
+include "mlir/Interfaces/CallInterfaces.td" // CallOpInterface
+include "mlir/Interfaces/CastInterfaces.td" // CastOpInterface
+include "mlir/Interfaces/FunctionInterfaces.td" // FunctionOpInterface
+include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
+include "mlir/Interfaces/ControlFlowInterfaces.td" // BranchOpInterface
+include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
+include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
+include "mlir/Interfaces/CastInterfaces.td" // CastOpInterface
+include "mlir/Interfaces/CallInterfaces.td" // CallOpInterface
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 // Provide a definition of the 'NPU' dialect in the ODS framework so that we
 // can define our operations.
-def NPU_Dialect : Dialect {
-  let name = "npu";
-  let cppNamespace = "::mlir::dicp::npu";
-  let usePropertiesForAttributes = 1;
-}
+// def NPU_Dialect : Dialect {
+//   let name = "npu";
+//   let cppNamespace = "::mlir::dicp::npu";
+//   let usePropertiesForAttributes = 1;
+// }
 
 // Base class for NPU dialect operations. This operation inherits from the base
 // `Op` class in OpBase.td, and provides:
@@ -27,24 +38,92 @@ class NPU_Op<string mnemonic, list<Trait> traits = []>
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// AddOp
+// CreateTPipOp
+//===----------------------------------------------------------------------===//
+def CreateTPipOp : NPU_Op<"create_tpip"> {
+  let summary = "create npu tpip";
+  let description =
+      [{Create npu tpip.}];
+
+  
+  let results = (outs NPU_TPipType:$result);
+  let assemblyFormat = [{
+    attr-dict `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+
+  // Indicate that the operation has a custom parser and printer method.
+  // let hasCustomAssemblyFormat = 1;
+
+  // Allow building an AddOp with from the two input operands.
+  // let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
+}
+def CreateTQueueOp : NPU_Op<"create_tqueue"> {
+  let summary = "create npu tqueue";
+  let description =
+      [{Create npu tqueue.}];
+
+  // let arguments = [];
+  // let arguments = (ins TypedAttrInterface : $queue_type);
+  // let arguments = (ins NPU_TPipType : $tpip);
+  let results = (outs NPU_TQueueType : $result);
+  let assemblyFormat = [{
+    attr-dict `:` type($result)
+  }];
+
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+// $queue_type  attr-dict `:` type($result)
+  // Indicate that the operation has a custom parser and printer method.
+  // let hasCustomAssemblyFormat = 1;
+
+  // Allow building an AddOp with from the two input operands.
+  // let builders = [OpBuilder<(ins "Value" : $queue_type)>];
+}
+
+def CreateGlobalTensorOp : NPU_Op<"create_global_tensor"> {
+  let summary = "create npu global tensor";
+  let description =
+      [{Create npu global tensor.}];
+  let results = (outs NPU_GlobalTensorType : $result);
+  let assemblyFormat = [{
+    attr-dict `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+//===----------------------------------------------------------------------===//
+// AddFOp
 //===----------------------------------------------------------------------===//
 
-def AddOp : NPU_Op<"add"> {
+def AddFOp : NPU_Op<"addf"> {
   let summary = "element-wise addition operation";
   let description =
       [{The "add" operation performs element -
         wise addition between two
             tensors.The shapes of the tensor operands are expected to match.}];
 
-  let arguments = (ins F16Tensor : $lhs, F16Tensor : $rhs);
-  let results = (outs F16Tensor);
+  let arguments = (ins Arg<AnyRankedOrUnrankedMemRef, "the memref to copy from"
+                           > : $lhs, 
+                       Arg<AnyRankedOrUnrankedMemRef, "the memref to copy from"
+                           > : $rhs,
+                       AnyRankedOrUnrankedMemRef: $out);
+  // let results = (outs AnyRankedOrUnrankedMemRef);
 
   // Indicate that the operation has a custom parser and printer method.
-  let hasCustomAssemblyFormat = 1;
+  // let hasCustomAssemblyFormat = 1;
 
   // Allow building an AddOp with from the two input operands.
-  let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
+  // let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
+  // $lhs `,` $rhs `->` $out attr-dict `:` type($lhs) `,` type($rhs) `to` type($out)
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)`
+    `outs` `(` $out `:` type($out) `)`
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -54,9 +133,7 @@ def AddOp : NPU_Op<"add"> {
 def CopyOp : NPU_Op<"copy"> {
 
   let description =
-      [{Copies the data from the source to the destination
-            .
-
+      [{Copies the data from the source to the destination.
         Source and destination are expected to have the same element type and
             shape.Otherwise,
         the result is undefined.They may have different layouts.}];
@@ -68,9 +145,10 @@ def CopyOp : NPU_Op<"copy"> {
                     );
 
   let assemblyFormat = [{
-    $source `,` $target attr-dict `:` type($source) `to` type($target)
+    attr-dict
+    `ins` `(` $source `:` type($source)`)`
+    `outs` `(` $target `:` type($target) `)`
   }];
-
   // let builders = [
   //  Build a SubViewOp with static entries and inferred result type.
   //  OpBuilder<(ins "MemRefType":$resultType, "Value":$source,
@@ -82,4 +160,4 @@ def CopyOp : NPU_Op<"copy"> {
   let hasFolder = 0;
 }
 
-#endif // NPU_DIALECT
+#endif // NPU_DIALECT_OPS

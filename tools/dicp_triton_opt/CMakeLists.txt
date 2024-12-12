@@ -12,7 +12,7 @@ target_link_libraries(dicp_opt PRIVATE
   TritonSharedAnalysis
   ${dialect_libs}
   ${conversion_libs}
-  NPUIR
+  DICPNPU
   LinalgToNPU
   DICPLinalgExt
 

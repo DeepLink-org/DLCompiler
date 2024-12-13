@@ -39,39 +39,11 @@ struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
     auto args = adaptor.getOperands();
     auto subview0 = dyn_cast_or_null<memref::SubViewOp>(
           args[0].getDefiningOp());
-    if (subview0) {
-      llvm::outs() << "zcx0 log : \n";
-      auto staticOffsets = subview0.getStaticOffsets();
-      auto staticSizes = subview0.getStaticSizes();
-      auto staticStrides = subview0.getStaticStrides();
-      for (auto x : staticSizes){
-        llvm::outs() << "zcx0 x:" << x << "\n";
-      }
-      // SmallVector<int64_t> staticStrides, staticOffsets, staticSizes;
-      // SmallVector<Value> dynamicStrides, dynamicOffsets, dynamicSizes;
-
-      // dispatchIndexOpFoldResults(offsets, dynamicOffsets, staticOffsets);
-      // dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides);
-      // dispatchIndexOpFoldResults(sizes, dynamicSizes, staticSizes);
-
-      //  auto replacement = rewriter.create<npu::CopyOp>(
-      //   op.getLoc(), args[0],args[1], staticOffsets, staticSizes, staticStrides);
-
-      // rewriter.replaceOp(op, replacement);
-    }
     if (auto subview1 = dyn_cast_or_null<memref::SubViewOp>(
           args[1].getDefiningOp())) {
-      llvm::outs() << "zcx1 log : \n";
-      // subview0.getOperands();
     }
-
-   
-    // if (isa<memref::SubViewOp>(args[0].getDefiningOp())) {
-    //   Operation *definingOp = args[0].getDefiningOp()
-    // }
     auto replacement = rewriter.create<npu::CopyOp>(
         op.getLoc(), args[0],args[1]);
-
     rewriter.replaceOp(op, replacement);
     return success();
   }
@@ -112,26 +84,81 @@ struct LinalgGenericConverter : public OpConversionPattern<linalg::GenericOp> {
     auto args = adaptor.getOperands();
     Value lhs = op->getOperand(0);
     Value rhs = op->getOperand(1);
+    Operation* lDefOp = lhs.getDefiningOp();
+    Operation* rDefOp = rhs.getDefiningOp();
+    rewriter.setInsertionPointAfter(lDefOp);
+    // global tpip
+    auto tPipType = npu::TPipType::get(getContext());
+    Value tpip = rewriter.create<npu::CreateTPipOp>(loc,tPipType);
+    // global tqueue
+    auto vecInQueueType = npu::TQueueType::get(getContext(), 0, 2);
+    Value lQueue = rewriter.create<npu::CreateTQueueOp>(loc, vecInQueueType);
+    Value rQueue = rewriter.create<npu::CreateTQueueOp>(loc, vecInQueueType);
+    auto vecOutQueueType = npu::TQueueType::get(getContext(), 1, 2);
+    Value outQueue = rewriter.create<npu::CreateTQueueOp>(loc, vecOutQueueType);
+    // global tensor
+    auto GlobalTensorType = npu::GlobalTensorType::get(getContext(), 0);
+    Value lGlobalTensor = rewriter.create<npu::CreateGlobalTensorOp>(loc, GlobalTensorType);
+    Value rGlobalTensor = rewriter.create<npu::CreateGlobalTensorOp>(loc, GlobalTensorType);
+    Value outGlobalTensor = rewriter.create<npu::CreateGlobalTensorOp>(loc, GlobalTensorType);
+    // init
+    lGlobalTensor = rewriter.create<npu::SetGlobalBufferOp>(loc, GlobalTensorType, lGlobalTensor);
+    rGlobalTensor = rewriter.create<npu::SetGlobalBufferOp>(loc, GlobalTensorType, rGlobalTensor);
+    outGlobalTensor = rewriter.create<npu::SetGlobalBufferOp>(loc, GlobalTensorType, outGlobalTensor);
+    lQueue = rewriter.create<npu::InitlBufferOp>(loc, vecInQueueType, tpip, lQueue);
+    rQueue = rewriter.create<npu::InitlBufferOp>(loc, vecInQueueType, tpip, rQueue);
+    outQueue = rewriter.create<npu::InitlBufferOp>(loc, vecOutQueueType, tpip, outQueue);
+   
+    rewriter.setInsertionPointAfter(op);
+    // copy in
+    if (isa<memref::AllocOp>(rDefOp)) {
+      auto rLocal = rewriter.create<npu::AllocLocalOp>(loc, rhs.getType(), rQueue);
+      auto *parentBlock = rLocal->getBlock();
+      rLocal->moveBefore(&parentBlock->front());
+      rewriter.replaceOp(rDefOp, rLocal);
+      for (auto user : rhs.getUsers()) {
+        if (isa<npu::CopyOp>(user)) {
+          rewriter.setInsertionPointAfter(user);
+          rQueue = rewriter.create<npu::EnQueOp>(loc, vecInQueueType, rQueue, rLocal);
+        }
+      }
+    }
+    if (isa<memref::AllocOp>(lDefOp)) {
+      auto lLocal = rewriter.create<npu::AllocLocalOp>(loc, lhs.getType(), lQueue);
+      auto *parentBlock = lLocal->getBlock();
+      lLocal->moveBefore(&parentBlock->front());
+      rewriter.replaceOp(lDefOp, lLocal);
+      for (auto user : lhs.getUsers()) {
+        if (isa<npu::CopyOp>(user)) {
+          rewriter.setInsertionPointAfter(user);
+          lQueue = rewriter.create<npu::EnQueOp>(loc, vecInQueueType, lQueue, lLocal);
+        }
+      }
+    }
+    // compute
+    rewriter.setInsertionPointAfter(op);
+    Value lLocal = rewriter.create<npu::DeQueOp>(loc, lhs.getType(), lQueue);
+    Value rLocal = rewriter.create<npu::DeQueOp>(loc, rhs.getType(), rQueue);
     ValueRange outputs = op.getOutputs();
-    auto replacement = rewriter.create<npu::AddFOp>(loc, lhs, rhs, outputs[0]);
+    Value outLocal = rewriter.create<npu::AllocLocalOp>(loc, outputs[0].getType(), outQueue);
+    Operation* outDefOp = outputs[0].getDefiningOp();
+    if (isa<memref::AllocOp>(outDefOp)) {
+      rewriter.replaceOp(outDefOp, outLocal);
+    }
+    auto replacement = rewriter.create<npu::AddFOp>(loc, lLocal, rLocal, outLocal);
     rewriter.replaceOp(op, replacement);
-    // todo::move to front
-    auto tPipType = npu::TPipType::get(getContext(), 1);
-    auto tpip = rewriter.create<npu::CreateTPipOp>(loc,tPipType);
-
-    auto lhsQueueType = npu::TQueueType::get(getContext(), 0, 2);
-    insertFront<npu::TQueueType, npu::CreateTQueueOp>(lhsQueueType, loc, rewriter);
-    auto rhsQueueType = npu::TQueueType::get(getContext(), 0, 2);
-    insertFront<npu::TQueueType, npu::CreateTQueueOp>(rhsQueueType, loc, rewriter);
-    auto outQueueType = npu::TQueueType::get(getContext(), 1, 2);
-    insertFront<npu::TQueueType, npu::CreateTQueueOp>(outQueueType, loc, rewriter);
-
-    auto lhsGlobalType = npu::GlobalTensorType::get(getContext(), 0);
-    insertFront<npu::GlobalTensorType, npu::CreateGlobalTensorOp>(lhsGlobalType, loc, rewriter);
-    auto rhsGlobalType = npu::GlobalTensorType::get(getContext(), 0);
-    insertFront<npu::GlobalTensorType, npu::CreateGlobalTensorOp>(rhsGlobalType, loc, rewriter);
-    auto outGlobalType = npu::GlobalTensorType::get(getContext(), 0);
-    insertFront<npu::GlobalTensorType, npu::CreateGlobalTensorOp>(outGlobalType, loc, rewriter);
+    outQueue = rewriter.create<npu::EnQueOp>(loc, vecOutQueueType, outQueue, outLocal);
+    lQueue = rewriter.create<npu::FreeLocalOp>(loc, vecInQueueType, lQueue, lLocal);
+    rQueue = rewriter.create<npu::FreeLocalOp>(loc, vecInQueueType, rQueue, rLocal);
+    // copy out
+    outLocal = rewriter.create<npu::DeQueOp>(loc, outputs[0].getType(), outQueue);
+    for (auto user : outputs[0].getUsers()) {
+      if (isa<memref::CopyOp>(user)) {
+        user->setOperand(0, outLocal);
+        rewriter.setInsertionPointAfter(user);
+        outQueue = rewriter.create<npu::FreeLocalOp>(loc, vecOutQueueType, outQueue, outLocal);
+      }
+    }
     return success();
   }
 };

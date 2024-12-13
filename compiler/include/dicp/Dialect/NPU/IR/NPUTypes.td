@@ -15,16 +15,7 @@ class NPUTypeDef<string name, string _mnemonic, list<Trait> traits = []>
 def NPU_TPipType : NPUTypeDef<"TPip", "tpip", []> {
   let summary = "queue type (`::mlir::dicp::npu::TPipType`) in NPU IR type system";
   let description = [{tpip}];
-  let parameters = (ins
-    "uint32_t":$type
-  );
-  let builders = [
-      TypeBuilder<(ins "unsigned":$type), [{
-        return $_get($_ctxt, type);
-      }]>
-    ];
   let hasCustomAssemblyFormat = 1;
-  let skipDefaultBuilders = 1;
 }
 
 def NPU_GlobalTensorType : NPUTypeDef<"GlobalTensor", "globaltensor", []> {

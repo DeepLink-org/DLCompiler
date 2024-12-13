@@ -38,21 +38,19 @@ Type TPipType::parse(AsmParser &parser) {
   if (parser.parseLess())
     return Type();
 
-  int type = 1;
-  if (parser.parseInteger(type)) {
-    return Type();
-  }
+  // int type = 1;
+  // if (parser.parseInteger(type)) {
+  //   return Type();
+  // }
 
   if (parser.parseGreater()) {
     return Type();
   }
 
-  return TPipType::get(parser.getContext(), type);
+  return TPipType::get(parser.getContext());
 }
 
-void TPipType::print(AsmPrinter &printer) const {
-  printer << "npu.tpip<" << getType() << ">";
-}
+void TPipType::print(AsmPrinter &printer) const { printer << "npu.tpip"; }
 
 Type GlobalTensorType::parse(AsmParser &parser) {
   if (parser.parseLess())

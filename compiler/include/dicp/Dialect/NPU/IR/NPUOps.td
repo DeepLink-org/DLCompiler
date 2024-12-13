@@ -44,42 +44,23 @@ def CreateTPipOp : NPU_Op<"create_tpip"> {
   let summary = "create npu tpip";
   let description =
       [{Create npu tpip.}];
-
-  
   let results = (outs NPU_TPipType:$result);
   let assemblyFormat = [{
     attr-dict `:` type($result)
   }];
   let hasCanonicalizer = 0;
   let hasFolder = 0;
-
-  // Indicate that the operation has a custom parser and printer method.
-  // let hasCustomAssemblyFormat = 1;
-
-  // Allow building an AddOp with from the two input operands.
-  // let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
 }
 def CreateTQueueOp : NPU_Op<"create_tqueue"> {
   let summary = "create npu tqueue";
   let description =
       [{Create npu tqueue.}];
-
-  // let arguments = [];
-  // let arguments = (ins TypedAttrInterface : $queue_type);
-  // let arguments = (ins NPU_TPipType : $tpip);
   let results = (outs NPU_TQueueType : $result);
   let assemblyFormat = [{
     attr-dict `:` type($result)
   }];
-
   let hasCanonicalizer = 0;
   let hasFolder = 0;
-// $queue_type  attr-dict `:` type($result)
-  // Indicate that the operation has a custom parser and printer method.
-  // let hasCustomAssemblyFormat = 1;
-
-  // Allow building an AddOp with from the two input operands.
-  // let builders = [OpBuilder<(ins "Value" : $queue_type)>];
 }
 
 def CreateGlobalTensorOp : NPU_Op<"create_global_tensor"> {
@@ -89,6 +70,112 @@ def CreateGlobalTensorOp : NPU_Op<"create_global_tensor"> {
   let results = (outs NPU_GlobalTensorType : $result);
   let assemblyFormat = [{
     attr-dict `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def SetGlobalBufferOp : NPU_Op<"set_global_buffer"> {
+  let summary = "set npu global buffer";
+  let description =
+      [{set npu global buffer.}];
+  let arguments = (ins Arg<NPU_GlobalTensorType, "global tensor"
+                           >:$globalTensor
+                  );
+  let results = (outs NPU_GlobalTensorType : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $globalTensor `:` type($globalTensor)`)`
+    `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def InitlBufferOp : NPU_Op<"init_buffer"> {
+  let summary = "init npu buffer";
+  let description =
+      [{init npu buffer.}];
+  let arguments = (ins Arg<NPU_TPipType, "npu tpip"
+                           >:$tpip,
+                       Arg<NPU_TQueueType, "npu queue"
+                           >:$queue
+                  );
+  let results = (outs NPU_TQueueType : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $tpip `:` type($tpip) `,` $queue `:` type($queue)`)`
+    `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def AllocLocalOp : NPU_Op<"alloc_local"> {
+  let summary = "alloc npu local tensor";
+  let description =
+      [{alloc npu local tensor.}];
+  let arguments = (ins Arg<NPU_TQueueType, "npu queue"
+                           >:$queue
+                  );
+  let results = (outs AnyRankedOrUnrankedMemRef : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $queue `:` type($queue)`)`
+    `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def FreeLocalOp : NPU_Op<"free_local"> {
+  let summary = "free npu local tensor";
+  let description =
+      [{free npu local tensor.}];
+  let arguments = (ins Arg<NPU_TQueueType, "npu queue"
+                           >:$queue,
+                       AnyRankedOrUnrankedMemRef : $local   
+                  );
+  let results = (outs NPU_TQueueType : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $queue `:` type($queue) `,` $local `:` type($local) `)`
+    `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def EnQueOp : NPU_Op<"en_queue"> {
+  let summary = "npu local tensor en queue";
+  let description =
+      [{npu local tensor en queue.}];
+  let arguments = (ins Arg<NPU_TQueueType, "npu queue"
+                           >:$queue,
+                       AnyRankedOrUnrankedMemRef : $local
+                  );
+  let results = (outs NPU_TQueueType : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $queue `:` type($queue) `,` $local `:` type($local)`)`
+    `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
+
+def DeQueOp : NPU_Op<"de_queue"> {
+  let summary = "npu local tensor de queue";
+  let description =
+      [{npu local tensor de queue.}];
+  let arguments = (ins Arg<NPU_TQueueType, "npu queue"
+                           >:$queue
+                  );
+  let results = (outs AnyRankedOrUnrankedMemRef : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $queue `:` type($queue)`)`
+    `:` type($result)
   }];
   let hasCanonicalizer = 0;
   let hasFolder = 0;
@@ -116,7 +203,6 @@ def AddFOp : NPU_Op<"addf"> {
 
   // Allow building an AddOp with from the two input operands.
   // let builders = [OpBuilder<(ins "Value" : $lhs, "Value" : $rhs)>];
-  // $lhs `,` $rhs `->` $out attr-dict `:` type($lhs) `,` type($rhs) `to` type($out)
   let assemblyFormat = [{
     attr-dict
     `ins` `(` $lhs `:` type($lhs) `,` $rhs `:` type($rhs) `)`

@@ -180,6 +180,21 @@ def DeQueOp : NPU_Op<"de_queue"> {
   let hasCanonicalizer = 0;
   let hasFolder = 0;
 }
+
+def SliceOp : NPU_Op<"slice"> {
+  let description = [{npu slice.}];
+  let arguments = (ins Arg<AnyRankedOrUnrankedMemRef, "the memref to copy from"
+                          >:$source
+                  );
+  let results = (outs AnyRankedOrUnrankedMemRef : $result);
+  let assemblyFormat = [{
+    attr-dict
+    `ins` `(` $source `:` type($source)`)`
+    `:` type($result)
+  }];
+  let hasCanonicalizer = 0;
+  let hasFolder = 0;
+}
 //===----------------------------------------------------------------------===//
 // AddFOp
 //===----------------------------------------------------------------------===//

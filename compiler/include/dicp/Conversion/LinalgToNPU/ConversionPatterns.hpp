@@ -37,18 +37,26 @@ struct CopyConverter : public OpConversionPattern<memref::CopyOp> {
   matchAndRewrite(memref::CopyOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto args = adaptor.getOperands();
-    auto subview0 = dyn_cast_or_null<memref::SubViewOp>(
-          args[0].getDefiningOp());
-    if (auto subview1 = dyn_cast_or_null<memref::SubViewOp>(
-          args[1].getDefiningOp())) {
-    }
     auto replacement = rewriter.create<npu::CopyOp>(
-        op.getLoc(), args[0],args[1]);
+        op.getLoc(), args[0], args[1]);
     rewriter.replaceOp(op, replacement);
     return success();
   }
 };
 
+struct SubViewConverter : public OpConversionPattern<memref::SubViewOp> {
+  using OpConversionPattern<memref::SubViewOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::SubViewOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto args = adaptor.getOperands();
+    auto replacement = rewriter.create<npu::SliceOp>(
+        op.getLoc(), op.getResult().getType(), args[0]);
+    rewriter.replaceOp(op, replacement);
+    return success();
+  }
+};
 
 // struct AddFConverter : public OpConversionPattern<arith::AddFOp> {
 //   using OpConversionPattern<arith::AddFOp>::OpConversionPattern;

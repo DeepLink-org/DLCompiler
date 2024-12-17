@@ -15,7 +15,7 @@ ninja -j64
 
 ## 编译 triton && triton
 ```
-export LLVM_BUILD_DIR=...
+export LLVM_BUILD_DIR={path-of-llvm-project}/build
 bash compile.sh
 export PYTHONPATH=$PWD/third_party/triton/python
 export PATH=$PWD/third_party/triton/build/third_party/triton_shared/tools/triton-shared-opt/:$PATH

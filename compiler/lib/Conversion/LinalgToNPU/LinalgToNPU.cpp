@@ -28,5 +28,6 @@ using namespace dicp;
 void npu::populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns) {
   // patterns.add<AddFConverter>(patterns.getContext());
   patterns.add<CopyConverter>(patterns.getContext());
+  patterns.add<SubViewConverter>(patterns.getContext());
   patterns.add<LinalgGenericConverter>(patterns.getContext());
 }

@@ -117,6 +117,11 @@ class DICPDriver(DriverBase):
             self.target = "maca"
             self.utils = MacaUtils()
             self.launcher_cls = MacaLauncher
+        elif target == "ascend":
+            from triton.backends.dicp_triton.ascend import AscendLauncher, AscendUtils
+            self.target = "ascend"
+            self.utils = AscendUtils()
+            self.launcher_cls = AscendLauncher
         else:
             self.target = "dicp"
            
@@ -132,18 +137,14 @@ class DICPDriver(DriverBase):
         return True
 
     def get_device_capability(self):
-        if self.target == "mlu":
-            return ("mlu", 0)
-        elif self.target == "maca":
-            return ("maca", 0)
-        return ("dicp", 0)
+        return (self.target, 0)
 
     def get_current_stream(self, device):
         if self.target == "mlu":
             if device is None:
                 device = self.get_current_device()
             return torch.mlu.current_stream(device).mlu_stream
-        elif self.target == "maca":
+        elif self.target in ["maca", "ascend"]:
             if device is None:
                 device = self.get_current_device()
             return torch.cuda.current_stream(device).cuda_stream
@@ -153,7 +154,7 @@ class DICPDriver(DriverBase):
         # dicp doesn't have a device to return. Return something.
         if self.target == "mlu":
             return torch.mlu.current_device()
-        elif self.target == "maca":
+        elif self.target in ["maca", "ascend"]:
             return torch.cuda.current_device()
         return "dicp"
 
@@ -161,17 +162,13 @@ class DICPDriver(DriverBase):
         # dicp doesn't have a device to set
         if self.target == "mlu":
             return torch.mlu.set_device(device)
-        elif self.target == "maca":
+        elif self.target in ["maca", "ascend"]:
             return torch.cuda.set_device(device)
         #assert device == "dicp"
         return
 
     def get_current_target(self):
-        if self.target == "mlu":
-            return GPUTarget("mlu", "x86", 32)
-        elif self.target == "maca":
-            return GPUTarget("maca", "x86", 32)
-        return GPUTarget("dicp", "x86", 32)
+        return GPUTarget(self.target, "x86", 32)
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):
         return args

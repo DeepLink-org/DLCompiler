@@ -155,7 +155,7 @@ class DICPBackend(BaseBackend):
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ['dicp', 'mlu', 'maca']
+        return target.backend in ['dicp', 'mlu', 'maca', 'npu']
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -222,6 +222,7 @@ class DICPBackend(BaseBackend):
         args = {'arch': self.target}
         args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
         if self.target == 'npu':
+            print(f"zmz debug use NPUOptions for npu")
             args.update({k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options})
             return NPUOptions(**args)
         return DICPOptions(**args)

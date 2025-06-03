@@ -13,8 +13,8 @@ from pathlib import Path
 
 # print(f"zmz debug origin dicp.DICPDriver() = {dicp.DICPDriver()}")
 
-# triton.runtime.driver.set_active(dicp.DICPDriver('npu'))
-triton.runtime.driver.set_active(dicp.DICPDriver())
+triton.runtime.driver.set_active(dicp.DICPDriver('npu'))
+# triton.runtime.driver.set_active(dicp.DICPDriver())
 
 # triton.runtime.driver.set_active(cu.CudaDriver())
 # register_backend("dicp", cl.DICPBackend("mlu"))

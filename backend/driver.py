@@ -119,7 +119,6 @@ class DICPDriver(DriverBase):
             self.launcher_cls = MacaLauncher
         elif target == "npu":
             print(f"zmz debug DICPDriver initialized with target: {target}")
-            # TODO zmz, to impl
             from triton.backends.dicp_triton.npu import NPULauncher, NPUUtils
             self.target = "npu"
             self.utils = NPUUtils()
@@ -127,7 +126,7 @@ class DICPDriver(DriverBase):
         else:
             self.target = "dicp"
 
-        print(f"DICPDriver initialized with target: {self.target}")
+        print(f"zmz debug DICPDriver initialized with target: {self.target}")
            
     
     def __new__(cls, target=None):
@@ -141,6 +140,8 @@ class DICPDriver(DriverBase):
         return True
 
     def get_device_capability(self):
+        # TODO ZMZ impl
+        print(f"zmz debug get_device_capability: {self.target}")
         if self.target == "mlu":
             return ("mlu", 0)
         elif self.target == "maca":
@@ -163,26 +164,29 @@ class DICPDriver(DriverBase):
             print(f"zmz debug no device, so use cuda device!!!!!!!!!!!!!!!!!!!")
             if device is None:
                 device = self.get_current_device()
-            return torch.cuda.current_stream(device).cuda_stream
+            return torch.npu.current_stream(device).npu_stream
         return None
 
     def get_current_device(self):
+        print(f"zmz debug get_current_device: {self.target}")
         # dicp doesn't have a device to return. Return something.
         if self.target == "mlu":
             return torch.mlu.current_device()
         elif self.target == "maca":
             return torch.cuda.current_device()
         elif self.target == "npu":
-            print(f"zmz debug get_current_device: {self.target}, torch.npu.current_device(), now error: EC0010 xxxxx")
             return torch.npu.current_device()
         return "dicp"
 
     def set_current_device(self, device):
+        print(f"zmz debug set_current_device: {device}")
         # dicp doesn't have a device to set
         if self.target == "mlu":
             return torch.mlu.set_device(device)
         elif self.target == "maca":
             return torch.cuda.set_device(device)
+        elif self.target == "npu":
+            return torch.npu.set_device(device)
         #assert device == "dicp"
         return
 
@@ -193,8 +197,12 @@ class DICPDriver(DriverBase):
         elif self.target == "maca":
             return GPUTarget("maca", "x86", 32)
         elif self.target == "npu":
-            print(f"zmz debug get_current_target: {self.target}, GPUTarget('npu', 'arrch64', 32)")
-            return GPUTarget("npu", "arrch64", 32)
+            backend = "npu"
+            arch = self.utils.get_arch()
+            warp_size = 0
+            print(f"zmz debug get_current_target: {self.target}, GPUTarget({backend}, {arch}, {warp_size})")
+            # return GPUTarget("npu", "arrch64", 32)
+            return GPUTarget(backend, arch, warp_size)
         return GPUTarget("dicp", "x86", 32)
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):

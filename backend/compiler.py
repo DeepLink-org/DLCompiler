@@ -221,7 +221,7 @@ class DICPBackend(BaseBackend):
     def parse_options(self, options: dict) -> Any:
         args = {'arch': self.target}
         args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
-        if self.target == 'npu':
+        if self.driver.target =='npu':
             print(f"zmz debug use NPUOptions for npu")
             args.update({k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options})
             return NPUOptions(**args)

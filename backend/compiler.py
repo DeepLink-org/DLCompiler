@@ -101,6 +101,38 @@ class DICPOptions:
         key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
         return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
+@dataclass(frozen=True)
+class NPUOptions(DICPOptions):
+    debug: bool = False
+    sanitize_overflow: bool = True
+    llvm_version: int = 15
+    kernel_name: str = "triton_"
+
+    cluster_dims: tuple = (1, 1, 1)
+    num_warps: int = -1
+    num_ctas: int = -1
+    num_stages: int = 2
+    num_buffers_warp_spec: int = 0
+    num_consumer_groups: int = 0
+    reg_dec_producer: int = 0
+    reg_inc_consumer: int = 0
+
+    enable_warp_specialization: bool = False
+    enable_persistent: bool = False
+    optimize_epilogue: bool = False
+    enable_fp_fusion: bool = True
+    allow_fp8e4nv: bool = False
+    allowed_dot_input_precisions: Tuple[str] = ("ieee", "hf32")
+    enable_npu_compile: bool = True
+    max_num_imprecise_acc_default: bool = None
+    extern_libs: dict = None
+
+    multibuffer: bool = True
+
+    def hash(self):
+        key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
+        return hashlib.md5(key.encode("utf-8")).hexdigest()
+
 class DICPBackend(BaseBackend):
     binary_ext = "ttlinalgdir"
     def __init__(self, target:str) -> None:
@@ -115,6 +147,11 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "cnbin"
         elif self.driver.target == 'maca':
             self.binary_ext = "mcfatbin"
+        elif self.driver.target =='npu':
+            self.binary_ext = "npubin"
+        else:
+            raise RuntimeError("backend not supported")
+        print(f"zmz debug DICPBackend initialized with target: {self.target}, binary_ext: {self.binary_ext}")
 
     @staticmethod
     def supports_target(target: GPUTarget):
@@ -122,6 +159,10 @@ class DICPBackend(BaseBackend):
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
+        print(f"zmz debug mod = {mod}, metadata = {metadata}, opt = {opt}")
+        # for npu
+        if 'hash' not in metadata:
+            metadata['hash'] = hashlib.md5(f"{mod}-{metadata}".encode()).hexdigest()
         pm = ir.pass_manager(mod.context)
         pm.enable_debug()
         passes.common.add_inliner(pm)
@@ -137,6 +178,7 @@ class DICPBackend(BaseBackend):
         return mod
 
     def add_stages(self, stages, options):
+        print(f"zmz debug come into add_stages")
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         if self.driver.target == 'dicp':
             stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
@@ -154,6 +196,14 @@ class DICPBackend(BaseBackend):
             if mxcc_arch is None:
                 raise RuntimeError('mxcc_arch is None (not specified)')
             stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
+        elif self.driver.target =='npu':
+            from triton.backends.dicp_triton.npu import ttir_to_linalg, linalg_to_bin_enable_npu_compile, get_architecture_descriptor
+            # arch = get_architecture_descriptor()
+            if options.enable_npu_compile:
+                stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
+                stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
+            else:
+                pass
         else:
             raise RuntimeError("backend not supported")
 
@@ -171,6 +221,9 @@ class DICPBackend(BaseBackend):
     def parse_options(self, options: dict) -> Any:
         args = {'arch': self.target}
         args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
+        if self.target == 'npu':
+            args.update({k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options})
+            return NPUOptions(**args)
         return DICPOptions(**args)
     
     def get_codegen_implementation(self):

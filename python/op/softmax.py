@@ -11,8 +11,10 @@ import triton.compiler as tc
 from pathlib import Path
 # import backend.driver as bd
 
+# print(f"zmz debug origin dicp.DICPDriver() = {dicp.DICPDriver()}")
 
-triton.runtime.driver.set_active(dicp.DICPDriver())
+triton.runtime.driver.set_active(dicp.DICPDriver('npu'))
+# triton.runtime.driver.set_active(dicp.DICPDriver())
 # triton.runtime.driver.set_active(cu.CudaDriver())
 # register_backend("dicp", cl.DICPBackend("mlu"))
 
@@ -173,3 +175,7 @@ src = tc.ASTSource(
 ret = triton.compile(src)
 src_path = "softmax_optimize_kernel.mlir"
 Path(src_path).write_bytes(ret.asm["ttlinalgdir"])
+
+
+print(f'zmz debug, finish softmax.py, src_path: {src_path}')
+print(f'triton.__file__: {triton.__file__}')

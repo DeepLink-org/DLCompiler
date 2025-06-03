@@ -117,8 +117,17 @@ class DICPDriver(DriverBase):
             self.target = "maca"
             self.utils = MacaUtils()
             self.launcher_cls = MacaLauncher
+        elif target == "npu":
+            print(f"zmz debug DICPDriver initialized with target: {target}")
+            # TODO zmz, to impl
+            from triton.backends.dicp_triton.npu import NPULauncher, NPUUtils
+            self.target = "npu"
+            self.utils = NPUUtils()
+            self.launcher_cls = NPULauncher
         else:
             self.target = "dicp"
+
+        print(f"DICPDriver initialized with target: {self.target}")
            
     
     def __new__(cls, target=None):
@@ -136,6 +145,9 @@ class DICPDriver(DriverBase):
             return ("mlu", 0)
         elif self.target == "maca":
             return ("maca", 0)
+        elif self.target == "npu":
+            print(f"zmz debug get_device_capability: {self.target}, return ('npu', 0)")
+            return ("npu", 0)
         return ("dicp", 0)
 
     def get_current_stream(self, device):
@@ -147,6 +159,11 @@ class DICPDriver(DriverBase):
             if device is None:
                 device = self.get_current_device()
             return torch.cuda.current_stream(device).cuda_stream
+        elif self.target == "npu":
+            print(f"zmz debug no device, so use cuda device!!!!!!!!!!!!!!!!!!!")
+            if device is None:
+                device = self.get_current_device()
+            return torch.cuda.current_stream(device).cuda_stream
         return None
 
     def get_current_device(self):
@@ -155,6 +172,9 @@ class DICPDriver(DriverBase):
             return torch.mlu.current_device()
         elif self.target == "maca":
             return torch.cuda.current_device()
+        elif self.target == "npu":
+            print(f"zmz debug get_current_device: {self.target}, torch.npu.current_device(), now error: EC0010 xxxxx")
+            return torch.npu.current_device()
         return "dicp"
 
     def set_current_device(self, device):
@@ -167,10 +187,14 @@ class DICPDriver(DriverBase):
         return
 
     def get_current_target(self):
+        print(f"zmz debug get_current_target: {self.target}")
         if self.target == "mlu":
             return GPUTarget("mlu", "x86", 32)
         elif self.target == "maca":
             return GPUTarget("maca", "x86", 32)
+        elif self.target == "npu":
+            print(f"zmz debug get_current_target: {self.target}, GPUTarget('npu', 'arrch64', 32)")
+            return GPUTarget("npu", "arrch64", 32)
         return GPUTarget("dicp", "x86", 32)
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):

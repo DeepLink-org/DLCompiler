@@ -315,7 +315,6 @@ import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
-from triton.backends.huawei.utils import _build_npu_ext, _check_cxx11_abi, convert_sigtype_to_int
 
 class NPUUtils(object):
     def __new__(cls):

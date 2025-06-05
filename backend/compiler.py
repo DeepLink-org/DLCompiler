@@ -1,4 +1,5 @@
 from triton.backends.compiler import BaseBackend, GPUTarget
+# from triton.compiler import AttrsDescriptor, register_descriptor
 from triton._C.libtriton import ir, passes
 from dataclasses import dataclass
 import hashlib
@@ -133,6 +134,26 @@ class NPUOptions(DICPOptions):
         key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
         return hashlib.md5(key.encode("utf-8")).hexdigest()
 
+# @register_descriptor
+# class HuaweiAttrsDescriptor(AttrsDescriptor):
+
+#     def _add_backend_properties(self, params=None, values=None):
+#         if params is None or values is None:
+#             return
+
+#         for i in range(len(values)):
+#             if (params[i].is_constexpr):
+#                 continue
+#             val = values[i]
+
+#             if hasattr(val, 'shape'):
+#                 self.arg_properties[f"tt.shape_{i}"] = list(val.shape)
+#                 self.property_values[f"tt.shape_{i}"] = 0
+#             else:
+#                 # Scalar
+#                 pass
+
+
 class DICPBackend(BaseBackend):
     binary_ext = "ttlinalgdir"
     def __init__(self, target:str) -> None:
@@ -176,6 +197,15 @@ class DICPBackend(BaseBackend):
         metadata["name"] = _ttir_get_kernel_name(str(mod))
         metadata["shared"] = 0
         return mod
+    
+    
+    def get_attrs_descriptor(self, params, args):
+        # if self.driver.target =='npu':
+        #     return HuaweiAttrsDescriptor(params, args)
+        # else:
+        #     return super().get_attrs_descriptor(params, args)
+        print(f"zmz debug come into get_attrs_descriptor")
+        return super().get_attrs_descriptor(params, args)
 
     def add_stages(self, stages, options):
         print(f"zmz debug come into add_stages")

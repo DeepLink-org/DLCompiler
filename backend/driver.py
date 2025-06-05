@@ -161,8 +161,9 @@ class DICPDriver(DriverBase):
                 device = self.get_current_device()
             return torch.cuda.current_stream(device).cuda_stream
         elif self.target == "npu":
-            print(f"zmz debug no device, so use cuda device!!!!!!!!!!!!!!!!!!!")
+            print(f"zmz debug come into npu get current stream, device: {device}")
             if device is None:
+                print(f"zmz debug no device, so use cuda device!!!!!!!!!!!!!!!!!!!")
                 device = self.get_current_device()
             return torch.npu.current_stream(device).npu_stream
         return None

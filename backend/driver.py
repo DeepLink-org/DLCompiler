@@ -180,7 +180,7 @@ class DICPDriver(DriverBase):
             return torch.mlu.current_device()
         elif self.target == "maca":
             return torch.cuda.current_device()
-        elif self.target == "maca":
+        elif self.target == "npu":
             import torch_npu
             return torch.npu.current_device()
         return "dicp"

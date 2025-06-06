@@ -34,7 +34,7 @@ def change_backend_path():
 
     shutil.copytree(source_dir, target_dir)
 
-change_backend_path()
+# change_backend_path()
 
 
 def change_CMakeLists_path():
@@ -350,8 +350,8 @@ class CMakeExtension(Extension):
 class BuildExt(build_ext):
     library_path = [
         "triton/_C/libtriton.so",
-        # "triton/backends/ascend/triton-adapter-opt",
-        "triton/backends/dicp_triton/triton-adapter-opt",
+        "triton/backends/ascend/triton-adapter-opt",
+        # "triton/backends/dicp_triton/triton-adapter-opt",
         # "triton/backends/triton-adapter-opt",
     ]
 

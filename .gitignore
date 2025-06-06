@@ -91,3 +91,5 @@ tags
 
 *.mlir
 *.ttir
+
+ascend/backend/

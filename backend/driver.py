@@ -117,6 +117,11 @@ class DICPDriver(DriverBase):
             self.target = "maca"
             self.utils = MacaUtils()
             self.launcher_cls = MacaLauncher
+        elif target == "npu":
+            from triton.backends.dicp_triton.npu import NpuLauncher, NpuUtils
+            self.target = "npu"
+            self.utils = NpuUtils()
+            self.launcher_cls = NpuLauncher
         else:
             self.target = "dicp"
            
@@ -128,7 +133,21 @@ class DICPDriver(DriverBase):
         return cls.instance
 
     @staticmethod
-    def is_active():
+    def is_active(self):
+        if self.target == "npu":
+            def test_npucompiler():
+                from triton.backends.ascend.utils import _get_bisheng_path
+                npucompiler = _get_bisheng_path()
+                targets = subprocess.check_output([npucompiler, "-print-targets"]).decode().strip().split()
+                return "hiipu64" in targets
+            try:
+                return test_npucompiler()
+            except Exception as e_npucompiler:
+                import warnings
+                red = "\x1b[31;20m"
+                reset = "\x1b[0m"
+                warnings.warn(red + str(e_npucompiler) + reset)
+                return False
         return True
 
     def get_device_capability(self):
@@ -136,6 +155,8 @@ class DICPDriver(DriverBase):
             return ("mlu", 0)
         elif self.target == "maca":
             return ("maca", 0)
+        elif self.target == "npu":
+            return ("npu", 0)
         return ("dicp", 0)
 
     def get_current_stream(self, device):
@@ -147,6 +168,10 @@ class DICPDriver(DriverBase):
             if device is None:
                 device = self.get_current_device()
             return torch.cuda.current_stream(device).cuda_stream
+        elif self.target == "npu":
+            if device is None:
+                device = self.get_current_device()
+            return torch.npu.current_stream(device).npu_stream
         return None
 
     def get_current_device(self):
@@ -155,6 +180,9 @@ class DICPDriver(DriverBase):
             return torch.mlu.current_device()
         elif self.target == "maca":
             return torch.cuda.current_device()
+        elif self.target == "maca":
+            import torch_npu
+            return torch.npu.current_device()
         return "dicp"
 
     def set_current_device(self, device):
@@ -163,6 +191,9 @@ class DICPDriver(DriverBase):
             return torch.mlu.set_device(device)
         elif self.target == "maca":
             return torch.cuda.set_device(device)
+        elif self.target == "npu":
+            import torch_npu
+            return torch.npu.set_device(device)
         #assert device == "dicp"
         return
 
@@ -171,7 +202,24 @@ class DICPDriver(DriverBase):
             return GPUTarget("mlu", "x86", 32)
         elif self.target == "maca":
             return GPUTarget("maca", "x86", 32)
+        elif self.target == "npu":
+            backend = "npu"
+            arch = self.utils.get_arch()
+            warp_size = 0
+            return GPUTarget(backend, arch, warp_size)
         return GPUTarget("dicp", "x86", 32)
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):
         return args
+    
+    def get_device_interface(self):
+        if self.target == "npu":
+            import torch
+            return torch.npu
+        
+    def get_empty_cache_for_benchmark(self):
+        if self.target == "npu":
+            import torch
+            cache_size = 192 * 1024 * 1024
+            return torch.empty(cache_size // 4, dtype=torch.int, device='npu')
+        

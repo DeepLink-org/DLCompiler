@@ -9,7 +9,8 @@ import subprocess
 import functools
 from pathlib import Path
 from triton.backends.dicp_triton.driver import DICPDriver
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
+from types import ModuleType
 
 def _get_dicp_triton_opt_path() -> str:
     path = os.getenv("DICP_TRITON_OPT_PATH", "")
@@ -115,10 +116,12 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "cnbin"
         elif self.driver.target == 'maca':
             self.binary_ext = "mcfatbin"
+        elif self.driver.target == 'npu':
+            self.binary_ext = "npubin"
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ['dicp', 'mlu', 'maca']
+        return target.backend in ['dicp', 'mlu', 'maca', 'npu']
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -135,6 +138,12 @@ class DICPBackend(BaseBackend):
         metadata["name"] = _ttir_get_kernel_name(str(mod))
         metadata["shared"] = 0
         return mod
+    
+    
+    def get_attrs_descriptor(self, params, args):
+        if self.driver.target == 'npu':
+            from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
+            return AscendAttrsDescriptor(params, args)
 
     def add_stages(self, stages, options):
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
@@ -154,6 +163,12 @@ class DICPBackend(BaseBackend):
             if mxcc_arch is None:
                 raise RuntimeError('mxcc_arch is None (not specified)')
             stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
+        elif self.driver.target =='npu':
+            from triton.backends.dicp_triton.npu import ttir_to_linalg, linalg_to_bin_enable_npu_compile, get_architecture_descriptor
+            # arch = get_architecture_descriptor()
+            if options.enable_npu_compile:
+                stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
+                stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
         else:
             raise RuntimeError("backend not supported")
 
@@ -169,15 +184,50 @@ class DICPBackend(BaseBackend):
     
     # parse  add_kernel[(16,)](x, y, output, n_elements, BLOCK_SIZE=1024)
     def parse_options(self, options: dict) -> Any:
-        args = {'arch': self.target}
-        args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
-        return DICPOptions(**args)
+        if self.target.backend == 'npu':
+            from triton.backends.dicp_triton.npu import NPUOptions
+            args = {k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options}
+            options = NPUOptions(**args)
+        else:
+            args = {'arch': self.target}
+            args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
+            return DICPOptions(**args)
     
     def get_codegen_implementation(self):
         codegen_fns = dict()
+        if self.target.backend == 'npu':
+            from triton.backends.dicp_triton.npu import min_dot_size
+            codegen_fns = {
+                "min_dot_size": min_dot_size(self.target)
+            }
         return codegen_fns
     
     def pack_metadata(self, metadata):
+        if self.target.backend == 'npu':
+            from triton.backends.dicp_triton.utils import TRITON_PROFILER_REGISTERED
+            # collect necessary metadata to launch kernels
+            # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.
+            # Get this name as the kernel_name to CANN runtime.
+            # kernel_name is unique to Ascend backend and should not be public.
+            # CANN runtime limits the length of kernel name <= 50.
+            # Considering '\n' is appended, thus the real kernel name <= 49.
+            KERNEL_NAME_MAX_LEN = 49
+            kernel_name_orig, mix_mode = metadata.name.split()
+            if (len(kernel_name_orig) > KERNEL_NAME_MAX_LEN):
+                kernel_name = kernel_name_orig[-KERNEL_NAME_MAX_LEN:]
+                # import warnings
+                # # red = "\x1b[31;20m"
+                # # reset = "\x1b[0m"
+                # warnings.warn(kernel_name_orig + " is truncated to " + kernel_name)
+                # warnings.warn("because '" + kernel_name_orig + "' exceeds torchnpu profiler's length limit < 50")
+            else:
+                kernel_name = kernel_name_orig
+            return {
+                "kernel_name": kernel_name,
+                "hash": metadata.hash,
+                "debug": metadata.debug,
+                "profiler_registered": TRITON_PROFILER_REGISTERED,
+            }
         return (
             metadata.num_warps,
             metadata.num_ctas,
@@ -186,3 +236,12 @@ class DICPBackend(BaseBackend):
             metadata.cluster_dims[1],
             metadata.cluster_dims[2],
         )
+
+    @functools.lru_cache()
+    def hash(self):
+        # TODO fetch compiler version
+        version_key = self.target
+        return str(version_key)
+
+    def get_module_map(self) -> Dict[str, ModuleType]:
+        return {}

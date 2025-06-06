@@ -1,6 +1,3 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
- */
 #define PY_SSIZE_T_CLEAN
 #include <pybind11/pybind11.h>
 namespace py = pybind11;

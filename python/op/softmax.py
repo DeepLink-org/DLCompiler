@@ -6,13 +6,13 @@ import triton.compiler as tc
 
 # from triton.backends.triton.driver import DICPDriver
 # from triton.common.backend import register_backend
-import triton.backends.dicp_triton.driver as dicp
+# import triton.backends.dicp_triton.driver as dicp
 import triton.compiler as tc
 from pathlib import Path
 # import backend.driver as bd
 
 
-triton.runtime.driver.set_active(dicp.DICPDriver())
+# triton.runtime.driver.set_active(dicp.DICPDriver('npu'))
 # triton.runtime.driver.set_active(cu.CudaDriver())
 # register_backend("dicp", cl.DICPBackend("mlu"))
 
@@ -172,4 +172,29 @@ src = tc.ASTSource(
 )
 ret = triton.compile(src)
 src_path = "softmax_optimize_kernel.mlir"
-Path(src_path).write_bytes(ret.asm["ttlinalgdir"])
+Path(src_path).write_bytes(ret.asm["npubin"])
+# Path(src_path).write_bytes(ret.asm["ttlinalgdir"])
+
+
+print(f'zmz debug, finish softmax.py, src_path: {src_path}')
+print(f'triton.__file__: {triton.__file__}')
+
+def add(x: torch.Tensor, y: torch.Tensor):
+    output = torch.empty_like(x)
+    n_elements = output.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
+    add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
+    return output
+
+torch.manual_seed(0)
+size = 98432
+x = torch.rand(size, device='npu')
+y = torch.rand(size, device='npu')
+
+print(f"zmz debug, try to run add")
+output_torch = x + y
+output_triton = add(x, y)
+print(f"zmz debug, finish add")
+
+print(f'The maximum difference between torch and triton is '
+      f'{torch.max(torch.abs(output_torch - output_triton))}')

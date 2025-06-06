@@ -7,8 +7,8 @@ namespace mlir {
 namespace triton {
 
 #define GEN_PASS_REGISTRATION
-#include "ascend/triton-adapter/include/TritonToLinalg/Passes.h.inc"
-// #include "dicp_triton/triton-adapter/include/TritonToLinalg/Passes.h.inc"
+// #include "ascend/triton-adapter/include/TritonToLinalg/Passes.h.inc"
+#include "dicp_triton/triton-adapter/include/TritonToLinalg/Passes.h.inc"
 
 } // namespace triton
 } // namespace mlir

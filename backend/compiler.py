@@ -83,7 +83,6 @@ def _linalg_to_fatbin(ttlinalgdir: str, metadata):
 @dataclass(frozen=True)
 class DICPOptions:
     debug: bool = False
-    sanitize_overflow: bool = True
     arch: str = None
     num_warps: int = 0
     num_ctas: int = 0
@@ -147,7 +146,7 @@ class DICPBackend(BaseBackend):
             return AscendAttrsDescriptor(params, args)
 
     def add_stages(self, stages, options):
-        if self.driver.target != 'mlu':
+        if self.driver.target != 'npu':
             stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         if self.driver.target == 'dicp':
             stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
@@ -208,7 +207,7 @@ class DICPBackend(BaseBackend):
     
     def pack_metadata(self, metadata):
         if self.target.backend == 'npu':
-            from triton.backends.dicp_triton.utils import TRITON_PROFILER_REGISTERED
+            from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
             # collect necessary metadata to launch kernels
             # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.
             # Get this name as the kernel_name to CANN runtime.

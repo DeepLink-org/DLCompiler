@@ -9,7 +9,6 @@ import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
-from triton.backends.dicp_triton.utils import _build_npu_ext, _check_cxx11_abi, convert_sigtype_to_int
 
 from triton.runtime.build import quiet
 import importlib
@@ -134,13 +133,15 @@ class DICPDriver(DriverBase):
             cls.instance.__initialized = False
         return cls.instance
 
-    # In ascend backend, need @classmethod, not @staticmethod
-    # @staticmethod
+    @staticmethod
+    def is_active():
+        return True
+
     @classmethod
     def is_active(self):
         if self.target == "npu":
             def test_npucompiler():
-                from triton.backends.dicp_triton.utils import _get_bisheng_path
+                from triton.backends.dicp_triton.npu import _get_bisheng_path
                 npucompiler = _get_bisheng_path()
                 targets = subprocess.check_output([npucompiler, "-print-targets"]).decode().strip().split()
                 return "hiipu64" in targets

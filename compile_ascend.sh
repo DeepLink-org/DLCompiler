@@ -11,7 +11,10 @@ export LLVM_INSTALL_PREFIX=/mnt/data01/zmz/software/llvm-install
 #   -DCMAKE_CXX_COMPILER=clang++
 # ninja install
 
+cp backend/* third_party/triton-ascend/ascend/backend/
+
 cd third_party/triton-ascend/
+rm -rf build
 LLVM_SYSPATH=${LLVM_INSTALL_PREFIX} \
 TRITON_PLUGIN_DIRS=./ascend \
 TRITON_BUILD_WITH_CCACHE=true \

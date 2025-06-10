@@ -91,3 +91,6 @@ tags
 
 *.mlir
 *.ttir
+
+# npu
+fusion_result.json

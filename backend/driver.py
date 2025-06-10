@@ -19,10 +19,6 @@ import setuptools
 import torch
 
 
-###################################### DICP ############################################
-
-
-
 def build_for_backend(name, src, srcdir):
     suffix = sysconfig.get_config_var('EXT_SUFFIX')
     so = os.path.join(srcdir, '{name}{suffix}'.format(name=name, suffix=suffix))
@@ -109,7 +105,6 @@ class DICUtils:
         self.get_device_properties = mod.get_device_properties
 
 class DICPDriver(DriverBase):
-    print(f"zmz debug dicp for DICPDriver driver...")
     def __init__(self, target=None):
         if(self.__initialized): return
         self.__initialized = True
@@ -129,9 +124,7 @@ class DICPDriver(DriverBase):
             self.target = "npu"
             self.utils = NPUUtils()
             self.launcher_cls = NPULauncher
-            print(f"zmz debug dicp for npu driver...")
         else:
-            print(f"zmz debug dicp for dicp driver...")
             self.target = "dicp"
            
     
@@ -141,6 +134,7 @@ class DICPDriver(DriverBase):
             cls.instance.__initialized = False
         return cls.instance
 
+    # In ascend backend, need @classmethod, not @staticmethod
     # @staticmethod
     @classmethod
     def is_active(self):
@@ -236,6 +230,4 @@ class DICPDriver(DriverBase):
             import torch
             cache_size = 192 * 1024 * 1024
             return torch.empty(cache_size // 4, dtype=torch.int, device='npu')
-
-#####################################  DICP  ###########################################
 

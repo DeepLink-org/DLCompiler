@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
+
+import contextlib
 import re
 import os
 from pathlib import Path
+import pybind11
 import functools
 import sysconfig
 import shutil
 import subprocess
-import pybind11
+import sys
 
 TRITON_PROFILER_REGISTERED = False
 
-import contextlib
-import sys
 
 @contextlib.contextmanager
 def quiet():

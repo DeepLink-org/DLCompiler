@@ -187,16 +187,12 @@ class DICPBackend(BaseBackend):
     
     # parse  add_kernel[(16,)](x, y, output, n_elements, BLOCK_SIZE=1024)
     def parse_options(self, options: dict) -> Any:
-        print(f"zmz debug dicp for parse_options...")
-        print(f"zmz self.target.backend: {self.target.backend}, self.driver.target: {self.driver.target}")
         if self.target.backend == 'npu':
-            print(f"zmz debug dicp for parse_options for npu...")
             from triton.backends.dicp_triton.npu import NPUOptions
             args = {k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options}
             options = NPUOptions(**args)
             return options
         else:
-            print(f"zmz debug dicp for parse_options for other backend...")
             args = {'arch': self.target}
             args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
             return DICPOptions(**args)

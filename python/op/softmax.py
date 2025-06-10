@@ -189,3 +189,4 @@ print(output_triton)
 print(f'The maximum difference between torch and triton is '
       f'{torch.max(torch.abs(output_torch - output_triton))}')
 assert torch.allclose(output_torch, output_triton)
+print("success")

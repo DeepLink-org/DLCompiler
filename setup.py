@@ -23,9 +23,7 @@ from distutils.command.clean import clean
 from wheel.bdist_wheel import bdist_wheel
 
 root_dir = os.path.dirname(__file__)
-# triton_dir = os.path.join(root_dir, "..//triton")
 triton_dir = os.path.join(root_dir, "third_party/triton")
-print(f"zmz debug triton_dir : {triton_dir}")
 
 def change_3rdparty_triton_path():
     source_dir = os.path.join(root_dir, "../triton")
@@ -122,7 +120,6 @@ class BackendInstaller:
         install_dir = os.path.join(
             triton_dir, "python", "triton", "backends", backend_name
         )
-        print(f"zmz debug backends: {backend_name}")
         package_data = [
             f"{os.path.relpath(p, backend_path)}/*"
             for p, _, _, in os.walk(backend_path)
@@ -657,7 +654,6 @@ def create_symlink_for_backend(backends):
         if os.path.islink(backend.install_dir):
             os.unlink(backend.install_dir)
         remove_directory(backend.install_dir)
-        print(f"zmz debug backend.backend_dir: {backend.backend_dir}, backend.install_dir: {backend.install_dir}")
         os.symlink(backend.backend_dir, backend.install_dir)
 
         if backend.language_dir:
@@ -726,5 +722,5 @@ setup(
     zip_safe=False,
     # for PyPI
     keywords=["Compiler", "Deep Learning"],
-    url="https://gitee.com/ascend/triton-ascend/",
+    url="git@github.com:DeepLink-org/Triton.git",
 )

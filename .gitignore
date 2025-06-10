@@ -94,3 +94,4 @@ tags
 
 # npu
 fusion_result.json
+*.log

@@ -1,5 +1,5 @@
-
-export LLVM_INSTALL_PREFIX=/mnt/data01/zmz/software/llvm-install
+# 0. set LLVM_INSTALL_PREFIX
+export LLVM_INSTALL_PREFIX=/path/to/install/llvm-install
 
 change_ascend() {
     file_path="third_party/triton-ascend/ascend/triton-adapter/include/TritonToLinalg/Passes.h"

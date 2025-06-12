@@ -116,12 +116,12 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "cnbin"
         elif self.driver.target == 'maca':
             self.binary_ext = "mcfatbin"
-        elif self.driver.target == 'npu':
+        elif self.driver.target == 'ascend':
             self.binary_ext = "npubin"
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ['dicp', 'mlu', 'maca', 'npu']
+        return target.backend in ['dicp', 'mlu', 'maca', 'ascend']
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -141,12 +141,12 @@ class DICPBackend(BaseBackend):
     
     
     def get_attrs_descriptor(self, params, args):
-        if self.driver.target == 'npu':
+        if self.driver.target == 'ascend':
             from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
             return AscendAttrsDescriptor(params, args)
 
     def add_stages(self, stages, options):
-        if self.driver.target != 'npu':
+        if self.driver.target != 'ascend':
             stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         if self.driver.target == 'dicp':
             stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
@@ -164,7 +164,7 @@ class DICPBackend(BaseBackend):
             if mxcc_arch is None:
                 raise RuntimeError('mxcc_arch is None (not specified)')
             stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
-        elif self.driver.target =='npu':
+        elif self.driver.target =='ascend':
             from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, linalg_to_bin_enable_npu_compile
             stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
             # arch = get_architecture_descriptor()
@@ -186,7 +186,7 @@ class DICPBackend(BaseBackend):
     
     # parse  add_kernel[(16,)](x, y, output, n_elements, BLOCK_SIZE=1024)
     def parse_options(self, options: dict) -> Any:
-        if self.target.backend == 'npu':
+        if self.target.backend == 'ascend':
             from triton.backends.dicp_triton.npu import NPUOptions
             args = {k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options}
             options = NPUOptions(**args)
@@ -198,7 +198,7 @@ class DICPBackend(BaseBackend):
     
     def get_codegen_implementation(self):
         codegen_fns = dict()
-        if self.target.backend == 'npu':
+        if self.target.backend == 'ascend':
             from triton.backends.dicp_triton.npu import min_dot_size
             codegen_fns = {
                 "min_dot_size": min_dot_size(self.target)
@@ -206,7 +206,7 @@ class DICPBackend(BaseBackend):
         return codegen_fns
     
     def pack_metadata(self, metadata):
-        if self.target.backend == 'npu':
+        if self.target.backend == 'ascend':
             from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
             # collect necessary metadata to launch kernels
             # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.

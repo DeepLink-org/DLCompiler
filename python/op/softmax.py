@@ -12,7 +12,7 @@ from pathlib import Path
 # import backend.driver as bd
 
 
-triton.runtime.driver.set_active(dicp.DICPDriver('npu'))
+triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
 # triton.runtime.driver.set_active(cu.CudaDriver())
 # register_backend("dicp", cl.DICPBackend("mlu"))
 

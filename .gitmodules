@@ -10,3 +10,6 @@
 [submodule "third_party/triton_shared"]
 	path = third_party/triton_shared
 	url = git@github.com:microsoft/triton-shared.git
+[submodule "third_party/triton-ascend"]
+	path = third_party/triton-ascend
+	url = https://gitee.com/ascend/triton-ascend.git

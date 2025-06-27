@@ -105,14 +105,13 @@ class DICPOptions:
 class DICPBackend(BaseBackend):
     binary_ext = "ttlinalgdir"
     def __init__(self, target:str) -> None:
-        # if target is "mlu":
-        #     device_type = "370"
-        #     MLUBackend().__init__(device_type)
         super().__init__(target)
         self.driver = DICPDriver(target)
         if self.driver.target == 'dicp':
             self.binary_ext = "ttlinalgdir"
         elif self.driver.target == 'mlu':
+            self.capability = target.arch
+            assert isinstance(self.capability, int)
             self.binary_ext = "cnbin"
         elif self.driver.target == 'maca':
             self.binary_ext = "mcfatbin"
@@ -146,14 +145,33 @@ class DICPBackend(BaseBackend):
             return AscendAttrsDescriptor(params, args)
 
     def add_stages(self, stages, options):
-        if self.driver.target != 'ascend':
+        if self.driver.target not in ['ascend', 'mlu']:
             stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         if self.driver.target == 'dicp':
             stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
             stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
         elif self.driver.target == 'mlu':
-            from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
-            stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver, options), False, True)
+            from triton.backends.dicp_triton.mlu import onchip_mem_analysis, make_ttir, make_linalg, make_optimized_linalg, make_mluir, make_optimize_mluir, make_mlisa, make_cnbin
+            stages["ttir"] = lambda src, metadata: make_ttir(
+                src, metadata, options, self.capability)
+            if options.onchip_mem_analysis:
+                stages[
+                    "onchip_mem_analysis"] = lambda src, metadata: onchip_mem_analysis(
+                        src, options)
+                return
+            stages["linalg"] = lambda src, metadata: make_linalg(
+                src, metadata, options)
+            stages["linalgopt"] = lambda src, metadata: make_optimized_linalg(
+                src, options)
+            stages["mluir"] = lambda src, metadata: make_mluir(src, options)
+            stages["mluiropt"] = lambda src, metadata: make_optimize_mluir(
+                src, options, self.capability)
+            stages["mlisa"] = lambda src, metadata: make_mlisa(src)
+            stages["cnbin"] = lambda src, metadata: make_cnbin(
+                src, options, self.capability)
+
+            # from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
+            # stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver, options), False, True)
         elif self.driver.target == 'maca':
             from triton.backends.dicp_triton.maca import ttir_to_ttgir, optimize_ttgir, ttgir_to_llir, llir_to_mcfatbin, get_architecture_descriptor
             arch = get_architecture_descriptor()
@@ -175,8 +193,11 @@ class DICPBackend(BaseBackend):
             raise RuntimeError("backend not supported")
 
     def load_dialects(self, ctx):
+        if self.driver.target == 'mlu':
+            from triton._C.libtriton import mlu
+            mlu.load_dialects(ctx)
         return
-    
+
     @functools.lru_cache()
     def hash(self):
         return self.target
@@ -191,6 +212,29 @@ class DICPBackend(BaseBackend):
             args = {k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options}
             options = NPUOptions(**args)
             return options
+        elif self.target.backend == 'mlu':
+            from triton.backends.dicp_triton.mlu import MLUOptions
+            args = {k: options[k] for k in MLUOptions.__dataclass_fields__.keys() if k in options}
+            # When arch is less than mtp_5xx, tf32 is not supported, use fp32 for calculation.
+            if "allowed_dot_input_precisions" not in args:
+                if self.capability < 500:
+                    args["allowed_dot_input_precisions"] = ("ieee")
+
+            if "supported_fp8_dtypes" not in args:
+                supported_fp8_dtypes = set(MLUOptions.supported_fp8_dtypes)
+                if self.capability >= 600:
+                    supported_fp8_dtypes = supported_fp8_dtypes.union(("fp8e5", "fp8e4nv"))
+                args["supported_fp8_dtypes"] = tuple(sorted(supported_fp8_dtypes))
+
+            args["max_num_imprecise_acc_default"] = 0
+
+            if "enable_fp_fusion" not in args:
+                args["enable_fp_fusion"] = os.getenv("TRITON_DEFAULT_FP_FUSION", "1") == "1"
+
+            if "enable_mlu_bound_check" not in args:
+                args["enable_mlu_bound_check"] = os.getenv("TRITON_ENABLE_MLU_BOUND_CHECK",
+                                                        "0") == "1"
+            return MLUOptions(**args)
         else:
             args = {'arch': self.target}
             args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
@@ -201,6 +245,12 @@ class DICPBackend(BaseBackend):
         if self.target.backend == 'ascend':
             from triton.backends.dicp_triton.npu import min_dot_size
             codegen_fns = {
+                "min_dot_size": min_dot_size(self.target)
+            }
+        elif self.target.backend =='mlu':
+            from triton.backends.dicp_triton.mlu import min_dot_size
+            codegen_fns = {
+                "convert_custom_types": lambda arg, dst_ty: arg,
                 "min_dot_size": min_dot_size(self.target)
             }
         return codegen_fns
@@ -231,6 +281,8 @@ class DICPBackend(BaseBackend):
                 "debug": metadata.debug,
                 "profiler_registered": TRITON_PROFILER_REGISTERED,
             }
+        elif self.target.backend == 'mlu':
+            return (metadata.num_warps, )
         return (
             metadata.num_warps,
             metadata.num_ctas,
@@ -242,9 +294,16 @@ class DICPBackend(BaseBackend):
 
     @functools.lru_cache()
     def hash(self):
+        if self.target.backend == 'mlu':
+            from triton.backends.dicp_triton.mlu import get_cnas_version
+            version = get_cnas_version()
+            return f'{version}-{self.capability}'
         # TODO fetch compiler version
         version_key = self.target
         return str(version_key)
 
     def get_module_map(self) -> Dict[str, ModuleType]:
+        if self.target.backend =='mlu':
+            from triton.language.extra.mlu import libdevice
+            return {"triton.language.extra.libdevice": libdevice}
         return {}

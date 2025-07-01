@@ -7,7 +7,7 @@ from setuptools.command.build_py import build_py
 from setuptools.command.install import install
 import importlib.util
 import subprocess
-
+import site
 
 ORIGIN_TRITON_PATH=None
 # check triton
@@ -18,7 +18,7 @@ def check_triton_package():
             print("Triton package found.")
             global ORIGIN_TRITON_PATH
             ORIGIN_TRITON_PATH = spec.origin
-            # 如果末尾是__init__.py, 去掉
+            print(f"ORIGIN_TRITON_PATH: {ORIGIN_TRITON_PATH}")
             if ORIGIN_TRITON_PATH.endswith("__init__.py"):
                 ORIGIN_TRITON_PATH = ORIGIN_TRITON_PATH[:-12]
             print(f"ORIGIN_TRITON_PATH: {ORIGIN_TRITON_PATH}")
@@ -32,15 +32,13 @@ def check_triton_package():
 
 def copy_triton_package():
     global ORIGIN_TRITON_PATH
-    # source_dir = "/torch/venv3/pytorch_infer/lib/python3.10/site-packages/triton/"
-    # backup_dir = "/torch/venv3/pytorch_infer/lib/python3.10/site-packages/triton-bk/"
     source_dir = ORIGIN_TRITON_PATH
-    backup_dir = source_dir + "-bk"
+    backup_dir = os.path.join(site.getsitepackages()[0], "triton-ori")
     if os.path.exists(source_dir):
         if os.path.exists(backup_dir):
-            print(f"{backup_dir} already exists, removing and copying again.")
-            shutil.rmtree(backup_dir)
-        shutil.copytree(source_dir, backup_dir)
+            print(f"{backup_dir} already exists, use it {backup_dir}.")
+        else:
+            shutil.copytree(source_dir, backup_dir)
 
     source_dir = backup_dir
 
@@ -52,7 +50,6 @@ def copy_triton_package():
         print(f"{target_dir} already exists, skipping.")
     
     if not os.listdir(target_dir):
-        print(f"{target_dir} is empty, copying again.")
         assert False, f"{target_dir} is empty, please check."
 
 def copy_backend_files():
@@ -60,7 +57,7 @@ def copy_backend_files():
     target_dir = "./triton/backends/mlu"
 
     if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
+        assert False, f"Target directory {target_dir} does not exist, please check the path."
 
     for filename in ["compiler.py", "driver.py", "mlu.py"]:
         src_path = os.path.join(source_dir, filename)
@@ -80,8 +77,6 @@ def modify_backend_name():
         shutil.rmtree(dicp_triton_dir)
 
     if os.path.exists(mlu_dir):
-        # if not os.path.exists(dicp_triton_dir):
-        #     os.makedirs(dicp_triton_dir)
         print(f"Renaming {mlu_dir} to {dicp_triton_dir}")
         shutil.move(mlu_dir, dicp_triton_dir)
     else:
@@ -120,7 +115,8 @@ class CustomBuildPy(build_py):
         self.copy_files("*.bc", "triton/backends/dicp_triton/lib")
         self.copy_files("*.h", "triton/_C/include")
         self.copy_files("*.hpp", "triton/_C/include")
-        
+        self.copy_files("*.c", "triton/backends/dicp_triton")
+
     def copy_files(self, pattern, dest_subdir):
         dest_dir = os.path.join(self.build_lib, dest_subdir)
         os.makedirs(dest_dir, exist_ok=True)

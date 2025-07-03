@@ -33,6 +33,39 @@ python softmax.py
 bash format.sh
 ```
 
+# 华为昇腾芯片
+## 编译
+```
+# set LLVM_INSTALL_PREFIX
+bash compile_on_ascend.sh
+```
+## 设置昇腾后端
+```
+import triton.backends.dicp_triton.driver as dicp
+triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
+```
+## 测试
+```
+cd python/op
+python softmax.py
+```
+
+# 寒武纪芯片
+## 编译
+```
+bash compile_on_mlu.sh
+```
+## 设置寒武纪后端
+```
+import triton.backends.dicp_triton.driver as dicp
+triton.runtime.driver.set_active(dicp.DICPDriver('mlu'))
+```
+## 测试
+```
+cd build/triton/tutorials
+python 01-vector-add.py
+```
+
 # 支持模型框架列表
 
 ## LMDeploy

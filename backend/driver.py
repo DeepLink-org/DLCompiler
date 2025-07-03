@@ -109,10 +109,17 @@ class DICPDriver(DriverBase):
         self.__initialized = True
         super().__init__()
         if target == "mlu":
-            from triton.backends.dicp_triton.mlu import MluLauncher, MLUUtils
+            from triton.backends.dicp_triton.mlu import BangLauncher, BangUtils
             self.target = "mlu"
-            self.utils = MLUUtils()
-            self.launcher_cls = MluLauncher
+            self.utils = BangUtils()
+            self.launcher_cls = BangLauncher
+            import torch
+            import torch_mlu
+            self.get_current_device = torch.mlu.current_device
+            self.set_current_device = torch.mlu.set_device
+            self.get_current_stream = lambda idx: torch.mlu.current_stream(idx).mlu_stream
+            self.is_linear_pointer = lambda ptr, device: self.utils.is_linear_pointer(
+                ptr, device)
         elif target == "maca":
             from triton.backends.dicp_triton.maca import MacaLauncher, MacaUtils
             self.target = "maca"
@@ -139,21 +146,39 @@ class DICPDriver(DriverBase):
 
     @classmethod
     def is_active(self):
-        if self.target == "ascend":
-            def test_npucompiler():
-                from triton.backends.dicp_triton.npu import _get_bisheng_path
-                npucompiler = _get_bisheng_path()
-                targets = subprocess.check_output([npucompiler, "-print-targets"]).decode().strip().split()
-                return "hiipu64" in targets
+        try:
+            if self.target == "ascend":
+                def test_npucompiler():
+                    from triton.backends.dicp_triton.npu import _get_bisheng_path
+                    npucompiler = _get_bisheng_path()
+                    targets = subprocess.check_output([npucompiler, "-print-targets"]).decode().strip().split()
+                    return "hiipu64" in targets
+                try:
+                    return test_npucompiler()
+                except Exception as e_npucompiler:
+                    import warnings
+                    red = "\x1b[31;20m"
+                    reset = "\x1b[0m"
+                    warnings.warn(red + str(e_npucompiler) + reset)
+                    return False
+        except Exception as e:
+            import torch
             try:
-                return test_npucompiler()
-            except Exception as e_npucompiler:
-                import warnings
-                red = "\x1b[31;20m"
-                reset = "\x1b[0m"
-                warnings.warn(red + str(e_npucompiler) + reset)
-                return False
+                if torch.mlu:
+                    return True
+            except Exception as e:
+                import torch_mlu
+                return True
         return True
+
+    def launch_as_union_task(self, device, grid):
+        if self.target == "mlu":
+            import math
+            cluster_num = self.utils.get_device_properties(device).get('cluster_num')
+            core_num_per_cluster = self.utils.get_device_properties(device).get(
+                'core_num_per_cluster')
+            total_cores = cluster_num * core_num_per_cluster
+            return grid[0] % core_num_per_cluster == 0 and math.prod(grid) <= total_cores
 
     def get_device_capability(self):
         if self.target == "mlu":
@@ -166,6 +191,7 @@ class DICPDriver(DriverBase):
 
     def get_current_stream(self, device):
         if self.target == "mlu":
+            import torch_mlu
             if device is None:
                 device = self.get_current_device()
             return torch.mlu.current_stream(device).mlu_stream
@@ -182,6 +208,7 @@ class DICPDriver(DriverBase):
     def get_current_device(self):
         # dicp doesn't have a device to return. Return something.
         if self.target == "mlu":
+            import torch_mlu
             return torch.mlu.current_device()
         elif self.target == "maca":
             return torch.cuda.current_device()
@@ -208,7 +235,11 @@ class DICPDriver(DriverBase):
 
     def get_current_target(self):
         if self.target == "mlu":
-            return GPUTarget("mlu", "x86", 32)
+            device = self.get_current_device()
+            capability = self.utils.get_device_properties(device).get('isa_version')
+            # As compile func in compiler.py just support GPUTarget, and this type
+            # can also represent MLU information, we will temporarily use GPUTarget here.
+            return GPUTarget("mlu", capability, 0)
         elif self.target == "maca":
             return GPUTarget("maca", "x86", 32)
         elif self.target == "ascend":
@@ -225,9 +256,20 @@ class DICPDriver(DriverBase):
         if self.target == "ascend":
             import torch
             return torch.npu
+        elif self.target == "mlu":
+            import torch
+            return torch.mlu
         
     def get_empty_cache_for_benchmark(self):
         if self.target == "ascend":
             import torch
             cache_size = 192 * 1024 * 1024
             return torch.empty(cache_size // 4, dtype=torch.int, device='npu')
+        elif self.target == "mlu":
+            import torch
+
+            # We maintain a buffer of 256 MB that we clear
+            # before each kernel call to make sure that the L2 cache
+            # doesn't contain any input data before the run
+            cache_size = 256 * 1024 * 1024
+            return torch.empty(int(cache_size // 4), dtype=torch.int, device='mlu')

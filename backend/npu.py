@@ -273,23 +273,77 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
         dst_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
+        # dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_adapter_opt_path = _get_triton_adapter_opt_path()
+        triton_adapter_opt_path = '/opt/conda/envs/dltriton/lib/python3.10/site-packages/triton-3.2.0+gitead83f32-py3.10-linux-aarch64.egg/triton/backends/dicp_triton/triton-adapter-opt'
+        # triton_shared_opt_path = '/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt'
 
         cmd_list = [triton_adapter_opt_path, src_path,
             f'--triton-to-linalg=global-kernel=false named-ops={named_ops}',
             "-o", dst_path]
+        # cmd_shared_list = [triton_shared_opt_path, src_path,
+        #     f'--triton-to-linalg',
+        #     # '--linalg-fuse-elementwise-ops',
+        #     "-o", dst_ttshared_path]
         if _is_ascend_sanitizer_enabled():
             cmd_list += ["--mlir-print-debuginfo"] # pass debug info
 
+        print(f"Running command(ttir_to_linalg): {' '.join(cmd_list)}")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if opt.debug:
             dump_manager = get_dump_manager(metadata['hash'])
             dump_manager.put(Path(dst_path).read_text(),
                              "kernel.ttadapter.mlir", binary = False)
 
+        # print(f"Running command ttshared: {' '.join(cmd_shared_list)}")
+        # ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
+        shutil.copy(src_path, './')
+        shutil.copy(dst_path, './')
+        # shutil.copy(dst_ttshared_path, './')
         return Path(dst_path).read_text()
 
+def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
+    # use triton_adapter to lower Triton-MLIR to linalg
+    # Get Triton-MLIR as string
+    ttir_code = str(mod)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
+        # dst_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
+        dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
+        Path(src_path).write_text(ttir_code)
+        # triton_adapter_opt_path = _get_triton_adapter_opt_path()
+        # triton_adapter_opt_path = '/opt/conda/envs/dltriton/lib/python3.10/site-packages/triton-3.2.0+gitead83f32-py3.10-linux-aarch64.egg/triton/backends/dicp_triton/triton-adapter-opt'
+        triton_shared_opt_path = '/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt'
+
+        # cmd_list = [triton_adapter_opt_path, src_path,
+        #     f'--triton-to-linalg=global-kernel=false named-ops={named_ops}',
+        #     "-o", dst_path]
+        cmd_shared_list = [triton_shared_opt_path, src_path,
+            f'--triton-to-linalg',
+            # '--linalg-fuse-elementwise-ops',
+            "-o", dst_ttshared_path]
+        # if _is_ascend_sanitizer_enabled():
+        #     cmd_list += ["--mlir-print-debuginfo"] # pass debug info
+
+        # print(f"Running command: {' '.join(cmd_list)}")
+        # ret = subprocess.run(cmd_list, capture_output=True, check=True)
+        # if opt.debug:
+        #     dump_manager = get_dump_manager(metadata['hash'])
+        #     dump_manager.put(Path(dst_path).read_text(),
+        #                      "kernel.ttadapter.mlir", binary = False)
+
+        print(f"Running command ttshared: {' '.join(cmd_shared_list)}")
+        ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
+        shutil.copy(src_path, './')
+        # shutil.copy(dst_path, './')
+        shutil.copy(dst_ttshared_path, './')
+        ZMZ_debug = os.getenv("ZMZ_DEBUG", "0")
+        if ZMZ_debug == "1":
+            test_path = '/mnt/data01/zmz/workspace/01triton/dlBLAS/benchmarks/try.kernel.ttshared.mlir'
+            print(f"zmz debug: use dst_ttshared_path {test_path} for testing, original dst_ttshared_path {dst_ttshared_path}")
+            dst_ttshared_path = test_path
+        return Path(dst_ttshared_path).read_text()
 
 def linalg_to_llir(linalg: str, metadata, opt):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -414,6 +468,7 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 "--enable-triton-kernel-compile=true",
             ]
         cmd_list = [npu_compiler_path, ttadapter_path] + _compile_option_list + ["-o", bin_file]
+        print(f"zmz debug linalg_to_bin_enable_npu_compile Running command: {' '.join(cmd_list)}")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
@@ -422,6 +477,14 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             callback_func.restype = ctypes.c_int64
             callback_func.argtypes = []
             metadata['workspace_size'] = callback_func()
+
+        shutil.copy(bin_path, './')
+        # import os
+        # zmz_debug = os.environ.get("ZMZ_DEBUG", "false").lower() == "true"
+        # if zmz_debug:
+        #     test_bin_path = '/mnt/data01/zmz/workspace/01triton/dlBLAS/benchmarks/ttshared_kernel_reloc.o'
+        #     print(f"zmz debug: use bin_path {test_bin_path} for testing, original bin_path {bin_path}")
+        #     bin_path = test_bin_path
 
         return Path(bin_path).read_bytes()
 

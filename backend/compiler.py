@@ -24,6 +24,7 @@ def _get_llvm_bin_path(bin_name: str) -> str:
         raise Exception("LLVM_BINARY_DIR is not set.")
     return os.path.join(path, bin_name)
 
+# TODO(zmz): add more target
 def _get_triton_linalg_opt_path() -> str:
     # path = os.getenv("TRITON_LINALG_OPT_PATH", "")
     path = "triton-shared-opt"
@@ -183,17 +184,18 @@ class DICPBackend(BaseBackend):
                 raise RuntimeError('mxcc_arch is None (not specified)')
             stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
         elif self.driver.target =='ascend':
-            from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, ttir_to_ttsharedir, linalg_to_bin_enable_npu_compile
+            from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, ttsharedir_to_dicp, ttir_to_ttsharedir, linalg_to_bin_enable_npu_compile
             stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
-            ZMZ_debug = os.getenv("ZMZ_DEBUG", "0")
-            if ZMZ_debug == "1":
+            lower_by_ttadapter = os.getenv("LOWER_BY_TTADAPTER", "0")
+            if lower_by_ttadapter == "1":
                 if options.enable_npu_compile:
-                    print("zmz debug: enable_npu_compile")
-                    stages["ttadapter"] = lambda src, metadata: ttir_to_ttsharedir(src, metadata, options, named_ops=True)
+                    stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
                     stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
             else:
                 if options.enable_npu_compile:
-                    stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
+                    print("zmz debug: enable_npu_compile")
+                    stages["ttshared"] = lambda src, metadata: ttir_to_ttsharedir(src, metadata, options, named_ops=True)
+                    stages["ttdicp"] = lambda src, metadata: ttsharedir_to_dicp(src, metadata, options, named_ops=True)
                     stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
         else:
             raise RuntimeError("backend not supported")

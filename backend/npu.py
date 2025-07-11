@@ -85,6 +85,18 @@ def _get_triton_adapter_opt_path() -> str:
     path = os.path.join(path, "triton-adapter-opt")
     return path
 
+def _get_dicp_opt_path() -> str:
+    path = os.getenv("DICP_OPT_PATH", "")
+    if path == "":
+        raise Exception("DICP_OPT_PATH is not set.")
+    return path
+
+def _get_triton_shared_opt_path() -> str:
+    path = os.getenv("TRITON_SHARED_OPT_PATH", "")
+    if path == "":
+        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
+    return path
+
 def _get_mlir_path(path: str, *paths) -> str:
     root_path = os.getenv("MLIR_ROOT", "")
     if root_path == "":
@@ -273,19 +285,12 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
         dst_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
-        # dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_adapter_opt_path = _get_triton_adapter_opt_path()
-        triton_adapter_opt_path = '/opt/conda/envs/dltriton/lib/python3.10/site-packages/triton-3.2.0+gitead83f32-py3.10-linux-aarch64.egg/triton/backends/dicp_triton/triton-adapter-opt'
-        # triton_shared_opt_path = '/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt'
 
         cmd_list = [triton_adapter_opt_path, src_path,
             f'--triton-to-linalg=global-kernel=false named-ops={named_ops}',
             "-o", dst_path]
-        # cmd_shared_list = [triton_shared_opt_path, src_path,
-        #     f'--triton-to-linalg',
-        #     # '--linalg-fuse-elementwise-ops',
-        #     "-o", dst_ttshared_path]
         if _is_ascend_sanitizer_enabled():
             cmd_list += ["--mlir-print-debuginfo"] # pass debug info
 
@@ -296,11 +301,8 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
             dump_manager.put(Path(dst_path).read_text(),
                              "kernel.ttadapter.mlir", binary = False)
 
-        # print(f"Running command ttshared: {' '.join(cmd_shared_list)}")
-        # ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
         shutil.copy(src_path, './')
         shutil.copy(dst_path, './')
-        # shutil.copy(dst_ttshared_path, './')
         return Path(dst_path).read_text()
 
 def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
@@ -309,66 +311,49 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
-        # dst_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
-        # triton_adapter_opt_path = _get_triton_adapter_opt_path()
-        # triton_adapter_opt_path = '/opt/conda/envs/dltriton/lib/python3.10/site-packages/triton-3.2.0+gitead83f32-py3.10-linux-aarch64.egg/triton/backends/dicp_triton/triton-adapter-opt'
-        triton_shared_opt_path = '/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt'
+        triton_shared_opt_path = _get_triton_shared_opt_path()
 
-        # cmd_list = [triton_adapter_opt_path, src_path,
-        #     f'--triton-to-linalg=global-kernel=false named-ops={named_ops}',
-        #     "-o", dst_path]
         cmd_shared_list = [triton_shared_opt_path, src_path,
             f'--triton-to-linalg',
             # '--linalg-fuse-elementwise-ops',
             "-o", dst_ttshared_path]
-        # if _is_ascend_sanitizer_enabled():
-        #     cmd_list += ["--mlir-print-debuginfo"] # pass debug info
-
-        # print(f"Running command: {' '.join(cmd_list)}")
-        # ret = subprocess.run(cmd_list, capture_output=True, check=True)
-        # if opt.debug:
-        #     dump_manager = get_dump_manager(metadata['hash'])
-        #     dump_manager.put(Path(dst_path).read_text(),
-        #                      "kernel.ttadapter.mlir", binary = False)
 
         print(f"Running command ttshared: {' '.join(cmd_shared_list)}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
         shutil.copy(src_path, './')
-        # shutil.copy(dst_path, './')
         shutil.copy(dst_ttshared_path, './')
-        ZMZ_debug = os.getenv("ZMZ_DEBUG", "0")
-        if ZMZ_debug == "1":
-            dicp_opt_path = '/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/tools/dicp_triton_opt/dicp_opt'
-            linalg_to_npu_mlir_name = 'kernel.ttshared.linalg-to-npu.mlir'
-            linalg_to_npu_path = os.path.join(tmpdir, linalg_to_npu_mlir_name)
-            dicp_cmd_list = [dicp_opt_path, dst_ttshared_path,
-                f'--linalg-to-npu',
-                "-o", linalg_to_npu_path]
-            print(f"zmz debug: Running command dicp_opt: {' '.join(dicp_cmd_list)}")
-            ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
-            shutil.copy(linalg_to_npu_path, './')
-            # test_path = '/mnt/data01/zmz/workspace/01triton/dlBLAS/benchmarks/kernel.ttshared.linalg-to-npu.mlir'
-            test_path = os.path.join('./', linalg_to_npu_mlir_name)
-            # TODO: 修改test_path 中内容，暂时在python中处理，接下来移动到cpp中。
-            with open(test_path, 'r') as f:
-                content = f.read()
-                content = content.replace('func.func @_silu_and_mul_kernel(%arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32)',
-                                          'func.func @_silu_and_mul_kernel(%arg1000: memref<?xi8>, %arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32) attributes {WorkspaceArgIdx = 0 : i64, global_kernel = "local", mix_mode = "aiv"}')
-                # 将"*xf16"替换成"?xf16"
-                content = content.replace("*xf16", "?xf16")
-                print(f"zmz debug: after replace content: {content}")
-                # 将context 写回去
-                with open(test_path, 'w') as f:
-                    f.write(content)
-                print(f"zmz debug: replace *xf16 with ?xf16 in {test_path}")
-
-            print(f"zmz debug: use dst_ttshared_path {test_path} for testing, original dst_ttshared_path {dst_ttshared_path}")
-            dst_ttshared_path = test_path
-            shutil.copy(dst_ttshared_path, linalg_to_npu_path)
-            print(f"zmz debug: copy {dst_ttshared_path} to {linalg_to_npu_path} for testing")
         return Path(dst_ttshared_path).read_text()
+
+def ttsharedir_to_dicp(mod, metadata, opt, *, named_ops=False):
+    ttsharedir_code = str(mod)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
+        dst_path = os.path.join(tmpdir, "kernel.dicp.mlir")
+        Path(src_path).write_text(ttsharedir_code)
+        dicp_opt_path = _get_dicp_opt_path()
+        dicp_cmd_list = [dicp_opt_path, src_path,
+            # f'--linalg-to-npu',
+            f'--linalg-to-npu=global-kernel=false named-ops=true',
+            "-o", dst_path]
+        print(f"zmz debug: Running command dicp_opt: {' '.join(dicp_cmd_list)}")
+        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
+        shutil.copy(dst_path, './')
+        # TODO: 修改test_path 中内容，暂时在python中处理，接下来移动到cpp中。
+        with open(dst_path, 'r') as f:
+            content = f.read()
+            # content = content.replace('func.func @_silu_and_mul_kernel(%arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32)',
+            #                             'func.func @_silu_and_mul_kernel(%arg1000: memref<?xi8>, %arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32) attributes {WorkspaceArgIdx = 0 : i64, global_kernel = "local", mix_mode = "aiv"}')
+            # 将"*xf16"替换成"?xf16"
+            content = content.replace("*xf16", "?xf16")
+            print(f"zmz debug: after replace content: {content}")
+            # 将context 写回去
+            with open(dst_path, 'w') as f:
+                f.write(content)
+            print(f"zmz debug: replace *xf16 with ?xf16 in {dst_path}")
+        return Path(dst_path).read_text()
+
 
 def linalg_to_llir(linalg: str, metadata, opt):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -474,9 +459,6 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
     linalg = re.sub(r', mix_mode\s*=\s*"[^"]*"', '', linalg)
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
-        ZMZ_debug = os.getenv("ZMZ_DEBUG", "0")
-        if ZMZ_debug == "1":
-            ttadapter_path = os.path.join(tmpdir, "kernel.ttshared.linalg-to-npu.mlir")
         Path(ttadapter_path).write_text(linalg)
         bin_file = os.path.join(tmpdir, "kernel")
         bin_path = os.path.join(tmpdir, "kernel_reloc.o")
@@ -505,15 +487,6 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             callback_func.restype = ctypes.c_int64
             callback_func.argtypes = []
             metadata['workspace_size'] = callback_func()
-
-        shutil.copy(bin_path, './')
-        # import os
-        # zmz_debug = os.environ.get("ZMZ_DEBUG", "false").lower() == "true"
-        # if zmz_debug:
-        #     test_bin_path = '/mnt/data01/zmz/workspace/01triton/dlBLAS/benchmarks/ttshared_kernel_reloc.o'
-        #     print(f"zmz debug: use bin_path {test_bin_path} for testing, original bin_path {bin_path}")
-        #     bin_path = test_bin_path
-
         return Path(bin_path).read_bytes()
 
 @dataclass(frozen=True)

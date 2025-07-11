@@ -340,9 +340,34 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         shutil.copy(dst_ttshared_path, './')
         ZMZ_debug = os.getenv("ZMZ_DEBUG", "0")
         if ZMZ_debug == "1":
-            test_path = '/mnt/data01/zmz/workspace/01triton/dlBLAS/benchmarks/try.kernel.ttshared.mlir'
+            dicp_opt_path = '/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/tools/dicp_triton_opt/dicp_opt'
+            linalg_to_npu_mlir_name = 'kernel.ttshared.linalg-to-npu.mlir'
+            linalg_to_npu_path = os.path.join(tmpdir, linalg_to_npu_mlir_name)
+            dicp_cmd_list = [dicp_opt_path, dst_ttshared_path,
+                f'--linalg-to-npu',
+                "-o", linalg_to_npu_path]
+            print(f"zmz debug: Running command dicp_opt: {' '.join(dicp_cmd_list)}")
+            ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
+            shutil.copy(linalg_to_npu_path, './')
+            # test_path = '/mnt/data01/zmz/workspace/01triton/dlBLAS/benchmarks/kernel.ttshared.linalg-to-npu.mlir'
+            test_path = os.path.join('./', linalg_to_npu_mlir_name)
+            # TODO: 修改test_path 中内容，暂时在python中处理，接下来移动到cpp中。
+            with open(test_path, 'r') as f:
+                content = f.read()
+                content = content.replace('func.func @_silu_and_mul_kernel(%arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32)',
+                                          'func.func @_silu_and_mul_kernel(%arg1000: memref<?xi8>, %arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32) attributes {WorkspaceArgIdx = 0 : i64, global_kernel = "local", mix_mode = "aiv"}')
+                # 将"*xf16"替换成"?xf16"
+                content = content.replace("*xf16", "?xf16")
+                print(f"zmz debug: after replace content: {content}")
+                # 将context 写回去
+                with open(test_path, 'w') as f:
+                    f.write(content)
+                print(f"zmz debug: replace *xf16 with ?xf16 in {test_path}")
+
             print(f"zmz debug: use dst_ttshared_path {test_path} for testing, original dst_ttshared_path {dst_ttshared_path}")
             dst_ttshared_path = test_path
+            shutil.copy(dst_ttshared_path, linalg_to_npu_path)
+            print(f"zmz debug: copy {dst_ttshared_path} to {linalg_to_npu_path} for testing")
         return Path(dst_ttshared_path).read_text()
 
 def linalg_to_llir(linalg: str, metadata, opt):
@@ -449,6 +474,9 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
     linalg = re.sub(r', mix_mode\s*=\s*"[^"]*"', '', linalg)
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
+        ZMZ_debug = os.getenv("ZMZ_DEBUG", "0")
+        if ZMZ_debug == "1":
+            ttadapter_path = os.path.join(tmpdir, "kernel.ttshared.linalg-to-npu.mlir")
         Path(ttadapter_path).write_text(linalg)
         bin_file = os.path.join(tmpdir, "kernel")
         bin_path = os.path.join(tmpdir, "kernel_reloc.o")

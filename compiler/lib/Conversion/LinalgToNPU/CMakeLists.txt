@@ -1,6 +1,7 @@
 add_triton_library(LinalgToNPU
   LinalgToNPUPass.cpp
   LinalgToNPU.cpp
+  ConvertRankedToUnrankedPass.cpp
 
   DEPENDS
   DICPNPUIncGen

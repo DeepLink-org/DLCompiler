@@ -340,15 +340,12 @@ def ttsharedir_to_dicp(mod, metadata, opt, *, named_ops=False):
         print(f"zmz debug: Running command dicp_opt: {' '.join(dicp_cmd_list)}")
         ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         shutil.copy(dst_path, './')
-        # TODO: 修改test_path 中内容，暂时在python中处理，接下来移动到cpp中。
+        # TODO(zmz): 修改test_path 中内容，暂时在python中处理，接下来移动到cpp中。
         with open(dst_path, 'r') as f:
             content = f.read()
-            # content = content.replace('func.func @_silu_and_mul_kernel(%arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32)',
-            #                             'func.func @_silu_and_mul_kernel(%arg1000: memref<?xi8>, %arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32) attributes {WorkspaceArgIdx = 0 : i64, global_kernel = "local", mix_mode = "aiv"}')
-            # 将"*xf16"替换成"?xf16"
-            content = content.replace("*xf16", "?xf16")
+            # 将"*xfxxx"替换成"?xfxxx"
+            content = content.replace("*xf", "?xf")
             print(f"zmz debug: after replace content: {content}")
-            # 将context 写回去
             with open(dst_path, 'w') as f:
                 f.write(content)
             print(f"zmz debug: replace *xf16 with ?xf16 in {dst_path}")

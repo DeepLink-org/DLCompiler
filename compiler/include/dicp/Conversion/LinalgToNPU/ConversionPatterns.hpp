@@ -246,7 +246,6 @@ struct ConvertLinalgGenericToArith
     }
 
     Type resultTensorType = genericOp.getResult(0).getType();
-    // Location loc = genericOp.getLoc();
 
     // === 6. 根据 innerOp 类型构造对应的 tensor-op ===
     Operation *newOp = nullptr;

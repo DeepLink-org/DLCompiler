@@ -1,5 +1,5 @@
 #include "dicp/Conversion/LinalgToNPU/LinalgToNPU.h"
-#include "dicp/Conversion/LinalgToNPU/AddWorkspaceAndAttrsPass.hpp"
+#include "dicp/Conversion/LinalgToNPU/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -242,6 +242,13 @@ public:
     std::cout << "Function header and footer conversion completed successfully.\n";
 
     std::cout << "Adding workspace argument to functions...\n";
+    PassManager pm(context);
+    pm.addPass(mlir::dicp::npu::createVerifyNoLinalgGenericPass());
+    if (failed(pm.run(moduleOp))) {
+        signalPassFailure();
+    }
+
+
     // 新增功能逻辑：强制在函数参数开头添加一个参数，代表工作空间的占位参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       if (!func->hasAttr("global_kernel"))

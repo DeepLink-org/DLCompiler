@@ -31,4 +31,5 @@ void npu::populateLinalgToNPUConversionPatterns(RewritePatternSet &patterns) {
   // patterns.add<SubViewConverter>(patterns.getContext());
   // patterns.add<LinalgGenericConverter>(patterns.getContext());
   patterns.add<ConvertLinalgGenericToArith>(patterns.getContext());
+  // patterns.add<ConvertLinalgGenericToBroadcast>(patterns.getContext());
 }

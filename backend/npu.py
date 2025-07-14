@@ -346,7 +346,7 @@ def ttsharedir_to_dicp(mod, metadata, opt, *, named_ops=False):
             # content = content.replace('func.func @_silu_and_mul_kernel(%arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32)',
             #                             'func.func @_silu_and_mul_kernel(%arg1000: memref<?xi8>, %arg0: memref<*xf16> {tt.divisibility = 16 : i32}, %arg1: memref<*xf16> {tt.divisibility = 16 : i32}, %arg2: i32, %arg3: i32, %arg4: i32, %arg5: i32, %arg6: i32, %arg7: i32) attributes {WorkspaceArgIdx = 0 : i64, global_kernel = "local", mix_mode = "aiv"}')
             # 将"*xf16"替换成"?xf16"
-            content = content.replace("*xf16", "?xf16")
+            content = content.replace("*xf", "?xf")
             print(f"zmz debug: after replace content: {content}")
             # 将context 写回去
             with open(dst_path, 'w') as f:

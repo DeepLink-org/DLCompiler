@@ -1,5 +1,7 @@
 #include "dicp/Conversion/LinalgToNPU/LinalgToNPU.h"
 #include "dicp/Conversion/LinalgToNPU/AddWorkspaceAndAttrsPass.hpp"
+#include "dicp/Conversion/LinalgToNPU/ConvertRankedToUnrankedPass.hpp"
+#include "dicp/Conversion/LinalgToNPU/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -241,6 +243,18 @@ public:
         [&](func::FuncOp func) { convertTTFunc(func, existDot); });
     std::cout << "Function header and footer conversion completed successfully.\n";
 
+
+    PassManager pm(context);
+    pm.addPass(mlir::dicp::npu::createVerifyNoLinalgGenericPass());
+    if (failed(pm.run(moduleOp))) {
+        signalPassFailure();
+    }
+    // 使用 PassManager 执行 ConvertRankedToUnrankedPass，但是华为不支持*x的形式，只能在python层字符串替换。尽力了
+    // pm.addPass(mlir::dicp::npu::createConvertRankedToUnrankedPass());
+    // if (failed(pm.run(moduleOp))) {
+    //     signalPassFailure();
+    // }
+
     std::cout << "Adding workspace argument to functions...\n";
     // 新增功能逻辑：强制在函数参数开头添加一个参数，代表工作空间的占位参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
@@ -263,6 +277,8 @@ public:
     }
 
   }
+
+
 };
 
 } // namespace

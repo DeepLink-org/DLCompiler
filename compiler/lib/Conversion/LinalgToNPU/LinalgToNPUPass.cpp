@@ -17,9 +17,7 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Location.h"
-// #include "mlir/Dialect/Linalg/IR/LinalgAttributes.h" // 必须包含这个头文件
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-// #include "mlir/Dialect/Utils/DialectUtilsEnums.h.inc"
 
 
 #define DEBUG_TYPE "linalg-to-npu"

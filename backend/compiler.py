@@ -184,10 +184,10 @@ class DICPBackend(BaseBackend):
                 raise RuntimeError('mxcc_arch is None (not specified)')
             stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
         elif self.driver.target =='ascend':
-            from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, ttsharedir_to_dicp, ttir_to_ttsharedir, linalg_to_bin_enable_npu_compile
+            from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, ttsharedir_to_linkedir, ttir_to_ttsharedir, linalg_to_bin_enable_npu_compile
             stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
-            lower_by_ttadapter = os.getenv("LOWER_BY_TTADAPTER", "0")
-            if lower_by_ttadapter == "1":
+            lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "0")
+            if lower_by_ttshared == "0":
                 if options.enable_npu_compile:
                     stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
                     stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
@@ -195,7 +195,7 @@ class DICPBackend(BaseBackend):
                 if options.enable_npu_compile:
                     print("zmz debug: enable_npu_compile")
                     stages["ttshared"] = lambda src, metadata: ttir_to_ttsharedir(src, metadata, options, named_ops=True)
-                    stages["ttdicp"] = lambda src, metadata: ttsharedir_to_dicp(src, metadata, options, named_ops=True)
+                    stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(src, metadata, options, named_ops=True)
                     stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
         else:
             raise RuntimeError("backend not supported")

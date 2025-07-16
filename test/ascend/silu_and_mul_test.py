@@ -5,7 +5,7 @@ import triton
 from silu_and_mul import silu_and_mul
 import triton.backends.dicp_triton.driver as dicp
 
-# TRITON_ALWAYS_COMPILE=1  ZMZ_DEBUG=1 ZMZ_DEBUG_CHANGE_SHAREDIR=1  python silu_and_mul.py
+# TRITON_ALWAYS_COMPILE=1 python silu_and_mul.py
 triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
 
 
@@ -51,7 +51,6 @@ def test():
     x = torch.rand(seqlen, feat_size, dtype=torch.float16, device='npu')
 
     gt = _gt(x)
-    print("zmz debug try to run silu_and_mul")
     tt = _test_silu_and_mul(x)
 
     print('max diff', (gt - tt).abs().max())

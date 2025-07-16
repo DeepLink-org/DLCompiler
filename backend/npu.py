@@ -295,20 +295,15 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
         if _is_ascend_sanitizer_enabled():
             cmd_list += ["--mlir-print-debuginfo"] # pass debug info
 
-        print(f"Running command(ttir_to_linalg): {' '.join(cmd_list)}")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if opt.debug:
             dump_manager = get_dump_manager(metadata['hash'])
             dump_manager.put(Path(dst_path).read_text(),
                              "kernel.ttadapter.mlir", binary = False)
 
-        shutil.copy(src_path, './')
-        shutil.copy(dst_path, './')
         return Path(dst_path).read_text()
 
 def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
-    # use triton_adapter to lower Triton-MLIR to linalg
-    # Get Triton-MLIR as string
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
@@ -321,10 +316,7 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             # '--linalg-fuse-elementwise-ops',
             "-o", dst_ttshared_path]
 
-        print(f"Running command ttshared: {' '.join(cmd_shared_list)}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
-        shutil.copy(src_path, './')
-        shutil.copy(dst_ttshared_path, './')
         return Path(dst_ttshared_path).read_text()
 
 def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
@@ -336,19 +328,16 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dicp_opt_path = _get_dicp_opt_path()
         dicp_cmd_list = [dicp_opt_path, src_path,
             # f'--linalg-to-npu',
-            f'--linalg-to-npu=global-kernel=false named-ops=true',
+            f'--linalg-to-linked=global-kernel=false named-ops=true',
             "-o", dst_path]
-        print(f"zmz debug: Running command dicp_opt: {' '.join(dicp_cmd_list)}")
         ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
         with open(dst_path, 'r') as f:
             content = f.read()
             # 将"*xfxxx"替换成"?xfxxx"
             content = content.replace("*xf", "?xf")
-            print(f"zmz debug: after replace content: {content}")
             with open(dst_path, 'w') as f:
                 f.write(content)
-            print(f"zmz debug: replace *xf16 with ?xf16 in {dst_path}")
         shutil.copy(dst_path, './')
         return Path(dst_path).read_text()
 
@@ -472,7 +461,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]
         npu_compiler_path = _get_npucompiler_path()
-        print(f"npu_compiler_path: {npu_compiler_path}")
+
+        # support bishengir-compile more version
         if "8.2.RC1.alpha002" in npu_compiler_path:
             bin_path = os.path.join(tmpdir, "kernel_reloc.o")
         elif "8.2.RC1.alpha003" in npu_compiler_path:
@@ -486,7 +476,6 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 "--enable-triton-kernel-compile=true",
             ]
         cmd_list = [npu_compiler_path, ttadapter_path] + _compile_option_list + ["-o", bin_file]
-        print(f"zmz debug linalg_to_bin_enable_npu_compile Running command: {' '.join(cmd_list)}")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)

@@ -1,10 +1,10 @@
-add_triton_library(LinalgToNPU
-  LinalgToNPUPass.cpp
-  LinalgToNPU.cpp
+add_triton_library(LinalgToLinked
+  LinalgToLinkedPass.cpp
+  VerifyNoLinalgGenericPass.cpp
 
   DEPENDS
   DICPNPUIncGen
-  LinalgToNPUConversionPassIncGen
+  LinalgToLinkedConversionPassIncGen
 
   LINK_LIBS PUBLIC
   TritonTilingExtIR

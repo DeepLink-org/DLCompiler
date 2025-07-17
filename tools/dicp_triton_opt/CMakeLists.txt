@@ -14,6 +14,7 @@ target_link_libraries(dicp_opt PRIVATE
   ${conversion_libs}
   DICPNPU
   LinalgToNPU
+  LinalgToLinked
   DICPLinalgExt
 
   TritonToLinalg

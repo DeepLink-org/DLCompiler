@@ -20,7 +20,6 @@ using namespace dicp;
 namespace {
 
 class LinalgToNPUPass : public LinalgToNPUBase<LinalgToNPUPass> {
-
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
@@ -52,6 +51,7 @@ public:
     }
   }
 };
+
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> npu::createLinalgToNPUPass() {

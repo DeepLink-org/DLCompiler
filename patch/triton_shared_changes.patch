@@ -1,0 +1,124 @@
+diff --git a/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp b/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp
+index 7baee48..d1d3d8e 100644
+--- a/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp
++++ b/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp
+@@ -688,44 +688,71 @@ private:
+   }
+ 
+ public:
++  // Dimensions of collapesd tensor is all unbroadcast dims
++  SmallVector<int64_t> getUnbroadcastDims(RankedTensorType src,
++                                          RankedTensorType dst) const {
++    SmallVector<int64_t> unbroadcastDims;
++    auto srcShape = src.getShape();
++    auto dstShape = dst.getShape();
++
++    for (size_t i = 0; i < srcShape.size(); ++i) {
++      if (dstShape[i] == srcShape[i]) {
++        unbroadcastDims.emplace_back(srcShape[i]);
++      }
++    }
++    return unbroadcastDims;
++  }
++  // Here convert tt.broadcast to linalg.broadcast
++  //
++  // before
++  // %out = tt.broadcast %in : tensor<1x4x8xf32> -> tensor<128x4x8xf32>
++  //
++  // after
++  // %collpased = tensor.collapse_shape %in [[0, 1], [2]] :
++  //                                    tensor<1x4x8xf32> into tensor<4x8xf32>
++  // %out = linalg.broadcast ins(%collpased : tensor<4x8xf32>)
++  //                         outs(%empty : tensor<128x4x8xf32>) dimensions = [0]
+   LogicalResult
+   matchAndRewrite(triton::BroadcastOp op, OpAdaptor adaptor,
+-                  ConversionPatternRewriter &rewriter) const override {
+-    auto loc = op.getLoc();
++                                      ConversionPatternRewriter &rewriter) const override {
++    assert(op->getNumResults() == 1 && "BroadcastOp assumes single result");
+ 
+-    assert(op->getNumResults() == 1 && "code assumes single result!");
+     RankedTensorType sourceType =
+         cast<RankedTensorType>(adaptor.getSrc().getType());
+     RankedTensorType resultType = cast<RankedTensorType>(op.getType());
+     auto elementType = resultType.getElementType();
+     size_t resultRank = resultType.getRank();
++    auto loc = op.getLoc();
+ 
+-    SmallVector<AffineMap> indexingMaps;
+-    indexingMaps.reserve(op->getNumOperands() + op->getNumResults());
++    auto initEmpty =
++        rewriter.create<tensor::EmptyOp>(loc, resultType.getShape(), elementType);
+ 
+-    indexingMaps.push_back(getBroadcastAffineMap(
+-        op->getContext(), sourceType.getShape(), resultType.getShape()));
+-    indexingMaps.append(op->getNumResults(),
+-                        rewriter.getMultiDimIdentityMap(resultRank));
++    SmallVector<int64_t> broadcastDims =
++        getBroadcastDims(sourceType, resultType);
++    SmallVector<int64_t> unbroadcastDims =
++        getUnbroadcastDims(sourceType, resultType);
+ 
+-    assert(op->getNumResults() == 1 && "code assumes single result!");
+-    auto init = rewriter.create<tensor::EmptyOp>(loc, resultType.getShape(),
+-                                                 elementType);
++    SmallVector<ReassociationIndices> collapseReassociationIndices;
++    auto collapseReassociationIndicesOptional =
++        getReassociationIndicesForCollapse(sourceType.getShape(),
++                                          unbroadcastDims);
++    if (!collapseReassociationIndicesOptional.has_value()) {
++      return rewriter.notifyMatchFailure(
++          op, "Failure with getReassociationIndicesForCollapse call");
++    }
++    collapseReassociationIndices = collapseReassociationIndicesOptional.value();
+ 
+-    auto linalgOp = rewriter.create<linalg::GenericOp>(
+-        loc, op->getResultTypes(), ValueRange{adaptor.getSrc()},
+-        ValueRange{init}, indexingMaps, getNParallelLoopsAttrs(resultRank),
+-        [&](OpBuilder &nestedBuilder, Location nestedLoc,
+-            ValueRange blockArgs) {
+-          Value opResult = blockArgs[0];
+-          nestedBuilder.create<linalg::YieldOp>(loc, opResult);
+-        });
++    RankedTensorType collapseResultType =
++        RankedTensorType::get(unbroadcastDims, sourceType.getElementType());
+ 
+-    linalgOp->setAttr("broadcastDims",
+-                      rewriter.getDenseI64ArrayAttr(
+-                          getBroadcastDims(sourceType, resultType)));
++    auto collpasedOp = rewriter.create<tensor::CollapseShapeOp>(
++        loc, collapseResultType, adaptor.getSrc(), collapseReassociationIndices);
+ 
+-    rewriter.replaceOp(op, linalgOp->getResults());
++    auto broadcastOp = rewriter.create<linalg::BroadcastOp>(
++        loc, collpasedOp, initEmpty,
++        rewriter.getDenseI64ArrayAttr(broadcastDims));
++
++    rewriter.replaceOp(op, broadcastOp.getResults());
+     return success();
+   }
+ };
+diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
+index d85cab7..8cc0d24 100644
+--- a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
++++ b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
+@@ -90,5 +90,5 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
+   // will be tried last. Incorrect ordering or having MetaOpConverter has lower
+   // PatternBenefit will result in element-wise meta ops being converted to
+   // linalg.generic ops.
+-  linalg::populateElementwiseToLinalgConversionPatterns(patterns);
++//   linalg::populateElementwiseToLinalgConversionPatterns(patterns);
+ }
+diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
+index 667c0b5..89ce192 100644
+--- a/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
++++ b/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
+@@ -172,7 +172,7 @@ public:
+                 return isa<RankedTensorType>(type);
+               });
+ 
+-          return !operateOnTensors;
++          return true || !operateOnTensors;
+         });
+ 
+     triton::populateTritonToLinalgConversionPatterns(

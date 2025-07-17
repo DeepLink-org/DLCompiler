@@ -85,6 +85,18 @@ def _get_triton_adapter_opt_path() -> str:
     path = os.path.join(path, "triton-adapter-opt")
     return path
 
+def _get_dicp_opt_path() -> str:
+    path = os.getenv("DICP_OPT_PATH", "")
+    if path == "":
+        raise Exception("DICP_OPT_PATH is not set.")
+    return path
+
+def _get_triton_shared_opt_path() -> str:
+    path = os.getenv("TRITON_SHARED_OPT_PATH", "")
+    if path == "":
+        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
+    return path
+
 def _get_mlir_path(path: str, *paths) -> str:
     root_path = os.getenv("MLIR_ROOT", "")
     if root_path == "":
@@ -104,6 +116,7 @@ def _get_npucompiler_path() -> str:
         if npu_compiler_root is None:
             raise EnvironmentError("Couldn't find executable bishengir-compile or TRITON_NPU_COMPILER_PATH.")
         npu_compiler_path = os.path.join(npu_compiler_root, "npuc")
+    npu_compiler_path = os.path.abspath(npu_compiler_path)
     return npu_compiler_path
 
 def _get_bisheng_path() -> str:
@@ -290,6 +303,43 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
 
         return Path(dst_path).read_text()
 
+def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
+    ttir_code = str(mod)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
+        dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
+        Path(src_path).write_text(ttir_code)
+        triton_shared_opt_path = _get_triton_shared_opt_path()
+
+        cmd_shared_list = [triton_shared_opt_path, src_path,
+            f'--triton-to-linalg',
+            # '--linalg-fuse-elementwise-ops',
+            "-o", dst_ttshared_path]
+
+        ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
+        return Path(dst_ttshared_path).read_text()
+
+def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
+    ttsharedir_code = str(mod)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
+        dst_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
+        Path(src_path).write_text(ttsharedir_code)
+        dicp_opt_path = _get_dicp_opt_path()
+        dicp_cmd_list = [dicp_opt_path, src_path,
+            # f'--linalg-to-npu',
+            f'--linalg-to-linked=global-kernel=false named-ops=true',
+            "-o", dst_path]
+        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
+        # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
+        with open(dst_path, 'r') as f:
+            content = f.read()
+            # 将"*xfxxx"替换成"?xfxxx"
+            content = content.replace("*xf", "?xf")
+            with open(dst_path, 'w') as f:
+                f.write(content)
+        return Path(dst_path).read_text()
+
 
 def linalg_to_llir(linalg: str, metadata, opt):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -395,6 +445,9 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
     linalg = re.sub(r', mix_mode\s*=\s*"[^"]*"', '', linalg)
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
+        lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "0")
+        if lower_by_ttshared == "1":
+            ttadapter_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(ttadapter_path).write_text(linalg)
         bin_file = os.path.join(tmpdir, "kernel")
         bin_path = os.path.join(tmpdir, "kernel_reloc.o")
@@ -407,6 +460,14 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]
         npu_compiler_path = _get_npucompiler_path()
+
+        # support bishengir-compile more version
+        if "8.2.RC1.alpha002" in npu_compiler_path:
+            bin_path = os.path.join(tmpdir, "kernel_reloc.o")
+        elif "8.2.RC1.alpha003" in npu_compiler_path:
+            bin_path = os.path.join(tmpdir, "kernel.o")
+        else:
+            bin_path = os.path.join(tmpdir, "kernel.o")
         if (npu_compiler_path.endswith("bishengir-compile")):
             _compile_option_list += [
                 "--enable-hfusion-compile=true",
@@ -422,7 +483,6 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             callback_func.restype = ctypes.c_int64
             callback_func.argtypes = []
             metadata['workspace_size'] = callback_func()
-
         return Path(bin_path).read_bytes()
 
 @dataclass(frozen=True)

@@ -1,4 +1,5 @@
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
+#include "dicp/Conversion/LinalgToLinked/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
@@ -14,6 +15,7 @@
 using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::npu::registerLinalgToNPUPass();
+  dicp::linked::registerLinalgToLinkedPass();
   registry.insert<bufferization::BufferizationDialect, dicp::npu::NPUDialect,
                   mlir::dicp::LinalgExt::LinalgExtDialect,
                   mlir::arith::ArithDialect, cf::ControlFlowDialect,

@@ -338,7 +338,6 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             content = content.replace("*xf", "?xf")
             with open(dst_path, 'w') as f:
                 f.write(content)
-        shutil.copy(dst_path, './')
         return Path(dst_path).read_text()
 
 

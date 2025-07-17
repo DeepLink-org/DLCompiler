@@ -22,30 +22,31 @@ namespace {
 class LinalgToNPUPass : public LinalgToNPUBase<LinalgToNPUPass> {
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<
-        func::FuncDialect, arith::ArithDialect, math::MathDialect,
-        npu::NPUDialect, linalg::LinalgDialect, affine::AffineDialect,
-        scf::SCFDialect, tensor::TensorDialect,
-        bufferization::BufferizationDialect, memref::MemRefDialect>();
+    registry
+        .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
+                npu::NPUDialect, linalg::LinalgDialect, affine::AffineDialect,
+                scf::SCFDialect, tensor::TensorDialect,
+                bufferization::BufferizationDialect, memref::MemRefDialect>();
   }
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
+    // OpBuilder builder(moduleOp.getBodyRegion());
+    // builder.setInsertionPointToStart(builder.getBlock());
+    // builder.create<npu::CreateTpipOp>(builder.getUnknownLoc());
 
-    // Check if the kernel contains tl.dot. Without tl.dot,
-    // the kernel would be pure AIV kernel.
-    bool existDot = false;
-    moduleOp.walk([&](triton::DotOp dotOp) {
-      existDot = true;
-      return WalkResult::interrupt();
-    });
+    RewritePatternSet patterns(&getContext());
+    ConversionTarget target(getContext());
+    target.addLegalDialect<npu::NPUDialect>();
+    // target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
+    //     return !isa<Fload16>(op.getResult().getType());
+    //   });
+    // target.addIllegalOp<arith::AddFOp>();
 
     npu::populateLinalgToNPUConversionPatterns(patterns);
+    // patterns.add<CopyConverter>(patterns.getContext());
 
-    if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
-      moduleOp.emitError("Pattern application failed");
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

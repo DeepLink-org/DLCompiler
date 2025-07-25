@@ -32,7 +32,7 @@ def triton_func(x: torch.Tensor, y: torch.Tensor, slice_offset: int, slice_size:
     triton_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024, SLICE_OFFSET=0, SLICE_SIZE=32)
     return output
 
-def test_extract_slice():
+def test_insert_slice():
     size = 1024
     slice_offset = 0
     slice_size = 32

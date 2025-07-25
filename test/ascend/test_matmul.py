@@ -6,11 +6,7 @@ Matrix Multiplication
 import triton
 import triton.language as tl
 import torch
-import torch_npu
-import triton.backends.dicp_triton.driver as dicp
 import triton.language.extra.deeplink as dl
-import pytest
-triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
 
 DEV = "npu"
 activation = "leaky_relu_custom"

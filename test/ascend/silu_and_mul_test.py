@@ -3,10 +3,6 @@ import torch
 import triton
 
 from silu_and_mul import silu_and_mul
-import triton.backends.dicp_triton.driver as dicp
-
-# TRITON_ALWAYS_COMPILE=1 python silu_and_mul.py
-triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
 
 
 class TestSiluAndMul:

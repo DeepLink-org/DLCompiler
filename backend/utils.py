@@ -41,6 +41,10 @@ def get_current_backend():
         backend = 'ascend'
     elif command_exists("cnmon"):
         backend = 'mlu'
+    elif command_exists("mx-smi"):
+        backend = 'maca'
+    elif command_exists("nvidia-smi"):
+        backend = 'nvidia'
     else:
         backend = None
     return backend

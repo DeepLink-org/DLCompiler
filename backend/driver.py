@@ -9,6 +9,7 @@ import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
+from triton.backends.dicp_triton.utils import get_current_backend
 
 from triton.runtime.build import quiet
 import importlib
@@ -147,7 +148,8 @@ class DICPDriver(DriverBase):
     @classmethod
     def is_active(self):
         try:
-            if self.target == "ascend":
+            current_backend = get_current_backend()
+            if current_backend == "ascend":
                 def test_npucompiler():
                     from triton.backends.dicp_triton.npu import _get_bisheng_path
                     npucompiler = _get_bisheng_path()
@@ -162,13 +164,7 @@ class DICPDriver(DriverBase):
                     warnings.warn(red + str(e_npucompiler) + reset)
                     return False
         except Exception as e:
-            import torch
-            try:
-                if torch.mlu:
-                    return True
-            except Exception as e:
-                import torch_mlu
-                return True
+            raise RuntimeError(f"dicp triton exception:{e}")
         return True
 
     def launch_as_union_task(self, device, grid):

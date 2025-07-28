@@ -1,14 +1,8 @@
 import torch
-import torch_npu
 
 import triton
 import triton.language as tl
-import triton.backends.dicp_triton.driver as dicp
 import triton.language.extra.deeplink as dl
-
-triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
-
-import pytest
 
 @triton.jit
 def triton_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):

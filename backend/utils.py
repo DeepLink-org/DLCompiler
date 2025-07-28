@@ -39,6 +39,8 @@ def get_current_backend():
         return backend
     elif command_exists("npu-smi"):
         backend = 'ascend'
+    elif command_exists("cnmon"):
+        backend = 'mlu'
     else:
         backend = None
     return backend

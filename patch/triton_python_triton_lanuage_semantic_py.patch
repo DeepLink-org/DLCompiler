@@ -1,36 +1,21 @@
 diff --git a/python/triton/language/semantic.py b/python/triton/language/semantic.py
-index 8e9f87b5e..b6bdfe2e6 100644
+index 8e9f87b5e..b474565cc 100644
 --- a/python/triton/language/semantic.py
 +++ b/python/triton/language/semantic.py
-@@ -109,6 +109,9 @@ def computation_type_impl(a_ty: tl.dtype, a_is_scalar: bool, b_ty: tl.dtype, b_i
+@@ -109,6 +109,7 @@ def computation_type_impl(a_ty: tl.dtype, a_is_scalar: bool, b_ty: tl.dtype, b_i
  
  
  def to_tensor(x, builder, check_type: bool = True):
-+    # from ..compiler.code_generator import LambdaFunction
-+    from ..compiler.code_generator import InlineLambda
-+
++    from triton.language.extra.deeplink.core import InlineLambda
      if isinstance(x, bool):
          return tl.tensor(builder.get_int1(x), tl.int1)
      # Note: compile-time const integers are represented by unsigned values
-@@ -138,10 +141,21 @@ def to_tensor(x, builder, check_type: bool = True):
-         return full((), x, dtype=dtype, builder=builder)
- 
-     elif isinstance(x, tl.constexpr):
-+        print(f"zmz debug to_tensor, type is tl.constexpr: {x}", flush=True)
+@@ -141,6 +142,8 @@ def to_tensor(x, builder, check_type: bool = True):
          return to_tensor(x.value, builder)
-+    # elif isinstance(x, LambdaFunction):
-+    #     print(f"zmz debug to_tensor, type is LambdaFunction: {x}", flush=True)
-+    #     rtn = x(builder=builder)
-+    #     print(f"zmz debug to_tensor, rtn is {rtn}", flush=True)
-+    #     return rtn
-+    elif isinstance(x, InlineLambda):
-+        return x
      elif isinstance(x, tl.tensor):
          return x
++    elif isinstance(x, InlineLambda):
++        return x
      if check_type:
-+        print(f"zmz debug to_tensor: {x} {type(x)}")
-+        import pdb
-+        pdb.set_trace()
          raise TypeError(f"cannot convert {x} of type {type(x)} to tensor")
      return x
- 

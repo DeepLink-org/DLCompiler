@@ -6,6 +6,7 @@ export LC_ALL="zh_CN.UTF-8"
 # export JSON_PATH=/path/to/your/json/file
 # export GOOGLETEST_DIR=/path/to/your/googletest/directory
 # export LLVM_BUILD_DIR=/path/to/your/llvm-project/build
+# export LLVM_TGZ_PATH=/path/to/your/llvm-86b69c31-ubuntu-arm64.tar.gz      # 可选，用于指定LLVM的tgz包路径
 export TRITON_PLUGIN_DIRS=$(pwd)
 
 # 交互式询问是否可以修改triton/triton_shared目录下代码

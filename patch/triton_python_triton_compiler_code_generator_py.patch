@@ -1,5 +1,5 @@
 diff --git a/python/triton/compiler/code_generator.py b/python/triton/compiler/code_generator.py
-index d8ca58d8d..56db098b8 100644
+index d8ca58d8d..84d724d7f 100644
 --- a/python/triton/compiler/code_generator.py
 +++ b/python/triton/compiler/code_generator.py
 @@ -15,6 +15,10 @@ from ..runtime.jit import _normalize_ty, get_jit_fn_file_line
@@ -13,69 +13,7 @@ index d8ca58d8d..56db098b8 100644
  
  
  def mangle_ty(ty):
-@@ -188,6 +192,61 @@ class ContainsReturnChecker(ast.NodeVisitor):
-     def visit_Call(self, node: ast.Call) -> bool:
-         return self.visit(node.func)
- 
-+def _get_triton_dtype(ir_type):
-+    """将IR类型转换为Triton dtype"""
-+    # 处理指针类型（通过类型名称判断）
-+    if "ptr" in str(ir_type):
-+        raise NotImplementedError("Pointer type conversion is not implemented yet.")
-+    # 处理标量类型
-+    type_str = str(ir_type)
-+    logging.error(f"type_str: {type_str}")
-+    if type_str == "i1":
-+        return language.int1
-+    elif type_str.startswith("i"):
-+        return getattr(language, f"int{type_str[1:]}")
-+    elif type_str.startswith("f"):
-+        return getattr(language, f"float{type_str[1:]}")
-+    return language.void
-+
-+class InlineLambda:
-+    def __init__(self, node, closure_values, closure_names, arg_names):
-+        self.node = node          # AST节点
-+        self.closure_values = closure_values
-+        self.closure_names = closure_names
-+        self.arg_names = arg_names
-+    
-+    def __call__(self, *args, generator=None):
-+        if generator is None:
-+            raise RuntimeError("Generator must be provided for Lambda inlining")
-+        
-+        # 保存当前状态
-+        old_lscope = generator.lscope.copy()
-+        old_local_defs = generator.local_defs.copy()
-+        old_insert_block = generator.builder.get_insertion_block()
-+        
-+        try:
-+            # 创建闭包变量映射
-+            closure_map = {}
-+            for name, value in zip(self.closure_names, self.closure_values):
-+                closure_map[name] = value
-+            
-+            # 创建参数映射
-+            param_map = {}
-+            for name, value in zip(self.arg_names, args):
-+                param_map[name] = value
-+            
-+            # 合并作用域
-+            generator.lscope = {**old_lscope, **closure_map, **param_map}
-+            generator.local_defs = {**old_local_defs, **closure_map, **param_map}
-+            
-+            # 内联lambda体
-+            return generator.visit(self.node.body)
-+        finally:
-+            # 恢复状态
-+            generator.lscope = old_lscope
-+            generator.local_defs = old_local_defs
-+            if old_insert_block:
-+                generator.builder.set_insertion_point_to_end(old_insert_block)
- 
- class CodeGenerator(ast.NodeVisitor):
- 
-@@ -349,6 +408,7 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -349,6 +353,7 @@ class CodeGenerator(ast.NodeVisitor):
                  break
  
      def visit_Module(self, node):
@@ -83,7 +21,7 @@ index d8ca58d8d..56db098b8 100644
          ast.NodeVisitor.generic_visit(self, node)
  
      def visit_List(self, node):
-@@ -383,7 +443,42 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -383,6 +388,40 @@ class CodeGenerator(ast.NodeVisitor):
          post_ret_block = self.builder.create_block()
          self.builder.set_insertion_point_to_end(post_ret_block)
  
@@ -114,7 +52,7 @@ index d8ca58d8d..56db098b8 100644
 +                closure_names.append(var_name)
 +        
 +        # 3. 返回可内联的lambda对象
-+        return InlineLambda(
++        return language.extra.deeplink.InlineLambda(
 +            node=node,
 +            closure_values=list(closure_vars.values()),
 +            closure_names=closure_names,
@@ -122,11 +60,9 @@ index d8ca58d8d..56db098b8 100644
 +        )
 +
      def visit_FunctionDef(self, node):
-+        # logging.error(f"Visiting FunctionDef node: {ast.dump(node, indent=4)}")
          arg_names, kwarg_names = self.visit(node.args)
          if self.fn:
-             raise self._unsupported(node, "nested function definition is not supported.")
-@@ -486,6 +581,7 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -486,6 +525,7 @@ class CodeGenerator(ast.NodeVisitor):
          return self.visit_Assign(node)
  
      def visit_Assign(self, node):
@@ -134,7 +70,7 @@ index d8ca58d8d..56db098b8 100644
          _names = []
          if isinstance(node, ast.AnnAssign):
              _names += [self.visit(node.target)]
-@@ -681,6 +777,7 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -681,6 +721,7 @@ class CodeGenerator(ast.NodeVisitor):
              self.set_value(name, new_tensor)
  
      def visit_If(self, node):
@@ -142,7 +78,7 @@ index d8ca58d8d..56db098b8 100644
          cond = self.visit(node.test)
  
          if _is_triton_tensor(cond):
-@@ -910,7 +1007,8 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -910,7 +951,8 @@ class CodeGenerator(ast.NodeVisitor):
              return
          num_stages = None
          loop_unroll_factor = None
@@ -152,7 +88,7 @@ index d8ca58d8d..56db098b8 100644
              iterator = IteratorClass(*iter_args, **iter_kwargs)
              # visit iterator arguments
              # note: only `range` iterator is supported now
-@@ -920,6 +1018,8 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -920,6 +962,8 @@ class CodeGenerator(ast.NodeVisitor):
              step = iterator.step
              num_stages = iterator.num_stages
              loop_unroll_factor = iterator.loop_unroll_factor
@@ -161,7 +97,7 @@ index d8ca58d8d..56db098b8 100644
          elif IteratorClass is range:
              # visit iterator arguments
              # note: only `range` iterator is supported now
-@@ -992,6 +1092,8 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -992,6 +1036,8 @@ class CodeGenerator(ast.NodeVisitor):
                  for_op.set_attr("tt.num_stages", self.builder.get_int32_attr(num_stages))
              if loop_unroll_factor is not None:
                  for_op.set_attr("tt.loop_unroll_factor", self.builder.get_int32_attr(loop_unroll_factor))
@@ -170,14 +106,14 @@ index d8ca58d8d..56db098b8 100644
  
              self.scf_stack.append(node)
              self.builder.set_insertion_point_to_start(for_op.get_body(0))
-@@ -1095,7 +1197,16 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1095,7 +1141,16 @@ class CodeGenerator(ast.NodeVisitor):
              return tuple(results)
  
      def visit_Call(self, node):
 +        # logging.error(f"Visiting Call node: {ast.dump(node, indent=4)}")
          fn = _unwrap_if_constexpr(self.visit(node.func))
 +        
-+        if isinstance(fn, InlineLambda):
++        if isinstance(fn, language.extra.deeplink.InlineLambda):
 +            # 获取参数
 +            args = [self.visit(arg) for arg in node.args]
 +            

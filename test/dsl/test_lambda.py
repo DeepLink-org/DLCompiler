@@ -88,6 +88,8 @@ def custom_copy_kernel(input_ptr, output_ptr,
 
     input_rows = stride_idx(base_idx)[:, None]  # [16,1]
     input_cols = stride_idx(base_idx)[None, :]   # [1,16]
+    # input_rows = (base_idx * 8)[:, None]
+    # input_cols = (base_idx * 8)[None, :]
 
     input_pos = input_rows * input_row_size + input_cols
     output_pos = base_idx[:, None] * block_size + base_idx[None, :]

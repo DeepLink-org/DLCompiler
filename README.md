@@ -34,22 +34,35 @@ bash format.sh
 ```
 
 # 华为昇腾芯片
+## 环境准备
+准备华为设备上环境，可以参考华为的链接：https://gitee.com/ascend/triton-ascend
+### 安装ascend cann
+1. 要求CANN 版本 > 8.2.RC1.alpha002
+2. 社区下载链接：https://www.hiascend.com/developer/download/community/result?module=cann
+3. 社区安装指引链接：https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1alpha002/softwareinst/instg/instg_0001.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit
+
+### 安装依赖
+```
+pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1 psutil==6.0.0 pytest==8.3.2 pytest-xdist==3.6.1 pyyaml pybind11
+```
+### 安装torch_npu
+```
+pip install torch_npu==2.6.0rc1
+```
 ## 编译
 ```
 # set LLVM_INSTALL_PREFIX
 bash compile_on_ascend.sh
+```
 
 ### ttshared pipeline
+```
 bash compile_shared.sh
 export TRITON_SHARED_OPT_PATH=$PWD/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt
 export DICP_OPT_PATH=$PWD/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/tools/dicp_triton_opt/dicp_opt
 export LOWER_BY_TTSHARED=1
 ```
-## 设置昇腾后端
-```
-import triton.backends.dicp_triton.driver as dicp
-triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
-```
+
 ## 测试
 ```
 cd python/op
@@ -61,11 +74,7 @@ python softmax.py
 ```
 bash compile_on_mlu.sh
 ```
-## 设置寒武纪后端
-```
-import triton.backends.dicp_triton.driver as dicp
-triton.runtime.driver.set_active(dicp.DICPDriver('mlu'))
-```
+
 ## 测试
 ```
 cd build/triton/tutorials

@@ -144,7 +144,7 @@ class parallel(range):
         super().__init__(arg1, arg2, step, num_stages, loop_unroll_factor)
         self.bind_sub_block = bind_sub_block
 
-class InlineLambda:
+class inline_lambda:
     """
     Inline a lambda function into the current block.
     This class is used to inline a lambda function into the current block.

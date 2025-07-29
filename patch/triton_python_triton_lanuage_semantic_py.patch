@@ -1,12 +1,12 @@
 diff --git a/python/triton/language/semantic.py b/python/triton/language/semantic.py
-index 8e9f87b5e..b474565cc 100644
+index 8e9f87b5e..c34224b4c 100644
 --- a/python/triton/language/semantic.py
 +++ b/python/triton/language/semantic.py
 @@ -109,6 +109,7 @@ def computation_type_impl(a_ty: tl.dtype, a_is_scalar: bool, b_ty: tl.dtype, b_i
  
  
  def to_tensor(x, builder, check_type: bool = True):
-+    from triton.language.extra.deeplink.core import InlineLambda
++    from triton.language.extra.deeplink.core import inline_lambda
      if isinstance(x, bool):
          return tl.tensor(builder.get_int1(x), tl.int1)
      # Note: compile-time const integers are represented by unsigned values
@@ -14,7 +14,7 @@ index 8e9f87b5e..b474565cc 100644
          return to_tensor(x.value, builder)
      elif isinstance(x, tl.tensor):
          return x
-+    elif isinstance(x, InlineLambda):
++    elif isinstance(x, inline_lambda):
 +        return x
      if check_type:
          raise TypeError(f"cannot convert {x} of type {type(x)} to tensor")

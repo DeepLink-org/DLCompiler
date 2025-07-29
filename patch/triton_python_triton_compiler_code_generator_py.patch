@@ -1,5 +1,5 @@
 diff --git a/python/triton/compiler/code_generator.py b/python/triton/compiler/code_generator.py
-index d8ca58d8d..24d290149 100644
+index d8ca58d8d..f68ce59ad 100644
 --- a/python/triton/compiler/code_generator.py
 +++ b/python/triton/compiler/code_generator.py
 @@ -15,6 +15,9 @@ from ..runtime.jit import _normalize_ty, get_jit_fn_file_line
@@ -41,8 +41,8 @@ index d8ca58d8d..24d290149 100644
 +                closure_vars[var_name] = self.lscope[var_name]
 +                closure_names.append(var_name)
 +
-+        # 4. create InlineLambda object
-+        return language.extra.deeplink.InlineLambda(
++        # 4. create inline_lambda object
++        return language.extra.deeplink.inline_lambda(
 +            node=node,
 +            closure_values=list(closure_vars.values()),
 +            closure_names=closure_names,
@@ -93,7 +93,7 @@ index d8ca58d8d..24d290149 100644
      def visit_Call(self, node):
          fn = _unwrap_if_constexpr(self.visit(node.func))
 +
-+        if isinstance(fn, language.extra.deeplink.InlineLambda):
++        if isinstance(fn, language.extra.deeplink.inline_lambda):
 +            # get the arguments
 +            args = [self.visit(arg) for arg in node.args]
 +            # call the lambda function

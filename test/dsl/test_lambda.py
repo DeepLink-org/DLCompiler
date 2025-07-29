@@ -77,6 +77,41 @@ def test_broadcast():
     fn_broadcast[NBLOCKS,1,1](output, x, length, debug=True)
     assert(torch.equal(output, x.repeat(1, YS, 1)))
 
+@triton.jit
+def custom_copy_kernel(input_ptr, output_ptr,
+                        input_row_size: tl.constexpr,  # 输入矩阵行维度大小 (128)
+                        block_size: tl.constexpr):     # 块大小 (16)
+    base_idx = tl.arange(0, block_size)
+
+    # 通过lambda计算带步长的输入索引
+    stride_idx = lambda x: x * 8  # 每隔8个元素
+
+    input_rows = stride_idx(base_idx)[:, None]  # [16,1]
+    input_cols = stride_idx(base_idx)[None, :]   # [1,16]
+
+    input_pos = input_rows * input_row_size + input_cols
+    output_pos = base_idx[:, None] * block_size + base_idx[None, :]
+
+    data = tl.load(input_ptr + input_pos)
+    tl.store(output_ptr + output_pos, data)
+
+def test_custom_copy():
+    # 创建输入张量 (128x128) 和输出张量 (16x16)
+    input_tensor = torch.randn(128, 128, device='npu')
+    output_tensor = torch.zeros(16, 16, device='npu')
+
+    grid = (1, 1)
+    custom_copy_kernel[grid](input_tensor, output_tensor,
+                              input_row_size=128,
+                              block_size=16)
+
+    expected = input_tensor[::8, ::8][:16, :16]
+    print(f"Expected shape: {expected}, Output shape: {output_tensor}")
+    assert torch.allclose(output_tensor, expected, atol=1e-6), \
+        "Copied data does not match the custom 16x16 block"
+    print("Test passed: 16x16 block copied correctly.")
+
 if __name__ == "__main__":
     test_add()
     test_broadcast()
+    test_custom_copy()

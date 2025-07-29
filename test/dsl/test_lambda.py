@@ -3,10 +3,6 @@ import triton
 import triton.language as tl
 import pytest
 
-import triton.backends.dicp_triton.driver as dicp
-triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
-
-
 @triton.jit
 def add_kernel(x_ptr,  # *Pointer* to first input vector.
                y_ptr,  # *Pointer* to second input vector.

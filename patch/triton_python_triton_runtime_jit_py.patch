@@ -1,0 +1,114 @@
+diff --git a/python/triton/runtime/jit.py b/python/triton/runtime/jit.py
+index 45178a40b..d74179769 100644
+--- a/python/triton/runtime/jit.py
++++ b/python/triton/runtime/jit.py
+@@ -33,8 +33,12 @@ class DependenciesFinder(ast.NodeVisitor):
+     otherwise we could recompile).
+     """
+ 
+-    def __init__(self, name, globals, src) -> None:
++    # def __init__(self, name, globals, src) -> None:
++    def __init__(self, name, globals, src, starting_line_number) -> None:  # 添加新参数
++
+         super().__init__()
++        self.src = src  # 新增属性
++        self.starting_line_number = starting_line_number  # 新增属性
+         self.name = name
+         self.hasher = hashlib.sha256(src.encode("utf-8"))
+ 
+@@ -133,14 +137,33 @@ class DependenciesFinder(ast.NodeVisitor):
+         return [self.visit(elt) for elt in node.elts]
+ 
+     def visit_Attribute(self, node):
+-        lhs = self.visit(node.value)
+-        while isinstance(lhs, ast.Attribute):
+-            lhs = self.visit(lhs.value)
+-        if lhs is None or (getattr(lhs, "__name__", "") == TRITON_MODULE):
+-            return None
+-        ret = getattr(lhs, node.attr)
+-        self._update_hash(ret)
+-        return ret
++        try:
++            lhs = self.visit(node.value)
++            while isinstance(lhs, ast.Attribute):
++                print(f"zmz debug, Warning: Nested attributes {lhs} in {node}. node: {ast.dump(node, indent=4)}", flush=True)
++                lhs = self.visit(lhs.value)
++            if lhs is None or (getattr(lhs, "__name__", "") == TRITON_MODULE):
++                print(f"zmz debug, Warning: Accessing attribute {node.attr} on {lhs} which is None or a Triton module. node: {ast.dump(node, indent=4)}", flush=True)
++                return None
++            print(f"zmz debug, Visiting attribute {node.attr} on {lhs}. node: {ast.dump(node, indent=4)}", flush=True)
++            ret = getattr(lhs, node.attr)
++            self._update_hash(ret)
++            return ret
++        except Exception as e:
++            abs_lineno = self.starting_line_number + node.lineno - 1
++
++            # 从原始源码获取错误行
++            code_lines = self.src.split('\n')
++            print(f"zmz debug code_lines: {code_lines}")
++            error_line = code_lines[node.lineno - 1].strip()  # lineno是函数内相对行号
++
++            # 生成带位置标记的错误信息
++            arrow = ' ' * (node.col_offset) + '^'
++            print(f"ERROR LINE {abs_lineno}")
++            print(f"ERROR CODE -> \n{error_line}\n{arrow}")
++            # print(f"zmz debug: 错误位置标记\n{error_line}\n{arrow}")
++        
++            raise e
+ 
+     def visit_FunctionDef(self, node):
+         # Save the local name, which may hide the global name.
+@@ -718,7 +741,7 @@ class JITFunction(KernelInterface[T]):
+     def cache_key(self):
+         # TODO : hash should be attribute of `self`
+         if self.hash is None:
+-            dependencies_finder = DependenciesFinder(name=self.__name__, globals=self.__globals__, src=self.src)
++            dependencies_finder = DependenciesFinder(name=self.__name__, globals=self.__globals__, src=self.src,starting_line_number=self.starting_line_number )
+             dependencies_finder.visit(self.parse())
+             self.hash = dependencies_finder.ret + str(self.starting_line_number)
+             self.used_global_vals = dict(sorted(dependencies_finder.used_global_vals.items()))
+@@ -755,13 +778,40 @@ class JITFunction(KernelInterface[T]):
+     # we do not parse `src` in the constructor because
+     # the user might want to monkey-patch self.src dynamically.
+     # Our unit tests do this, for example.
++    # def parse(self):
++    #     tree = ast.parse(self.src)
++    #     print(f"zmz debug Parsing source code of {self.fn.__name__} in module {self.module}, src: {self.src}, tree : {tree}", flush=True)
++    #     assert isinstance(tree, ast.Module)
++    #     assert len(tree.body) == 1
++    #     assert isinstance(tree.body[0], ast.FunctionDef)
++    #     print(f"zmz debug Parsing function {tree.body[0].name} in module {self.module}, tree : {tree}", flush=True)
++    #     # import pdb
++    #     # pdb.set_trace()
++    #     return tree
+     def parse(self):
+-        tree = ast.parse(self.src)
+-        assert isinstance(tree, ast.Module)
+-        assert len(tree.body) == 1
+-        assert isinstance(tree.body[0], ast.FunctionDef)
++        # 添加 AST 解析调试信息
++        print(f"\n=== Parsing function {self.fn.__name__} ===")
++        print(f"Source code:\n{self.src}")
++        
++        try:
++            tree = ast.parse(self.src)
++            assert isinstance(tree, ast.Module)
++            assert len(tree.body) == 1
++            assert isinstance(tree.body[0], ast.FunctionDef)
++        # except SyntaxError as e:
++        except Exception as e:
++            # 输出带绝对行号的错误信息
++            error_line = e.lineno + self.starting_line_number - 1
++            print(f"zmz debug: Syntax error at absolute line {error_line}", flush=True)
++            raise
++
++        # 添加 AST 结构调试信息
++        print(f"Generated AST structure:")
++        print(ast.dump(tree, indent=2))
++        
+         return tree
+ 
++
+     def __call__(self, *args, **kwargs):
+         raise RuntimeError("Cannot call @triton.jit'd outside of the scope of a kernel")
+ 

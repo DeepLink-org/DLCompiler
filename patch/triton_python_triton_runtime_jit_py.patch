@@ -1,0 +1,58 @@
+diff --git a/python/triton/runtime/jit.py b/python/triton/runtime/jit.py
+index 45178a40b..3cd22aa06 100644
+--- a/python/triton/runtime/jit.py
++++ b/python/triton/runtime/jit.py
+@@ -33,8 +33,10 @@ class DependenciesFinder(ast.NodeVisitor):
+     otherwise we could recompile).
+     """
+ 
+-    def __init__(self, name, globals, src) -> None:
++    def __init__(self, name, globals, src, starting_line_number) -> None:
+         super().__init__()
++        self.src = src
++        self.starting_line_number = starting_line_number
+         self.name = name
+         self.hasher = hashlib.sha256(src.encode("utf-8"))
+ 
+@@ -133,14 +135,24 @@ class DependenciesFinder(ast.NodeVisitor):
+         return [self.visit(elt) for elt in node.elts]
+ 
+     def visit_Attribute(self, node):
+-        lhs = self.visit(node.value)
+-        while isinstance(lhs, ast.Attribute):
+-            lhs = self.visit(lhs.value)
+-        if lhs is None or (getattr(lhs, "__name__", "") == TRITON_MODULE):
+-            return None
+-        ret = getattr(lhs, node.attr)
+-        self._update_hash(ret)
+-        return ret
++        try:
++            lhs = self.visit(node.value)
++            while isinstance(lhs, ast.Attribute):
++                lhs = self.visit(lhs.value)
++            if lhs is None or (getattr(lhs, "__name__", "") == TRITON_MODULE):
++                return None
++            ret = getattr(lhs, node.attr)
++            self._update_hash(ret)
++            return ret
++        except Exception as e:
++            abs_lineno = self.starting_line_number + node.lineno
++            code_lines = self.src.split('\n')
++            error_line = code_lines[node.lineno - 1].strip()
++            arrow = ' ' * (node.col_offset) + '^'
++            e.args = (f"ERROR LINE {abs_lineno}, COL {node.col_offset}\n"
++                      f"ERROR CODE -> \n{error_line}\n{arrow}\n{e.args[0]}",)
++
++            raise e
+ 
+     def visit_FunctionDef(self, node):
+         # Save the local name, which may hide the global name.
+@@ -718,7 +730,7 @@ class JITFunction(KernelInterface[T]):
+     def cache_key(self):
+         # TODO : hash should be attribute of `self`
+         if self.hash is None:
+-            dependencies_finder = DependenciesFinder(name=self.__name__, globals=self.__globals__, src=self.src)
++            dependencies_finder = DependenciesFinder(name=self.__name__, globals=self.__globals__, src=self.src, starting_line_number=self.starting_line_number)
+             dependencies_finder.visit(self.parse())
+             self.hash = dependencies_finder.ret + str(self.starting_line_number)
+             self.used_global_vals = dict(sorted(dependencies_finder.used_global_vals.items()))

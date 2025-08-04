@@ -1,5 +1,5 @@
 diff --git a/python/triton/runtime/jit.py b/python/triton/runtime/jit.py
-index 45178a40b..4ec5cc1d3 100644
+index 45178a40b..3cd22aa06 100644
 --- a/python/triton/runtime/jit.py
 +++ b/python/triton/runtime/jit.py
 @@ -33,8 +33,10 @@ class DependenciesFinder(ast.NodeVisitor):
@@ -36,7 +36,7 @@ index 45178a40b..4ec5cc1d3 100644
 +            self._update_hash(ret)
 +            return ret
 +        except Exception as e:
-+            abs_lineno = self.starting_line_number + node.lineno - 1
++            abs_lineno = self.starting_line_number + node.lineno
 +            code_lines = self.src.split('\n')
 +            error_line = code_lines[node.lineno - 1].strip()
 +            arrow = ' ' * (node.col_offset) + '^'

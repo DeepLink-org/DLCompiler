@@ -2,6 +2,9 @@ import numpy as np
 from triton.language import semantic as tl_semantic
 from triton.language.core import (
     _tensor_member_fn,
+    _shape_check_impl,
+    _constexpr_to_value,
+    _unwrap_if_constexpr,
     builtin,
     constexpr,
     tensor,
@@ -10,10 +13,65 @@ from triton.language.core import (
 import builtins
 from . import semantic as dl_semantic
 
-def _constexpr_to_value(v):
-    if isinstance(v, constexpr):
-        return v.value
-    return v
+
+class layout:
+    ASCEND = ['ND', 'NZ']
+
+    def __init__(self, name):
+        name = _unwrap_if_constexpr(name)
+        self.name = name
+        assert name in layout.ASCEND, name
+    
+    def __str__(self):
+        return self.name
+
+    def codegen_name(self):
+        return self.name
+
+    @property
+    def cache_key_part(self) -> str:
+        """See cache_key_part() in triton.cc."""
+        return self.name
+
+    def __repr__(self):
+        """Output of repr needs to be an evaluatable expression"""
+        return f'triton.language.{self.codegen_name()}'
+
+
+ND = layout('ND')
+NZ = layout('NZ')
+
+class scope:
+    GPU = ['fragment']
+    ASCEND = ['UB', 'L1', 'L0A', 'L0B', 'L0C']
+
+    def __init__(self, name):
+        name = _unwrap_if_constexpr(name)
+        self.name = name
+        assert name in scope.ASCEND + scope.GPU, name
+
+    def __str__(self):
+        return self.name
+
+    def codegen_name(self):
+        return self.name
+
+    @property
+    def cache_key_part(self) -> str:
+        """See cache_key_part() in triton.cc."""
+        return self.name
+
+    def __repr__(self):
+        """Output of repr needs to be an evaluatable expression"""
+        return f'triton.language.{self.codegen_name()}'
+
+
+fragment = scope('fragment')
+UB = scope('UB')
+L1 = scope('L1')
+L0A = scope('L0A')
+L0B = scope('L0B')
+L0C = scope('L0C')
 
 
 def _extract_slice(sl: slice, shape: constexpr):
@@ -128,6 +186,34 @@ def extract_slice(ful, offsets, sizes, strides, _builder=None, _generator=None) 
     ]
     sub = dl_semantic.extract_slice(ful, new_offsets, sizes, strides, _builder)
     return sub
+
+
+@builtin
+def compile_hint(ptr, hint_name, hint_val=None, _builder=None):
+    hint_name = _constexpr_to_value(hint_name)
+    assert isinstance(hint_name, str), f"hint name: {hint_name} is not string"
+    hint_val = _unwrap_if_constexpr(hint_val) if hint_val else hint_val
+    dl_semantic.compile_hint(ptr, hint_name, hint_val, _builder)
+
+
+@builtin
+def alloc(shape, value, dtype, layout=None, scope=None, _builder=None):
+    """
+    Returns a tensor filled with the scalar value for the given :code:`shape` and :code:`dtype`.
+
+    :param shape: Shape of the new array, e.g., (8, 16) or (8, )
+    :type shape: tuple of ints
+    :param value: A scalar value to fill the array with
+    :type value: scalar
+    :param dtype: Data type of the new array, e.g., :code:`tl.float16`
+    :type dtype: tl.dtype
+    """
+    shape = _shape_check_impl(shape)
+    value = _constexpr_to_value(value)
+    dtype = _constexpr_to_value(dtype)
+    layout = _constexpr_to_value(layout)
+    scope = _constexpr_to_value(scope)
+    return dl_semantic.alloc(shape, value, dtype, layout, scope, _builder)
 
 
 class parallel(range):

@@ -23,7 +23,7 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
                   index::IndexDialect, LLVM::LLVMDialect, math::MathDialect,
                   memref::MemRefDialect, pdl::PDLDialect, scf::SCFDialect,
                   tensor::TensorDialect, transform::TransformDialect,
-                  vector::VectorDialect, ub::UBDialect>();
+                  vector::VectorDialect, ub::UBDialect, triton::TritonDialect>();
 
   arith::registerBufferDeallocationOpInterfaceExternalModels(registry);
   arith::registerBufferizableOpInterfaceExternalModels(registry);

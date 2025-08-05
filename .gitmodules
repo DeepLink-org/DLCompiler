@@ -13,3 +13,6 @@
 [submodule "third_party/triton-ascend"]
 	path = third_party/triton-ascend
 	url = https://gitee.com/ascend/triton-ascend.git
+[submodule "third_party/ascendnpu-ir"]
+	path = third_party/ascendnpu-ir
+	url = https://gitee.com/ascend/ascendnpu-ir.git

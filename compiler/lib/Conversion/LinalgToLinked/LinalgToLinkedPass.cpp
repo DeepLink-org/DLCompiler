@@ -1,3 +1,4 @@
+#include "bishengir/Dialect/Annotation/IR/Annotation.h"
 #include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
 #include "dicp/Conversion/LinalgToLinked/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
@@ -17,6 +18,7 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 
 #define DEBUG_TYPE "linalg-to-linked"
@@ -25,6 +27,7 @@
 
 using namespace mlir;
 using namespace dicp;
+using namespace linked;
 
 #define GEN_PASS_CLASSES
 #include "dicp/Conversion/LinalgToLinked/Passes.h.inc"
@@ -151,21 +154,38 @@ void addProgramInfo(func::FuncOp func, bool globalKernel) {
   }
 }
 
+struct TritonAnnotationConverter
+    : OpRewritePattern<triton::AnnotationOp> {
+  using OpRewritePattern<triton::AnnotationOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(triton::AnnotationOp op,
+                                PatternRewriter &rewriter) const final {
+    auto markOp = rewriter.create<annotation::MarkOp>(op.getLoc(), op.getSrc());
+    // Forward all annotations.
+    markOp->setAttrs(op->getAttrs());
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<
         func::FuncDialect, arith::ArithDialect, math::MathDialect,
         linalg::LinalgDialect, affine::AffineDialect,
-        scf::SCFDialect, tensor::TensorDialect,
+        scf::SCFDialect, tensor::TensorDialect, annotation::AnnotationDialect,
         bufferization::BufferizationDialect, memref::MemRefDialect>();
+  }
+
+  void populateLinalgToLinkedConversionPatterns(RewritePatternSet &patterns) {
+    patterns.add<TritonAnnotationConverter>(patterns.getContext());
   }
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-
     // Check if the kernel contains tl.dot. Without tl.dot,
     // the kernel would be pure AIV kernel.
     bool existDot = false;
@@ -174,7 +194,7 @@ public:
       return WalkResult::interrupt();
     });
 
-    linked::populateLinalgToLinkedConversionPatterns(patterns);
+    this->populateLinalgToLinkedConversionPatterns(patterns);
 
     if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
       moduleOp.emitError("Pattern application failed");

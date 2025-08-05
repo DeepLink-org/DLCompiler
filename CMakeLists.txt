@@ -3,12 +3,15 @@ set(DC_TRITON_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
 set(DC_TRITON_INCLUDE_DIR "")
 set(DC_TRITON_LINK_DIR "")
+set(BISHENGIR_BUILD_STANDALONE_IR_ONLY ON)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/compiler/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/compiler/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/third_party/triton_shared/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_shared/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/ascendnpu-ir/bishengir/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/third_party/ascendnpu-ir/bishengir/include) # Tablegen'd files
 
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton)
     file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton")
@@ -30,6 +33,7 @@ include(utils)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/compiler)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_shared)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/ascendnpu-ir)
 
 add_triton_plugin(DICPTriton ${CMAKE_CURRENT_SOURCE_DIR}/dicp_triton.cc LINK_LIBS ${LIBS})
 target_include_directories(DICPTriton PUBLIC "${pybind11_INCLUDE_DIRS}")

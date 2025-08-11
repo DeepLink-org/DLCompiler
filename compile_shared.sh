@@ -15,6 +15,17 @@ if [ "$1" = "apply_patch=true" ]; then
     apply_patch=true
 fi
 
+is_npu=false
+check_npu() {
+    if command -v npu-smi info &> /dev/null && npu-smi info &> /dev/null; then
+        is_npu=true
+    else
+        is_npu=false
+    fi
+}
+
+check_npu
+
 if [[ $apply_patch == true ]]; then
     # 交互式询问是否可以修改triton/triton_shared目录下代码
     read -p "即将清空third_party下面的源码改动然后apply patch, 是否继续? (y/n)" -n 1 -r
@@ -22,12 +33,15 @@ if [[ $apply_patch == true ]]; then
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         # do dangerous stuff
         echo "Apply triton and triton_shared patch"
-        cd $TRITON_PLUGIN_DIRS/third_party/triton_shared/
-        git checkout .
-        ls $TRITON_PLUGIN_DIRS/patch/ttshared/*.patch | xargs -n1 git apply
-        if [ $? -ne 0 ]; then
-            echo "Error: triton_shared git apply failed." >&2
-            exit 1
+        echo "当前环境检测为：$([[ $is_npu == true ]] && echo 'ascend加速卡，使用适配patch' || echo '非ascend加速卡，不使用适配patch')"
+        if [[ $is_npu == true ]]; then
+            cd $TRITON_PLUGIN_DIRS/third_party/triton_shared/
+            git checkout .
+            ls $TRITON_PLUGIN_DIRS/patch/ttshared/*.patch | xargs -n1 git apply
+            if [ $? -ne 0 ]; then
+                echo "Error: triton_shared git apply failed." >&2
+                exit 1
+            fi
         fi
         cd $TRITON_PLUGIN_DIRS/third_party/triton/
         git checkout .

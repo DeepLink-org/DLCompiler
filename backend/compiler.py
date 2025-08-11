@@ -117,6 +117,8 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "mcfatbin"
         elif self.driver.target == 'ascend':
             self.binary_ext = "npubin"
+        else:
+            raise RuntimeError(f"Target '{self.target_type}' is not supported.")
 
     @staticmethod
     def supports_target(target: GPUTarget):
@@ -143,6 +145,8 @@ class DICPBackend(BaseBackend):
         if self.driver.target == 'ascend':
             from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
             return AscendAttrsDescriptor(params, args)
+        else:
+            raise RuntimeError(f"backend {self.driver.target} not supported for get_attrs_descriptor.")
 
     def add_stages(self, stages, options):
         if self.driver.target not in ['ascend', 'mlu']:

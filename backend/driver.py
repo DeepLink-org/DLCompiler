@@ -131,6 +131,11 @@ class DICPDriver(DriverBase):
             self.target = "ascend"
             self.utils = NPUUtils()
             self.launcher_cls = NPULauncher
+        elif target == "nvidia":
+            from triton.backends.nvidia.driver import CudaLauncher, CudaUtils
+            self.target = "nvidia"
+            self.utils = CudaUtils()
+            self.launcher_cls = CudaLauncher
         else:
             self.target = "dicp"
            
@@ -183,6 +188,9 @@ class DICPDriver(DriverBase):
             return ("maca", 0)
         elif self.target == "ascend":
             return ("ascend", 0)
+        elif self.target == "nvidia":
+            capability = torch.cuda.get_device_capability(self.get_current_device())
+            return ("cuda", capability)
         return ("dicp", 0)
 
     def get_current_stream(self, device):
@@ -199,6 +207,10 @@ class DICPDriver(DriverBase):
             if device is None:
                 device = self.get_current_device()
             return torch.npu.current_stream(device).npu_stream
+        elif self.target == "nvidia":
+            if device is None:
+                device = self.get_current_device()
+            return torch.cuda.current_stream(device).cuda_stream
         return None
 
     def get_current_device(self):
@@ -211,6 +223,8 @@ class DICPDriver(DriverBase):
         elif self.target == "ascend":
             import torch_npu
             return torch.npu.current_device()
+        elif self.target == "nvidia":
+            return torch.cuda.current_device()
         return "dicp"
 
     def get_benchmarker(self):
@@ -226,7 +240,8 @@ class DICPDriver(DriverBase):
         elif self.target == "ascend":
             import torch_npu
             return torch.npu.set_device(device)
-        #assert device == "dicp"
+        elif self.target == "nvidia":
+            return torch.cuda.set_device(device)
         return
 
     def get_current_target(self):
@@ -243,6 +258,12 @@ class DICPDriver(DriverBase):
             arch = self.utils.get_arch()
             warp_size = 0
             return GPUTarget(backend, arch, warp_size)
+        elif self.target == "nvidia":
+            device = self.get_current_device()
+            capability = torch.cuda.get_device_capability(device)
+            capability = capability[0] * 10 + capability[1]
+            warp_size = 32
+            return GPUTarget("cuda", capability, warp_size)
         return GPUTarget("dicp", "x86", 32)
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):
@@ -255,6 +276,8 @@ class DICPDriver(DriverBase):
         elif self.target == "mlu":
             import torch
             return torch.mlu
+        else:
+            assert False, f"Not implemented for {self.target}"
         
     def get_empty_cache_for_benchmark(self):
         if self.target == "ascend":
@@ -269,3 +292,5 @@ class DICPDriver(DriverBase):
             # doesn't contain any input data before the run
             cache_size = 256 * 1024 * 1024
             return torch.empty(int(cache_size // 4), dtype=torch.int, device='mlu')
+        else:
+            assert False, f"Not implemented for {self.target}"

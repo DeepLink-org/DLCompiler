@@ -56,3 +56,5 @@ def init_dicp_driver():
         from triton.backends.dicp_triton.driver import DICPDriver
         from triton.runtime.driver import driver
         driver.set_active(DICPDriver(backend))
+    else:
+        raise RuntimeError("No supported backend found.")

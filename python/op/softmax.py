@@ -4,15 +4,10 @@ import triton
 import triton.language as tl
 import triton.compiler as tc
 
-# from triton.backends.triton.driver import DICPDriver
-# from triton.common.backend import register_backend
 import triton.backends.dicp_triton.driver as dicp
 import triton.compiler as tc
 from pathlib import Path
-# import backend.driver as bd
 
-
-triton.runtime.driver.set_active(dicp.DICPDriver('ascend'))
 # triton.runtime.driver.set_active(cu.CudaDriver())
 # register_backend("dicp", cl.DICPBackend("mlu"))
 

@@ -3,25 +3,16 @@ import tempfile
 import os
 import subprocess
 import sysconfig
-from typing import Optional
 import functools
 import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
-from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
 from triton.backends.compiler import BaseBackend, GPUTarget, AttrsDescriptor, register_descriptor
 from triton._C.libtriton import ir, passes
-from triton.runtime import driver
 from triton.runtime.cache import get_dump_manager
 from dataclasses import dataclass
 from typing import Any, Union, Tuple, Dict
-from types import ModuleType
-from pathlib import Path
-import tempfile
-import os
-import subprocess
 import ctypes
-from typing import Optional
 import re
 import pybind11
 import shutil
@@ -248,6 +239,26 @@ def convert_sigtype_to_int(sigty: str):
     return MAP_SIGTYPE_TO_INT[sigty]
 
 
+def _check_bishengir_is_regbased() -> bool:
+    bishengir_path = _get_npucompiler_path()
+    try:
+        result = subprocess.run(
+            f"{bishengir_path} --help | grep 'reg-based'",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            # bishengir-compile is regbased version
+            return True
+        else:
+            # bishengir-compile is membased version
+            return False
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return False
+
 ###################### utils.py end ######################
 
 
@@ -258,7 +269,9 @@ def min_dot_size(target: GPUTarget):
     # return lambda lhsType, rhsType: (16, 16, 16)
     return lambda lhsType, rhsType: (1, 1, 1)
 
+
 def make_ttir(mod, metadata, opt):
+    print(f"zmz debug mod: {mod}, metadata: {metadata}, opt: {opt}")
     if 'hash' not in metadata:
         metadata['hash'] = hashlib.md5(f"{mod}-{metadata}".encode()).hexdigest()
     # the same optimize pass for triton-ir as all other backends
@@ -315,9 +328,12 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             f'--triton-to-linalg',
             # '--linalg-fuse-elementwise-ops',
             "-o", dst_ttshared_path]
-
+        shutil.copy(src_path, "gemm.kernel.ttir.mlir")
+        print(f"zmz debug cmd_shared_list: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
+        shutil.copy(dst_ttshared_path, "gemm.kernel.ttshared.mlir")
         return Path(dst_ttshared_path).read_text()
+
 
 def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     ttsharedir_code = str(mod)
@@ -326,18 +342,39 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dst_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(src_path).write_text(ttsharedir_code)
         dicp_opt_path = _get_dicp_opt_path()
+        enable_nd2nz_on_vector = metadata["enable_nd2nz_on_vector"]
         dicp_cmd_list = [dicp_opt_path, src_path,
             # f'--linalg-to-npu',
             f'--linalg-to-linked=global-kernel=false named-ops=true',
+            # f'enable-nd2nz-on-vector={enable_nd2nz_on_vector}',
             "-o", dst_path]
-        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
+        print(f"zmz debug dicp_cmd_list: {dicp_cmd_list}")
+        # ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
+        ret = subprocess.run(dicp_cmd_list, check=True,
+            stdout=subprocess.PIPE,  # 捕获标准输出
+            stderr=subprocess.STDOUT,  # 将标准错误合并到标准输出
+            # check=True,
+                    text=True,  # 以文本形式处理输出
+            )
+            # stdout=subprocess.PIPE,
+            # stderr=subprocess.STDOUT,
+            # universal_newlines=True)
+        print("dicp_opt_pathCommand output:\n", ret.stdout)
         # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
         with open(dst_path, 'r') as f:
             content = f.read()
             # 将"*xfxxx"替换成"?xfxxx"
             content = content.replace("*xf", "?xf")
+            content = content.replace("*xi", "?xi")
+            content = content.replace("*xbf", "?xbf")
             with open(dst_path, 'w') as f:
                 f.write(content)
+        # 找到content中是否有matmul_kernel字符
+        # if "matmul_kernel" in content:
+        #     dst_path = "/mnt/data01/zmz/workspace/04ttshared/Triton/test/ascend/gemm_v2/ascend.kernel.ttadapter.test.mlir"
+        # elif "_silu_and_mul_kernel" in content:
+        #     dst_path = "/mnt/data01/zmz/workspace/04ttshared/Triton/test/ascend/silu_mul/ascend.kernel.ttadapter.test.mlir"
+        print(f"zmz debug dst_path {dst_path}")
         return Path(dst_path).read_text()
 
 
@@ -429,20 +466,54 @@ def llir_to_cpuasm(llir: str, metadata, opt):
         # Actually it's text-format assembly.  Use read_text().
         return Path(dst_path).read_text()
 
+def __get_metadata_attr_by_callback(lib, postfix: str, metadata, meta_key: str):
+    func_symbol = metadata["kernel_name"] + postfix
+    if hasattr(lib, func_symbol):
+        callback_func = getattr(lib, func_symbol)
+        callback_func.restype = ctypes.c_int64
+        callback_func.argtypes = []
+        metadata[meta_key] = callback_func()
 
-def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
-    import re
+def _parse_linalg_metadata(linalg: str, metadata: dict):
+    """
+    Parse Linalg IR to extract metadata required for NPU compilation.
+    Extracts and updates the following fields in metadata:
+      - mix_mode
+      - kernel_name
+      - tensor_kinds
+      - shared (currently hardcoded)
+      - name (combined kernel_name and mix_mode)
+    Additionally, removes the mix_mode attribute from the IR.
+    """
+    # --- Regular expressions and examples ---
+    # Example: mix_mode = "aiv" -> aiv
+    MIX_MODE_REGEX = r'mix_mode\s*=\s*"([^"]+)"'
+    # Example: func.func @gather_sorted_kernel(%arg0: ...) -> gather_sorted_kernel
+    KERNEL_NAME_REGEX = r"func\.func\s+@(\w+)"
+    # Example: %arg1: memref<?xf32> {tt.divisibility = 16 : i32, tt.tensor_kind = 0 : i32} -> ('1', '0')
+    TENSOR_KIND_REGEX = r'%arg(\d+):[^,)]*?\{[^}]*?tt\.tensor_kind\s*=\s*([^:\s}]+)\s*:[^}]*?\}'
+    # Example removal:   ', mix_mode = "aiv"' → ''
+    REMOVE_MIX_MODE_REGEX = r', mix_mode\s*=\s*"[^"]*"'
     # Note: Compiled Kernel requires to estimate size of shared memory to occupy
     # Currently, NPU backend does not limit on shared memory
-    metadata['shared'] = 1
+    metadata["shared"] = 1
     # the mix mode is also encoded into metadata['name'] for runtime to distinguish
-    metadata['mix_mode'] = re.search(r'mix_mode\s*=\s*"([^"]+)"', linalg).group(1)
-    metadata['kernel_name'] = re.search(r'func\.func\s+@(\w+)', linalg).group(1)
+    metadata["mix_mode"] = re.search(MIX_MODE_REGEX, linalg).group(1)
+    metadata["kernel_name"] = re.search(KERNEL_NAME_REGEX, linalg).group(1)
     # Use while space to split kernel_name and mix_mode.
     # Check the function load_binary in npu_driver.py.
-    metadata['name'] = metadata['kernel_name'] + " " + metadata['mix_mode']
+    metadata["name"] = metadata["kernel_name"] + " " + metadata["mix_mode"]
+    # Parse all tensor kinds from arguments
+    metadata["tensor_kinds"] = [int(kind) for _, kind in re.findall(TENSOR_KIND_REGEX, linalg)]
     # remove the mix_mode attribute
-    linalg = re.sub(r', mix_mode\s*=\s*"[^"]*"', '', linalg)
+    linalg = re.sub(REMOVE_MIX_MODE_REGEX, "", linalg)
+    return linalg, metadata
+
+
+def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
+    print(f"zmz debug linalg {linalg}")
+    linalg, metadata = _parse_linalg_metadata(linalg, metadata)
+    print(f"zmz debug metadata={metadata}")
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
         lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "0")
@@ -450,10 +521,15 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             ttadapter_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(ttadapter_path).write_text(linalg)
         bin_file = os.path.join(tmpdir, "kernel")
+        if _check_bishengir_is_regbased():
+            bishengir_hivm_opt = "--reg-based=true"
+        else:
+            bishengir_hivm_opt = "--enable-hivm-compile=true"
         bin_path = os.path.join(tmpdir, "kernel_reloc.o")
         callback_path = os.path.join(tmpdir, "libkernel.so")
         multibuffer = metadata['multibuffer']
-        _compile_option_list = [
+        _compile_option_list = []
+        _compile_option_list += [
             f"--enable-auto-multi-buffer={multibuffer}",
         ]
 
@@ -468,21 +544,28 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             bin_path = os.path.join(tmpdir, "kernel.o")
         else:
             bin_path = os.path.join(tmpdir, "kernel.o")
-        if (npu_compiler_path.endswith("bishengir-compile")):
+
+        if npu_compiler_path.endswith("bishengir-compile"):
             _compile_option_list += [
                 "--enable-hfusion-compile=true",
-                "--enable-hivm-compile=true",
+                bishengir_hivm_opt,
                 "--enable-triton-kernel-compile=true",
             ]
-        cmd_list = [npu_compiler_path, ttadapter_path] + _compile_option_list + ["-o", bin_file]
+        cmd_list = (
+            [npu_compiler_path, ttadapter_path]
+            + _compile_option_list
+            + ["-o", bin_file]
+        )
+        print(f"zmz debug linalg_to_bin_enable_npu_compile cmd_list: {cmd_list}", flush=True)
+        shutil.copy(ttadapter_path, "gemm.kernel.linkedir.mlir")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
-            callback_func = getattr(lib, metadata['kernel_name'] +
-                                         "_infer_workspace_shape_function")
-            callback_func.restype = ctypes.c_int64
-            callback_func.argtypes = []
-            metadata['workspace_size'] = callback_func()
+            __get_metadata_attr_by_callback(lib, "_infer_workspace_shape_function", metadata, "workspace_size")
+            __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_num_function", metadata, "lock_num")
+            __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_init_function", metadata, "lock_init_val")
+        print(f"zmz debug linalg_to_bin_enable_npu_compile bin_path: {bin_path}", flush=True)
+        shutil.copy(bin_path, "Triton.gemm.kernel.o")
         return Path(bin_path).read_bytes()
 
 @dataclass(frozen=True)
@@ -503,6 +586,7 @@ class NPUOptions():
     reg_inc_consumer: int = 0
 
     enable_warp_specialization: bool = False
+    enable_nd2nz_on_vector: bool = False
     enable_persistent: bool = False
     optimize_epilogue: bool = False
     enable_fp_fusion: bool = True
@@ -548,28 +632,29 @@ class CPUOptions:
 class AscendAttrsDescriptor(AttrsDescriptor):
 
     def _add_backend_properties(self, params=None, values=None):
-        if params is None or values is None:
-            return
+        pass
+        # if params is None or values is None:
+        #     return
 
-        for i in range(len(values)):
-            if (params[i].is_constexpr):
-                continue
-            val = values[i]
+        # for i in range(len(values)):
+        #     if (params[i].is_constexpr):
+        #         continue
+        #     val = values[i]
 
-            if hasattr(val, 'shape'):
-                self.arg_properties[f"tt.shape_{i}"] = list(val.shape)
-                self.property_values[f"tt.shape_{i}"] = 0
-            else:
-                # Scalar
-                pass
+        #     if hasattr(val, 'shape'):
+        #         self.arg_properties[f"tt.shape_{i}"] = list(val.shape)
+        #         self.property_values[f"tt.shape_{i}"] = 0
+        #     else:
+        #         # Scalar
+        #         pass
 
-    def get_shapes(self):
-        shapes = {}
-        for name, val in self.arg_properties.items():
-            if name.startswith("tt.shape"):
-                idx = int(name.split('_')[-1])
-                shapes[idx] = val
-        return shapes
+    # def get_shapes(self):
+    #     shapes = {}
+    #     for name, val in self.arg_properties.items():
+    #         if name.startswith("tt.shape"):
+    #             idx = int(name.split('_')[-1])
+    #             shapes[idx] = val
+    #     return shapes
 
 class NPUUtils(object):
     def __new__(cls):
@@ -625,13 +710,18 @@ class NPULauncher(object):
         debug_mode = metadata.debug
         workspace_size = int(metadata.workspace_size) \
                               if hasattr(metadata, 'workspace_size') else -1
+        lock_init_value = int(metadata.lock_init_value) \
+                              if hasattr(metadata, 'lock_init_value') else 0
+        lock_num = int(metadata.lock_num) \
+                              if hasattr(metadata, 'lock_num') else -1
         constants = src.constants if hasattr(src, "constants") else dict()
         cst_key = lambda i: src.fn.arg_names.index(i) if isinstance(i, str) else i
         constants = {cst_key(key): value for key, value in constants.items()}
         signature = {cst_key(key): value for key, value in src.signature.items()}
-        shapes = src.attrs.get_shapes()
-        wrapper_src = generate_npu_wrapper_src(constants, signature, shapes, \
-                                               workspace_size)
+        mix_mode = metadata.mix_mode
+        wrapper_src = generate_npu_wrapper_src(constants, signature, \
+                                               workspace_size, mix_mode, \
+                                               lock_num, lock_init_value)
         so_launcher_path = make_npu_launcher_stub(wrapper_src, debug_mode)
         # initialize launcher
         import importlib.util
@@ -641,9 +731,7 @@ class NPULauncher(object):
         self.launch = getattr(mod, "launch")
 
     def __call__(self, *args, **kwargs):
-        profiler_registered = self.launch(*args, **kwargs)
-        import triton
-        TRITON_PROFILER_REGISTERED = True if profiler_registered == 1 else False
+        self.launch(*args, **kwargs)
 
 def make_npu_launcher_stub(src, debug=False):
     """
@@ -687,8 +775,76 @@ def make_npu_launcher_stub(src, debug=False):
             return so_cache_manager.put(f.read(), so_name, binary=True)
 
 
+def extract_device_print_code_from_cann():
+    from triton.backends.ascend.utils import _get_bisheng_path
+    ccec_compiler_bin_folder, _ = os.path.split(os.path.realpath(_get_bisheng_path()))
+    ccec_compiler_folder, _ = os.path.split(ccec_compiler_bin_folder)
+    clang_version = os.listdir(os.path.join(ccec_compiler_folder, "lib/clang/"))[0]
+    ccelib_path = os.path.join(ccec_compiler_folder, f"lib/clang/{clang_version}/include/ccelib")
+
+    def read_header(header_path):
+        with open(os.path.join(ccelib_path, header_path), 'r') as f:
+            code = f.read()
+
+        # remove all #include "..."
+        lines = code.splitlines()
+        purged_lines = []
+        for line in lines:
+            normalized_line = ' '.join(line.split())
+            if not normalized_line.startswith('#include "'):
+                purged_lines.append(line)
+        code = '\n'.join(purged_lines)
+
+        # remove [aicore] functions
+        aicore_positions = []
+        for m in re.finditer('\[aicore\]', code):
+            aicore_positions.append(m.start())
+
+        def find_aicore_function_span(src, pos):
+            for i in range(pos - 1, -1, -1):
+                if src[i] == '}':  # this relies on that all [aicore] functions come after normal functions
+                    left = i + 1
+                    break
+            n = len(src)
+            brace_nest = 0
+            for j in range(pos, n, 1):
+                if src[j] == '{':
+                    brace_nest += 1
+                elif src[j] == '}':
+                    brace_nest -= 1
+                    if brace_nest == 0:
+                        right = j
+                        break
+            return left, right
+
+        new_code = ''
+        segment_start = 0
+        for pos in aicore_positions:
+            left, right = find_aicore_function_span(code, pos)
+            new_code += code[segment_start:left]
+            segment_start = right + 1
+        new_code += code[segment_start:]
+
+        # remove __gm__ and rename macros
+        new_code = new_code.replace('__gm__', ' ')
+        new_code = new_code.replace('__CCELIB_RT_ERROR_NONE', 'RT_ERROR_NONE')
+        new_code = new_code.replace('__CCELIB_RT_MEMORY_HBM', 'RT_MEMORY_HBM')
+        new_code = new_code.replace('__CCELIB_RT_MEMCPY_HOST_TO_DEVICE', 'RT_MEMCPY_HOST_TO_DEVICE')
+        new_code = new_code.replace('__CCELIB_RT_MEMCPY_DEVICE_TO_HOST', 'RT_MEMCPY_DEVICE_TO_HOST')
+        return new_code
+
+    # the following headers should be included in this order 
+    return '\n'.join([
+        read_header('common/common_impl.h'),
+        read_header('internal/debug_tunnel/payload.h'),
+        read_header('internal/debug_tunnel/payload_impl.h'),
+        read_header('internal/debug_tunnel/tunnel.h'),
+        read_header('internal/debug_tunnel/tunnel_impl.h')
+    ])
+
+
 # the template is from triton-adapter HEAD. Wrapping the generated kernel binary into a python module
-def generate_npu_wrapper_src(constants, signature, shapes, workspace_size):
+def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, lock_num, lock_ini_val):
     import os
     def _ty_to_cpp(ty):
         if ty[0] == '*':
@@ -752,15 +908,8 @@ def generate_npu_wrapper_src(constants, signature, shapes, workspace_size):
 
     enable_device_print = os.getenv("TRITON_DEVICE_PRINT", 'false').lower() in ('true', '1')
     enable_taskqueue = os.getenv("TRITON_ENABLE_TASKQUEUE", 'true').lower() in ('true', '1')
-
+    task_type = "MSPROF_GE_TASK_TYPE_AIV" if mix_mode == "aiv" else "MSPROF_GE_TASK_TYPE_AI_CORE"
     LINE_CHANGE_CHAR = chr(10) # it is \n
-    # tensorData <=5, cause MSPROF_GE_TENSOR_DATA_LEN = 5
-    max_tensors_num = min(len(shapes), 5)
-    # Take only the first 8 tensors of signature.items(). MSPROF_GE_TENSOR_DATA_SHAPE_LEN = 8
-    limited_tensors = [
-                          (i, ty) for i, ty in signature.items()
-                          if i not in constants and i in shapes and ty.startswith("*")
-                      ][:8]
 
     cpp_device_pointer = """
 typedef struct _DevicePtrInfo {
@@ -831,10 +980,7 @@ extern "C" {
 """
 
     cpp_msprof_callback = """
-  if (!(*profilerRegistered)) {
-     MsprofRegisterCallback(8, ProfCtrlHandle);      // 8 - CCE defined in msprof headerfile slog.h
-     *profilerRegistered = 1;
-  }
+  MsprofRegisterCallback(8, ProfCtrlHandle);      // 8 - CCE defined in msprof headerfile slog.h
 """
 
     cpp_msprof_call_before_launch = """
@@ -844,16 +990,14 @@ extern "C" {
     unsigned int threadId = 0;
     char* _kernelName = const_cast<char*>(name.c_str());
     size_t length = name.length();
-    // FIXME: to avoid bug in msprof, currently we disable these checks
-    // if (__MsprofFlagL0 || __MsprofFlagL1)
+    if (__MsprofFlagL0 || __MsprofFlagL1)
     {
       beginTime = MsprofSysCycleTime();
     }
 """
 
     cpp_msprof_call_after_launch = f"""
-    // FIXME: to avoid bug in msprof, currently we disable these checks
-    // if (__MsprofFlagL0 || __MsprofFlagL1)
+    if (__MsprofFlagL0 || __MsprofFlagL1)
     {{
       endTime = MsprofSysCycleTime();
       opNameHashID = MsprofGetHashId(_kernelName, length);
@@ -869,8 +1013,7 @@ extern "C" {
       info.itemId = opNameHashID;
       MsprofReportApi(false, &info);
     }}
-    // FIXME: to avoid bug in msprof, currently we disable these checks
-    // if (__MsprofFlagL1)
+    if (__MsprofFlagL1)
     {{
       MsprofCompactInfo nodeBasicInfo;
       nodeBasicInfo.level = MSPROF_REPORT_NODE_LEVEL;
@@ -880,11 +1023,12 @@ extern "C" {
       nodeBasicInfo.timeStamp = endTime;
       nodeBasicInfo.data.nodeBasicInfo.opName = opNameHashID;
       nodeBasicInfo.data.nodeBasicInfo.opType = opNameHashID;
-      nodeBasicInfo.data.nodeBasicInfo.taskType = MSPROF_GE_TASK_TYPE_AI_CORE;
+      nodeBasicInfo.data.nodeBasicInfo.taskType = {task_type};
       nodeBasicInfo.data.nodeBasicInfo.blockDim = blockNum;
       MsprofReportCompactInfo(0, static_cast<void *>(&nodeBasicInfo), sizeof(MsprofCompactInfo));
-    }}
-    {{
+
+      // Report tensor info
+      int max_tensors_num = tensorShapes.size() < MSPROF_GE_TENSOR_DATA_NUM ? tensorShapes.size() : MSPROF_GE_TENSOR_DATA_NUM;
       MsprofAdditionalInfo tensorInfo;
       tensorInfo.level = MSPROF_REPORT_NODE_LEVEL;
       tensorInfo.type = MSPROF_REPORT_NODE_TENSOR_INFO_TYPE;
@@ -892,31 +1036,40 @@ extern "C" {
       tensorInfo.timeStamp = endTime;
       auto profTensorData = reinterpret_cast<MsprofTensorInfo *>(tensorInfo.data);
       profTensorData->opName = opNameHashID;
-      profTensorData->tensorNum = {max_tensors_num};
-      for (int i = 0; i < {max_tensors_num}; i++) {{
-        profTensorData->tensorData[i].tensorType = MSPROF_GE_TENSOR_TYPE_INPUT; // FIXME
-        profTensorData->tensorData[i].format = 2; // GeDataFormat: ND = 2
+      int tensorCount = 0;
+      int dataTypes[MSPROF_GE_TENSOR_DATA_NUM];
+      if (tensorShapes.size() > 0) {{
+        {LINE_CHANGE_CHAR.join(
+          f'dataTypes[{i}] = {convert_sigtype_to_int(ty[1:])};'
+          for i, ty in signature.items()
+          if ty.startswith("*") and i < 5
+        )}
       }}
-      // What if the index is non-contiguous?
-      // Scalars don't have a '*' and are returned without cropping
-      {LINE_CHANGE_CHAR.join(
-        f'profTensorData->tensorData[{i}].dataType = {convert_sigtype_to_int(ty[1:])};'
-        for i, ty in signature.items()
-        if i not in constants and i in shapes and ty.startswith("*")
-      )}
-      // The scalar is not in the shapes array, and the shape assignment operation is not performed
-      {LINE_CHANGE_CHAR.join(
-        f'profTensorData->tensorData[{i}].shape[{j}] = {shapes[i][j]};'
-        for i, ty in limited_tensors
-        for j in range(min(len(shapes[i]), 8))
-      )}
-
-      // Set to 0 except for the true dimension of the tensor. The total is MSPROF_GE_TENSOR_DATA_SHAPE_LEN = 8
-      {LINE_CHANGE_CHAR.join(
-        f'profTensorData->tensorData[{i}].shape[{j}] = 0;'
-        for i, ty in limited_tensors
-        for j in range(min(len(shapes[i]), 8), 8)
-      )}
+      for (int i = 0; i < tensorShapes.size() && tensorCount < MSPROF_GE_TENSOR_DATA_NUM; i++) {{
+        auto fillTensorData = [&](int index, int tensorType) {{
+          profTensorData->tensorData[index].tensorType = tensorType;
+          profTensorData->tensorData[index].format = 2; // GeDataFormat: ND = 2
+          profTensorData->tensorData[index].dataType = dataTypes[i];
+          int nDim = tensorShapes[i].size();
+          nDim = nDim < MSPROF_GE_TENSOR_DATA_SHAPE_LEN ? nDim : MSPROF_GE_TENSOR_DATA_SHAPE_LEN;
+          for (int j = 0; j < nDim; j++) {{
+            profTensorData->tensorData[index].shape[j] = tensorShapes[i][j];
+          }}
+          for (int j = nDim; j < MSPROF_GE_TENSOR_DATA_SHAPE_LEN; j++) {{
+            profTensorData->tensorData[index].shape[j] = 0;
+          }}
+        }};
+        int tensorType = (i < tensorKinds.size()) ? tensorKinds[i] : 0;  // DeFault tensor type is input
+        if (tensorType == TENSOR_KIND_INPUT || tensorType == TENSOR_KIND_INPUT_OUTPUT) {{
+          fillTensorData(tensorCount, MSPROF_GE_TENSOR_TYPE_INPUT);
+          tensorCount++;
+        }}
+        if ((tensorType == TENSOR_KIND_OUTPUT || tensorType == TENSOR_KIND_INPUT_OUTPUT) && tensorCount < MSPROF_GE_TENSOR_DATA_NUM){{
+          fillTensorData(tensorCount, MSPROF_GE_TENSOR_TYPE_OUTPUT);
+          tensorCount++;
+        }}
+      }}
+      profTensorData->tensorNum = tensorCount;
       MsprofReportAdditionalInfo(false, static_cast<void *>(&tensorInfo), sizeof(MsprofAdditionalInfo));
     }}
 """
@@ -926,30 +1079,30 @@ extern "C" {
 #include <stdbool.h>
 #include <string>
 #include <sys/syscall.h>
-{'#include <pybind11/pybind11.h>' if enable_device_print else ''}
-{'#include <pybind11/iostream.h>' if enable_device_print else ''}
-
+#include <vector>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 {'#include <torch_npu/csrc/framework/OpCommand.h>' if enable_taskqueue else ''}
 #include "experiment/runtime/runtime/rt.h"
-{'#include "device_print.h"' if enable_device_print else ''}
+{extract_device_print_code_from_cann() if enable_device_print else ''}
+
+#define TENSOR_KIND_INPUT 0
+#define TENSOR_KIND_OUTPUT 1
+#define TENSOR_KIND_INPUT_OUTPUT 2
 
 {cpp_msprof_extern}
 
 {cpp_device_pointer}
 
-static void _launch(const char* kernelName, const void* func, rtStream_t stream, int gridX, int gridY, int gridZ, int *profilerRegistered, {arg_decls}) {{
-  {'pybind11::scoped_ostream_redirect output;' if enable_device_print else ''}
+static void _launch(const char* kernelName, const void* func, rtStream_t stream, int gridX, int gridY, int gridZ, std::vector<std::vector<int64_t>> &tensorShapes, std::vector<int> &tensorKinds, {arg_decls}) {{
   // only 1D parallelization is supported for NPU
   // Pointer type becomes flattend 1-D Memref tuple: base_ptr, data_ptr, offset, shape, stride
   // base_ptr offset shape and stride are not used, arbitrarily set for now
   std::string name = "";
   name.append(kernelName);
-  {cpp_msprof_callback}
   {'auto launch_call = [=]()' if enable_taskqueue else ''} {{
     uint32_t blockNum = gridX * gridY * gridZ;
-    {'TTAscDebug::DebugTunnelData *DTData = TTAscDebug::Open(blockNum);' if enable_device_print else ''}
+    {'cce::internal::DebugTunnelData *DTData = cce::internal::DebugTunnel::Open(blockNum);' if enable_device_print else ''}
     rtError_t ret;
     void *ffts_addr = NULL;
     uint32_t ffts_len; ret = rtGetC2cCtrlAddr((uint64_t*)&ffts_addr, &ffts_len);
@@ -957,9 +1110,24 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
       return {'ret' if enable_taskqueue else ''};
     }}
     // stub argument for workspace
+    void *syncBlockLock = NULL;
     void *workspace_addr = NULL;
-    {f'''
     uint16_t ModuleId = 0;
+    {f'''
+    uint64_t syncBlockLockSize = {lock_num} * sizeof(int64_t);
+    ret = rtMalloc(reinterpret_cast<void **>(&syncBlockLock),
+                   syncBlockLockSize, RT_MEMORY_HBM, 0);
+    if (ret != RT_ERROR_NONE) {{
+      return {'ret' if enable_taskqueue else ''};
+    }}
+    std::vector<int64_t> lockInitData({lock_num}, {lock_ini_val});
+    ret = rtMemcpy(syncBlockLock, syncBlockLockSize, reinterpret_cast<void *>(lockInitData.data()),
+                   syncBlockLockSize, RT_MEMCPY_HOST_TO_DEVICE);
+    if (ret != RT_ERROR_NONE) {{
+      return {'ret' if enable_taskqueue else ''};
+    }}
+    ''' if lock_num > 0 else ''}
+    {f'''
     uint64_t totalWorkSpaceSize = {workspace_size} * blockNum;
     ret = rtMalloc(reinterpret_cast<void **>(&workspace_addr),
                    totalWorkSpaceSize, RT_MEMORY_HBM, ModuleId);
@@ -969,12 +1137,14 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
     ''' if workspace_size > 0 else ''}
     struct __attribute__((packed)) {{
       void* ffts_addr __attribute__((aligned(8)));
+      void* syncBlockLock __attribute__((aligned(8)));
       void* workspace_addr __attribute__((aligned(8)));
       {' '.join(f'{_ty_to_cpp(ty)} arg{i} __attribute__((aligned({4 if ty[0] != "*" and ty[-2:] != "64" else 8})));' for i, ty in signature.items() if i not in constants)}
       {' '.join(f'{_ty_to_cpp(ty)} grid{mark} __attribute__((aligned(4)));' for mark, ty in grid_info.items())}
       {'void* DTData __attribute__((aligned(8)));' if enable_device_print else ''}
     }} args = {{
       static_cast<void*>(ffts_addr),
+      static_cast<void*>(syncBlockLock),
       static_cast<void*>(workspace_addr),
       {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if i not in constants)},
       {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(grid{mark})' for mark, ty in grid_info.items())}
@@ -982,12 +1152,44 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
     }};
     {cpp_msprof_call_before_launch}
     ret = rtKernelLaunch(func, blockNum, static_cast<void*>(&args), sizeof(args), NULL, stream);
-    {'TTAscDebug::Close(DTData, stream);' if enable_device_print else ''}
+    {'void *&stream_ref = const_cast<void*&>(stream);' if enable_device_print else ''}
+    {'cce::internal::DebugTunnel::Close(DTData, stream_ref);' if enable_device_print else ''}
     {cpp_msprof_call_after_launch}
     {'return ret;' if enable_taskqueue else ''}
    }};
    {'at_npu::native::OpCommand cmd; cmd.Name(name.c_str()).SetCustomHandler(launch_call).Run();' if enable_taskqueue else ''}
   return;
+}}
+
+// Extract tensor shape from PyObject
+static std::vector<int64_t> _get_tensor_shape(PyObject *tensor) {{
+  std::vector<int64_t> shape;
+
+  // Early return if tensor is None or null
+  if (!tensor || tensor == Py_None) {{
+    return shape;
+  }}
+
+  // Calling tensor.size()
+  PyObject* size_result = PyObject_CallMethod(tensor, "size", NULL);
+  if (!size_result) {{
+    return shape;
+  }}
+  // Using PySequence_Fast to improve access efficiency
+  PyObject* seq = PySequence_Fast(size_result, "Expected a sequence from tensor.size()");
+  if (seq) {{
+    Py_ssize_t len = PySequence_Fast_GET_SIZE(seq);
+    PyObject** items = PySequence_Fast_ITEMS(seq);
+    for (Py_ssize_t i = 0; i < len; ++i) {{
+      PyObject* dim = items[i];
+      if (PyLong_Check(dim)) {{
+        shape.push_back(PyLong_AsLong(dim));
+      }}
+    }}
+  }}
+  Py_DECREF(seq);
+  Py_DECREF(size_result);
+  return shape;
 }}
 
 static PyObject* launch(PyObject* self, PyObject* args) {{
@@ -998,6 +1200,7 @@ static PyObject* launch(PyObject* self, PyObject* args) {{
   PyObject *launch_metadata = NULL;
   PyObject *launch_enter_hook = NULL;
   PyObject *launch_exit_hook = NULL;
+  std::vector<std::vector<int64_t>> tensorShapes;
   {' '.join([f"{_extracted_ty(ty)} _arg{i}; " for i, ty in signature.items()])}
   if(!PyArg_ParseTuple(
       args, \"{format}\",
@@ -1009,6 +1212,15 @@ static PyObject* launch(PyObject* self, PyObject* args) {{
     ) {{
     return NULL;
   }}
+  if (__MsprofFlagL1)
+  {{
+    {
+      LINE_CHANGE_CHAR.join(
+        f"{{ auto tmp = _get_tensor_shape(_arg{i}); if (!tmp.empty()) tensorShapes.push_back(tmp); }}"
+        for i, ty in signature.items() if ty[0] == "*"
+      )
+    }
+  }}
 
   if (launch_enter_hook != Py_None && !PyObject_CallObject(launch_enter_hook, args)) {{
     return NULL;
@@ -1017,19 +1229,27 @@ static PyObject* launch(PyObject* self, PyObject* args) {{
   // get kernel_name
   PyObject *kernelNameObj = PyDict_GetItemString(packedMetadata, "kernel_name");
   const char *kernelName = PyUnicode_AsUTF8(kernelNameObj);
-  PyObject *profilerRegisteredObj = PyDict_GetItemString(packedMetadata, "profiler_registered");
-  int profilerRegistered = PyObject_IsTrue(profilerRegisteredObj);
+  // get tensor_kinds
+  std::vector<int> tensorKinds;
+  PyObject *tensorKindList = PyDict_GetItemString(packedMetadata, "tensor_kinds");
+  if (tensorKindList) {{
+    int size = PyObject_Size(tensorKindList);
+    for (int i = 0; i < size; i++) {{
+      PyObject *kind = PySequence_GetItem(tensorKindList, i);
+      tensorKinds.push_back(PyLong_AsLong(kind));
+    }}
+  }}
+
   // raise exception asap
   {"; ".join([f"DevicePtrInfo ptr_info{i} = getPointer(_arg{i}, {i}); if (!ptr_info{i}.valid) return NULL;" if ty[0]=="*" else "" for i, ty in signature.items()])};
-  _launch(kernelName, function, stream, gridX, gridY, gridZ, &profilerRegistered, {', '.join(f"ptr_info{i}.dev_ptr" if ty[0]=="*" else f"_arg{i}" for i, ty in signature.items())});
+  _launch(kernelName, function, stream, gridX, gridY, gridZ, tensorShapes, tensorKinds, {', '.join(f"ptr_info{i}.dev_ptr" if ty[0]=="*" else f"_arg{i}" for i, ty in signature.items())});
   if (PyErr_Occurred()) {{
     return NULL;
   }}
   if (launch_exit_hook != Py_None && !PyObject_CallObject(launch_exit_hook, args)) {{
     return NULL;
   }}
-
-  return Py_BuildValue("I", profilerRegistered);
+  Py_RETURN_NONE;
 }}
 
 static PyMethodDef ModuleMethods[] = {{
@@ -1051,6 +1271,7 @@ PyMODINIT_FUNC PyInit___triton_launcher(void) {{
     return NULL;
   }}
   PyModule_AddFunctions(m, ModuleMethods);
+  {cpp_msprof_callback}
   return m;
 }}
 """

@@ -5,6 +5,8 @@ from .core import (
     parallel, 
     inline_lambda,
     alloc,
+    compile_hint,
+    multibuffer,
     ND,
     NZ,
     fragment,
@@ -21,6 +23,8 @@ __all__ = [
     "parallel", 
     "inline_lambda"
     "alloc",
+    "compile_hint",
+    "multibuffer",
     "ND",
     "NZ",
     "fragment",

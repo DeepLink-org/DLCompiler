@@ -195,6 +195,17 @@ def compile_hint(ptr, hint_name, hint_val=None, _builder=None):
     hint_val = _unwrap_if_constexpr(hint_val) if hint_val else hint_val
     dl_semantic.compile_hint(ptr, hint_name, hint_val, _builder)
 
+@builtin
+def multibuffer(src: tensor, size, _builder=None):
+    """
+    Set multi_buffer for an existing tensor
+    :src: tensor set to bufferize multiple time
+    :size: number of copies
+    """
+    buffer_size = _constexpr_to_value(size)
+    assert isinstance(buffer_size, int) and buffer_size == 2, f"only support bufferize equals 2"
+    dl_semantic.compile_hint(src, "multi_buffer", buffer_size, _builder)
+
 
 @builtin
 def alloc(shape, value, dtype, layout=None, scope=None, _builder=None):

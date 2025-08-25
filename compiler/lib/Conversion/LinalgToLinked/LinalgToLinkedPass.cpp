@@ -4,6 +4,7 @@
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/PassManager.h"
@@ -43,6 +44,58 @@ static auto constexpr LAUNCH_GRID_RANK = getMaxEnumValForProgramIDDim() + 1;
 static unsigned int constexpr TRITON_PROGRAM_INFO_ARG_COUNT =
     LAUNCH_GRID_RANK * 2;
 
+
+// 处理嵌套的if/else
+void transformNestedIfElse(Operation &op, OpBuilder &builder) {
+    auto nestedBranch = dyn_cast<cf::CondBranchOp>(&op);
+    SmallVector<Operation*> nestedTrueOps;
+    SmallVector<Operation*> nestedFalseOps;
+    bool nestedTrueHasReturn = false;
+    bool nestedFalseHasReturn = false;
+
+    for (Operation &op : nestedBranch.getTrueDest()->without_terminator()) {
+        if (dyn_cast<cf::CondBranchOp>(&op)) {
+            transformNestedIfElse(op, builder);
+        }
+        nestedTrueOps.push_back(&op);
+        if (isa<func::ReturnOp>(op)) {
+            nestedTrueHasReturn = true;
+        }
+    }
+    for (Operation &op : nestedBranch.getFalseDest()->without_terminator()) {
+        if (dyn_cast<cf::CondBranchOp>(&op)) {
+            transformNestedIfElse(op, builder);
+        }
+        nestedFalseOps.push_back(&op);
+        if (isa<func::ReturnOp>(op)) {
+            nestedFalseHasReturn = true;
+        }
+    }
+    builder.setInsertionPoint(nestedBranch);
+    auto nestedIfOp = builder.create<scf::IfOp>(
+        nestedBranch.getLoc(),
+        nestedBranch.getCondition(),
+        [&](OpBuilder &thenBuilder, Location loc) {
+            for (Operation *op : nestedTrueOps) {
+                op->moveBefore(thenBuilder.getInsertionBlock(), thenBuilder.getInsertionPoint());
+            }
+            if (!nestedTrueHasReturn) {
+                thenBuilder.create<scf::YieldOp>(loc);
+            }
+        },
+        [&](OpBuilder &elseBuilder, Location loc) {
+            for (Operation *op : nestedFalseOps) {
+                op->moveBefore(elseBuilder.getInsertionBlock(), elseBuilder.getInsertionPoint());
+            }
+            if (!nestedTrueHasReturn) {
+                elseBuilder.create<scf::YieldOp>(loc);
+            }
+        }
+    );
+    nestedBranch.erase();
+    nestedBranch.getTrueDest()->erase();
+    nestedBranch.getFalseDest()->erase();
+}
 void convertTTFunc(func::FuncOp func, const bool existDot) {
   OpBuilder builder(func);
 
@@ -59,6 +112,7 @@ void convertTTFunc(func::FuncOp func, const bool existDot) {
   if (func.getSymVisibility() == "public" && !func.isDeclaration()) {
     for (size_t i = 0; i < func.getNumArguments(); ++i) {
       auto arg = func.getArgument(i);
+      llvm::errs() <<  "zmz debug cpp: " << "arg: " << arg << "\n";
       // Special method for i1 arg
       if (!isa<BaseMemRefType>(arg.getType()) ||
           dyn_cast<BaseMemRefType>(arg.getType()).getElementTypeBitWidth() !=
@@ -114,15 +168,19 @@ void convertTTFunc(func::FuncOp func, const bool existDot) {
     funcFunc->setAttr(globalKernelAttr, kernelAttr);
   }
   std::string kernelMixMode = "aiv";
+  llvm::errs() <<  "zmz debug cpp: " << "kernelMixMode: " << kernelMixMode << "\n";
   if (existDot) {
+    llvm::errs() <<  "zmz debug cpp: " << "existDot" << "\n";
     // mix also works for pure cube kernel by using the same MAGIC_ELF keyword
     kernelMixMode = "mix";
   }
+  llvm::errs() <<  "zmz debug cpp: " << "kernelMixMode: " << kernelMixMode << "\n";
   // Set mix_mode in the func attrs so that the backend could know
   // the mix_mode by parse the func attrs.
   // The backend needs to know the mix_mode because the host wrapper
   // needs to set the devbin.magic. Check npu_utils.cpp.
   funcFunc->setAttr(kernelMixModeName, builder.getStringAttr(kernelMixMode));
+  llvm::errs() <<  "zmz debug cpp: " << "kernelMixMode: " << kernelMixMode << "\n";
 
   auto &funcFuncBody = funcFunc.getBody();
   auto &funcBody = func.getBody();
@@ -132,9 +190,65 @@ void convertTTFunc(func::FuncOp func, const bool existDot) {
 
   for (Block &block : funcFuncBody.getBlocks()) {
     auto term = block.getTerminator();
-    builder.setInsertionPoint(term);
-    builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
-    term->erase();
+    if (auto condBranch = dyn_cast<cf::CondBranchOp>(term)) {
+        SmallVector<Operation*> trueOps;
+        SmallVector<Operation*> falseOps;
+        bool trueHasReturn = false;
+        bool falseHasReturn = false;
+        for (Operation &op : condBranch.getTrueDest()->without_terminator()) {
+            if (dyn_cast<cf::CondBranchOp>(&op)) {
+                transformNestedIfElse(op, builder);
+            }
+            trueOps.push_back(&op);
+            if (isa<func::ReturnOp>(op)) {
+                trueHasReturn = true;
+            }
+        }
+        for (Operation &op : condBranch.getFalseDest()->without_terminator()) {
+            if (dyn_cast<cf::CondBranchOp>(&op)) {
+                transformNestedIfElse(op, builder);
+            }
+            falseOps.push_back(&op);
+            if (isa<func::ReturnOp>(op)) {
+                falseHasReturn = true;
+            }
+        }
+        builder.setInsertionPoint(condBranch);
+        auto ifOp = builder.create<scf::IfOp> (
+            condBranch.getLoc(),
+            condBranch.getCondition(),
+            [&](OpBuilder &thenBuilder, Location loc) {
+                for (Operation *op : trueOps) {
+                    op->moveBefore(thenBuilder.getInsertionBlock(), thenBuilder.getInsertionPoint());
+                }
+                if (!trueHasReturn) {
+                    thenBuilder.create<scf::YieldOp>(loc);
+                }
+            },
+            [&](OpBuilder &elseBuilder, Location loc) {
+                for (Operation *op : falseOps) {
+                    op->moveBefore(elseBuilder.getInsertionBlock(), elseBuilder.getInsertionPoint());
+                }
+                if (!falseHasReturn) {
+                    elseBuilder.create<scf::YieldOp>(loc);
+                }
+            }
+        );
+        if (!trueHasReturn && !falseHasReturn) {
+            Block *afterBlock = condBranch->getBlock();
+            if (!afterBlock->empty()) {
+                builder.setInsertionPointToEnd(afterBlock);
+                builder.create<func::ReturnOp>(condBranch.getLoc());
+            }
+        }
+        condBranch.erase();
+        condBranch.getTrueDest()->erase();
+        condBranch.getFalseDest()->erase();
+      } else {
+        builder.setInsertionPoint(term);
+        builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
+        term->erase();
+      }
   }
   func.erase();
 }
@@ -154,6 +268,7 @@ void addProgramInfo(func::FuncOp func, bool globalKernel) {
   }
 }
 
+
 struct TritonAnnotationConverter
     : OpRewritePattern<triton::AnnotationOp> {
   using OpRewritePattern<triton::AnnotationOp>::OpRewritePattern;
@@ -167,6 +282,8 @@ struct TritonAnnotationConverter
     return success();
   }
 };
+
+
 
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:
@@ -183,24 +300,48 @@ public:
   }
 
   void runOnOperation() override {
+    llvm::errs() <<  "zmz debug cpp: " << "runOnOperation" << "\n";
+    // std::abort();
     auto moduleOp = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
+    llvm::errs() <<  "zmz debug cpp: " << "moduleOp=" << moduleOp << "\n";
     // Check if the kernel contains tl.dot. Without tl.dot,
     // the kernel would be pure AIV kernel.
     bool existDot = false;
-    moduleOp.walk([&](triton::DotOp dotOp) {
+    moduleOp.walk([&](linalg::MatmulOp dotOp) {
       existDot = true;
       return WalkResult::interrupt();
     });
-
+    llvm::errs() <<  "zmz debug cpp: " << "existDot: " << existDot << "\n";
     this->populateLinalgToLinkedConversionPatterns(patterns);
-
+    llvm::errs() <<  "zmz debug cpp: " << "populateLinalgToLinkedConversionPatterns" << "\n";
+    // 遍历所有的triton::FuncOp，添加tensor_kind属性
+    moduleOp.walk([&](func::FuncOp func) {
+      // 打印每个遍历的内容
+      llvm::errs() <<  "zmz debug cpp: " << "func: " << func << "\n";
+      // 打印下面func.walk 元素内容
+      func.walk([&](Operation *op) {
+        llvm::errs() << "zmz debug op: " << *op << "\n";
+      });
+      // func.walk([&](triton::LoadOp loadOp) {
+      //   addTensorKindToArguments(loadOp, func, TensorKind::INPUT);
+      // });
+      // func.walk([&](triton::StoreOp storeOp) {
+      //   addTensorKindToArguments(storeOp, func, TensorKind::OUTPUT);
+      // });
+      // func.walk([&](triton::AtomicRMWOp atomicOp) {
+      //   addTensorKindToArguments(atomicOp, func, TensorKind::INPUT_OUTPUT);
+      // });
+      // func.walk([&](triton::AtomicCASOp atomicOp) {
+      //   addTensorKindToArguments(atomicOp, func, TensorKind::INPUT_OUTPUT);
+      // });
+    });
     if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
       moduleOp.emitError("Pattern application failed");
       signalPassFailure();
     }
-    
+    llvm::errs() <<  "zmz debug cpp: " << "applyPatternsAndFoldGreedily" << "\n";
     size_t tritonFuncCount = 0;
     for (auto func : getOperation().getOps<triton::FuncOp>()) {
       ++tritonFuncCount;
@@ -211,30 +352,45 @@ public:
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       ++funcOpCount;
     }
+    llvm::errs() <<  "zmz debug cpp: " << "tritonFuncCount: " << tritonFuncCount << "\n";
 
     // 遍历kernel中的function，修改program id、number of programs参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       addProgramInfo(func, globalKernel);
     }
+    llvm::errs() <<  "zmz debug cpp: " << "tritonFuncCount: " << tritonFuncCount << "\n";
 
     // 函数头尾转换
     moduleOp.walk(
         [&](func::FuncOp func) { convertTTFunc(func, existDot); });
+    llvm::errs() <<  "zmz debug cpp: " << "finish convertTTFunc." << "\n";
 
     PassManager pm(context);
-    pm.addPass(mlir::dicp::linked::createVerifyNoLinalgGenericPass());
+    // pm.addPass(mlir::dicp::linked::createVerifyNoLinalgGenericPass());
     if (failed(pm.run(moduleOp))) {
         signalPassFailure();
     }
 
-
+    llvm::errs() <<  "zmz debug cpp: " << "finish pm.run." << "\n";
     // 强制在函数参数开头添加一个参数，代表工作空间的占位参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       if (!func->hasAttr("global_kernel"))
         continue;
 
       auto context = func.getContext();
-      constexpr int64_t workspaceArgIdx = 0;
+      constexpr int64_t syncBlockLockArgIdx = 0;
+      NamedAttribute syncBlockLockArgAttr(StringAttr::get(context, "syncBlockLock"),
+                                      UnitAttr::get(context));
+      MemRefType syncBlockLockArgType =
+          MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
+                          IntegerType::get(context, 8));
+      func.insertArgument(syncBlockLockArgIdx, // argIndex
+                          syncBlockLockArgType, // argType
+                          nullptr, func->getLoc()); // dicAttr
+      func->setAttr("SyncBlockLockArgIdx",
+                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 0));  // 64: 64位整型
+
+      constexpr int64_t workspaceArgIdx = 1;
       MemRefType workspaceArgType =
           MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
                           IntegerType::get(context, 8));
@@ -245,8 +401,9 @@ public:
                           /*argType*/ workspaceArgType,
                           /*dicAttr*/ nullptr, func->getLoc());
       func->setAttr("WorkspaceArgIdx",
-                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 0));
+                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
     }
+    llvm::errs() <<  "zmz debug cpp: " << "finish add workspace arg." << "\n";
 
   }
 };

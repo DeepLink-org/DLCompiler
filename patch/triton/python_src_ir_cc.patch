@@ -1,5 +1,5 @@
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 9945c6188..bfc482987 100644
+index 9945c6188..2303d0e6a 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
 @@ -258,7 +258,12 @@ void init_triton_ir(py::module &&m) {
@@ -16,15 +16,16 @@ index 9945c6188..bfc482987 100644
  
    py::class_<Location>(m, "location", py::module_local())
        .def("__str__", [](Location &self) {
-@@ -373,6 +378,7 @@ void init_triton_ir(py::module &&m) {
+@@ -373,6 +378,8 @@ void init_triton_ir(py::module &&m) {
    py::class_<Attribute>(m, "attribute", py::module_local());
    py::class_<IntegerAttr, Attribute>(m, "integer_attr", py::module_local());
    py::class_<BoolAttr, Attribute>(m, "bool_attr", py::module_local());
++  py::class_<UnitAttr, Attribute>(m, "unit_attr", py::module_local());
 +  py::class_<StringAttr, Attribute>(m, "string_attr", py::module_local());
  
    // Ops
    py::class_<OpState>(m, "OpState", py::module_local())
-@@ -625,6 +631,10 @@ void init_triton_ir(py::module &&m) {
+@@ -625,6 +632,13 @@ void init_triton_ir(py::module &&m) {
             [](TritonOpBuilder &self, int32_t value) {
               return self.getBuilder().getI32IntegerAttr(value);
             })
@@ -32,10 +33,13 @@ index 9945c6188..bfc482987 100644
 +            [](TritonOpBuilder &self, const std::string &str) {
 +              return self.getBuilder().getStringAttr(llvm::StringRef(str));
 +            })
++      .def(
++          "get_unit_attr",
++          [](TritonOpBuilder &self) { return self.getBuilder().getUnitAttr(); })
        // Use arith.ConstantOp to create constants
        // Constants
        .def("get_int1",
-@@ -1559,6 +1569,80 @@ void init_triton_ir(py::module &&m) {
+@@ -1559,6 +1573,80 @@ void init_triton_ir(py::module &&m) {
                       IntegerType::get(operand.getContext(), 32)),
                   operand);
             })

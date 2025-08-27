@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch_npu
 import triton
@@ -14,15 +15,15 @@ def get_npu_properties():
 
 @triton.autotune(
 configs=[
-        # triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 4}),
-        # triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 5}),
-        # triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 6}),
-        # triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 7}),
-        # triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 8}),
-        # triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 4}),
-        # triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 5}),
-        # triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 6}),
-        # triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 7}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 4}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 5}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 6}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 7}),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 8}),
+        triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 4}),
+        triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 5}),
+        triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 6}),
+        triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 7}),
         triton.Config({"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 256, "BLOCK_TRESHHOLD": 8}),
     ],
     key=["M", "N", "K"]
@@ -99,15 +100,6 @@ def matmul_kernel(
             x, y = curThresholdM, curThresholdN if curThresholdM > curThresholdN else curThresholdN, curThresholdM
             while y != 0:
                 x, y = y, x % y
-            # for _ in range(1000):  # 设置足够大的循环上限
-            #     if y == 0:
-            #         break
-            #     x, y = y, x % y
-            
-            # while y != 0:
-            #     temp = y        # 保存 y
-            #     y = x % y       # y = x % y
-            #     x = temp        # x = old y
             lcm = curThresholdM * curThresholdN // x
             task_n_idx = (localRelativeBlock + (localRelativeBlock // lcm)) % curThresholdN + block_idx % (BLOCK_TRESHHOLD * NUM_BLOCKS_N) // curThresholdM_thresholdN * BLOCK_TRESHHOLD
             
@@ -207,14 +199,16 @@ def triton_matmul(
     return mat_c
 
 
-if __name__ == "__main__":
-    M = 2048
-    K = 7168
-    N = 16384
-    # M = 64
-    # K = 64
-    # N = 64
-    
+@pytest.mark.parametrize('param_list',
+                         [
+                             [2048, 7168, 16384],
+                             [4096, 4096, 4096],
+                             [4096, 18432, 7168],
+                             [8246, 2048, 768],
+                         ]
+                         )
+def test_matmul_shape(param_list):
+    M, K, N = param_list
     mat_a = torch.randn([M, K], dtype = torch.bfloat16, device = "npu")
     mat_b = torch.randn([K, N], dtype = torch.bfloat16, device = "npu")
     
@@ -237,3 +231,4 @@ if __name__ == "__main__":
         max_diff_index = torch.argmax(torch.abs(result - golden))
         print(f"[ERROR] max diff index: {max_diff_index}")
         print(f"[ERROR] result: {result}")
+

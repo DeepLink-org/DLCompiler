@@ -4,7 +4,7 @@ import triton.language as tl
 import pytest
 import triton.language.extra.deeplink as dl
 
-# eg: pytest -v test.py::test_compile_hint
+# eg: pytest -v test_compile_hint.py::test_compile_hint
 #############################
 
 

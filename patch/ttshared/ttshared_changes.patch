@@ -184,7 +184,7 @@ index 7baee48..92c6559 100644
    }
  };
 diff --git a/lib/Analysis/UseAnalysis.cpp b/lib/Analysis/UseAnalysis.cpp
-index 62e4508..d9aaec2 100644
+index 62e4508..5cc2b09 100644
 --- a/lib/Analysis/UseAnalysis.cpp
 +++ b/lib/Analysis/UseAnalysis.cpp
 @@ -88,6 +88,20 @@ triton::UseAnalysis::visitOperation(Operation *op, ArrayRef<UseInfo *> operands,
@@ -208,21 +208,7 @@ index 62e4508..d9aaec2 100644
  LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
    MLIRContext *context = funcOp.getContext();
    SymbolTableCollection symbolTable;
-@@ -101,6 +115,7 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
- 
-   // Walk the func op, convert tags on operands to tags on operations
-   funcOp.walk([&](Operation *op) {
-+    llvm::errs() << "test op is " << *op << "\n";
-     UseType useType = UseType::Undefined;
-     for (auto result : op->getResults()) {
-       auto use = solver.lookupState<UseInfo>(result);
-@@ -115,18 +130,35 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
-         break;
-       }
-     }
-+    llvm::errs() << "useType is " << stringifyUseType(useType) << ", op->getNumResults()=" << op->getNumResults() << "\n";
- 
-     if (useType == UseType::Undefined) {
+@@ -120,12 +134,19 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
        LLVM_DEBUG({ op->setAttr("Undefined", UnitAttr::get(context)); });
        return;
      } else if (useType == UseType::MetaUse) {
@@ -233,14 +219,6 @@ index 62e4508..d9aaec2 100644
 -        // Setting tag for erasing op later
 -        op->setAttr("MetaUse", UnitAttr::get(context));
 +      auto opName = op->getName().getStringRef();
-+      // LLVM_DEBUG({
-+        llvm::errs() << "Checking op: " << opName << "\n";
-+        llvm::errs() << "Number of results: " << op->getNumResults() << "\n";
-+        for (unsigned i = 0; i < op->getNumResults(); ++i) {
-+          llvm::errs() << "Result " << i << " type: "
-+                       << op->getResult(i).getType() << "\n";
-+        }
-+      // });
 +      if (!isa<mlir::scf::WhileOp>(op)) {
 +        assert(op->getNumResults() == 1 &&
 +              "Ops used for meta computation are expected to have one result");
@@ -254,10 +232,8 @@ index 62e4508..d9aaec2 100644
 +          op->setAttr("MetaUse", UnitAttr::get(context));
 +        }
        }
-+      llvm::errs() << "MetaUse op: " << opName << ", op is " << *op << "\n";
        return;
      } else if (useType == UseType::DataUse) {
-       LLVM_DEBUG({ op->setAttr("DataUse", UnitAttr::get(context)); });
 diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
 index d85cab7..8cc0d24 100644
 --- a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp

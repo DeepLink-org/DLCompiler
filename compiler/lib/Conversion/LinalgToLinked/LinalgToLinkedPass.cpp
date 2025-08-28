@@ -263,7 +263,6 @@ void addProgramInfo(func::FuncOp func, bool globalKernel) {
   }
 }
 
-
 struct TritonAnnotationConverter
     : OpRewritePattern<triton::AnnotationOp> {
   using OpRewritePattern<triton::AnnotationOp>::OpRewritePattern;
@@ -277,8 +276,6 @@ struct TritonAnnotationConverter
     return success();
   }
 };
-
-
 
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:

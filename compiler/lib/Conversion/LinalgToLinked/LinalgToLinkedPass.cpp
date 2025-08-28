@@ -112,7 +112,6 @@ void convertTTFunc(func::FuncOp func, const bool existDot) {
   if (func.getSymVisibility() == "public" && !func.isDeclaration()) {
     for (size_t i = 0; i < func.getNumArguments(); ++i) {
       auto arg = func.getArgument(i);
-      llvm::errs() <<  "zmz debug cpp: " << "arg: " << arg << "\n";
       // Special method for i1 arg
       if (!isa<BaseMemRefType>(arg.getType()) ||
           dyn_cast<BaseMemRefType>(arg.getType()).getElementTypeBitWidth() !=
@@ -168,19 +167,15 @@ void convertTTFunc(func::FuncOp func, const bool existDot) {
     funcFunc->setAttr(globalKernelAttr, kernelAttr);
   }
   std::string kernelMixMode = "aiv";
-  llvm::errs() <<  "zmz debug cpp: " << "kernelMixMode: " << kernelMixMode << "\n";
   if (existDot) {
-    llvm::errs() <<  "zmz debug cpp: " << "existDot" << "\n";
     // mix also works for pure cube kernel by using the same MAGIC_ELF keyword
     kernelMixMode = "mix";
   }
-  llvm::errs() <<  "zmz debug cpp: " << "kernelMixMode: " << kernelMixMode << "\n";
   // Set mix_mode in the func attrs so that the backend could know
   // the mix_mode by parse the func attrs.
   // The backend needs to know the mix_mode because the host wrapper
   // needs to set the devbin.magic. Check npu_utils.cpp.
   funcFunc->setAttr(kernelMixModeName, builder.getStringAttr(kernelMixMode));
-  llvm::errs() <<  "zmz debug cpp: " << "kernelMixMode: " << kernelMixMode << "\n";
 
   auto &funcFuncBody = funcFunc.getBody();
   auto &funcBody = func.getBody();
@@ -300,12 +295,9 @@ public:
   }
 
   void runOnOperation() override {
-    llvm::errs() <<  "zmz debug cpp: " << "runOnOperation" << "\n";
-    // std::abort();
     auto moduleOp = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    llvm::errs() <<  "zmz debug cpp: " << "moduleOp=" << moduleOp << "\n";
     // Check if the kernel contains tl.dot. Without tl.dot,
     // the kernel would be pure AIV kernel.
     bool existDot = false;
@@ -313,35 +305,11 @@ public:
       existDot = true;
       return WalkResult::interrupt();
     });
-    llvm::errs() <<  "zmz debug cpp: " << "existDot: " << existDot << "\n";
     this->populateLinalgToLinkedConversionPatterns(patterns);
-    llvm::errs() <<  "zmz debug cpp: " << "populateLinalgToLinkedConversionPatterns" << "\n";
-    // 遍历所有的triton::FuncOp，添加tensor_kind属性
-    moduleOp.walk([&](func::FuncOp func) {
-      // 打印每个遍历的内容
-      llvm::errs() <<  "zmz debug cpp: " << "func: " << func << "\n";
-      // 打印下面func.walk 元素内容
-      func.walk([&](Operation *op) {
-        llvm::errs() << "zmz debug op: " << *op << "\n";
-      });
-      // func.walk([&](triton::LoadOp loadOp) {
-      //   addTensorKindToArguments(loadOp, func, TensorKind::INPUT);
-      // });
-      // func.walk([&](triton::StoreOp storeOp) {
-      //   addTensorKindToArguments(storeOp, func, TensorKind::OUTPUT);
-      // });
-      // func.walk([&](triton::AtomicRMWOp atomicOp) {
-      //   addTensorKindToArguments(atomicOp, func, TensorKind::INPUT_OUTPUT);
-      // });
-      // func.walk([&](triton::AtomicCASOp atomicOp) {
-      //   addTensorKindToArguments(atomicOp, func, TensorKind::INPUT_OUTPUT);
-      // });
-    });
     if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
       moduleOp.emitError("Pattern application failed");
       signalPassFailure();
     }
-    llvm::errs() <<  "zmz debug cpp: " << "applyPatternsAndFoldGreedily" << "\n";
     size_t tritonFuncCount = 0;
     for (auto func : getOperation().getOps<triton::FuncOp>()) {
       ++tritonFuncCount;
@@ -352,26 +320,21 @@ public:
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       ++funcOpCount;
     }
-    llvm::errs() <<  "zmz debug cpp: " << "tritonFuncCount: " << tritonFuncCount << "\n";
 
     // 遍历kernel中的function，修改program id、number of programs参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       addProgramInfo(func, globalKernel);
     }
-    llvm::errs() <<  "zmz debug cpp: " << "tritonFuncCount: " << tritonFuncCount << "\n";
 
     // 函数头尾转换
     moduleOp.walk(
         [&](func::FuncOp func) { convertTTFunc(func, existDot); });
-    llvm::errs() <<  "zmz debug cpp: " << "finish convertTTFunc." << "\n";
 
     PassManager pm(context);
-    // pm.addPass(mlir::dicp::linked::createVerifyNoLinalgGenericPass());
     if (failed(pm.run(moduleOp))) {
         signalPassFailure();
     }
 
-    llvm::errs() <<  "zmz debug cpp: " << "finish pm.run." << "\n";
     // 强制在函数参数开头添加一个参数，代表工作空间的占位参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       if (!func->hasAttr("global_kernel"))
@@ -403,7 +366,6 @@ public:
       func->setAttr("WorkspaceArgIdx",
                     IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
     }
-    llvm::errs() <<  "zmz debug cpp: " << "finish add workspace arg." << "\n";
 
   }
 };

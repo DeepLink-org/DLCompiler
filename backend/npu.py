@@ -271,7 +271,6 @@ def min_dot_size(target: GPUTarget):
 
 
 def make_ttir(mod, metadata, opt):
-    print(f"zmz debug mod: {mod}, metadata: {metadata}, opt: {opt}")
     if 'hash' not in metadata:
         metadata['hash'] = hashlib.md5(f"{mod}-{metadata}".encode()).hexdigest()
     # the same optimize pass for triton-ir as all other backends
@@ -326,12 +325,8 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
             f'--triton-to-linalg',
-            # '--linalg-fuse-elementwise-ops',
             "-o", dst_ttshared_path]
-        shutil.copy(src_path, "gemm.kernel.ttir.mlir")
-        print(f"zmz debug cmd_shared_list: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
-        shutil.copy(dst_ttshared_path, "gemm.kernel.ttshared.mlir")
         return Path(dst_ttshared_path).read_text()
 
 
@@ -342,24 +337,10 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dst_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(src_path).write_text(ttsharedir_code)
         dicp_opt_path = _get_dicp_opt_path()
-        enable_nd2nz_on_vector = metadata["enable_nd2nz_on_vector"]
         dicp_cmd_list = [dicp_opt_path, src_path,
-            # f'--linalg-to-npu',
             f'--linalg-to-linked=global-kernel=false named-ops=true',
-            # f'enable-nd2nz-on-vector={enable_nd2nz_on_vector}',
             "-o", dst_path]
-        print(f"zmz debug dicp_cmd_list: {dicp_cmd_list}")
-        # ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
-        ret = subprocess.run(dicp_cmd_list, check=True,
-            stdout=subprocess.PIPE,  # 捕获标准输出
-            stderr=subprocess.STDOUT,  # 将标准错误合并到标准输出
-            # check=True,
-                    text=True,  # 以文本形式处理输出
-            )
-            # stdout=subprocess.PIPE,
-            # stderr=subprocess.STDOUT,
-            # universal_newlines=True)
-        print("dicp_opt_pathCommand output:\n", ret.stdout)
+        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
         with open(dst_path, 'r') as f:
             content = f.read()
@@ -369,12 +350,6 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             content = content.replace("*xbf", "?xbf")
             with open(dst_path, 'w') as f:
                 f.write(content)
-        # 找到content中是否有matmul_kernel字符
-        # if "matmul_kernel" in content:
-        #     dst_path = "/mnt/data01/zmz/workspace/04ttshared/Triton/test/ascend/gemm_v2/ascend.kernel.ttadapter.test.mlir"
-        # elif "_silu_and_mul_kernel" in content:
-        #     dst_path = "/mnt/data01/zmz/workspace/04ttshared/Triton/test/ascend/silu_mul/ascend.kernel.ttadapter.test.mlir"
-        print(f"zmz debug dst_path {dst_path}")
         return Path(dst_path).read_text()
 
 
@@ -511,9 +486,7 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
 
 
 def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
-    print(f"zmz debug linalg {linalg}")
     linalg, metadata = _parse_linalg_metadata(linalg, metadata)
-    print(f"zmz debug metadata={metadata}")
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
         lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "0")
@@ -556,16 +529,12 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             + _compile_option_list
             + ["-o", bin_file]
         )
-        print(f"zmz debug linalg_to_bin_enable_npu_compile cmd_list: {cmd_list}", flush=True)
-        shutil.copy(ttadapter_path, "gemm.kernel.linkedir.mlir")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
             __get_metadata_attr_by_callback(lib, "_infer_workspace_shape_function", metadata, "workspace_size")
             __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_num_function", metadata, "lock_num")
             __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_init_function", metadata, "lock_init_val")
-        print(f"zmz debug linalg_to_bin_enable_npu_compile bin_path: {bin_path}", flush=True)
-        shutil.copy(bin_path, "Triton.gemm.kernel.o")
         return Path(bin_path).read_bytes()
 
 @dataclass(frozen=True)
@@ -633,28 +602,6 @@ class AscendAttrsDescriptor(AttrsDescriptor):
 
     def _add_backend_properties(self, params=None, values=None):
         pass
-        # if params is None or values is None:
-        #     return
-
-        # for i in range(len(values)):
-        #     if (params[i].is_constexpr):
-        #         continue
-        #     val = values[i]
-
-        #     if hasattr(val, 'shape'):
-        #         self.arg_properties[f"tt.shape_{i}"] = list(val.shape)
-        #         self.property_values[f"tt.shape_{i}"] = 0
-        #     else:
-        #         # Scalar
-        #         pass
-
-    # def get_shapes(self):
-    #     shapes = {}
-    #     for name, val in self.arg_properties.items():
-    #         if name.startswith("tt.shape"):
-    #             idx = int(name.split('_')[-1])
-    #             shapes[idx] = val
-    #     return shapes
 
 class NPUUtils(object):
     def __new__(cls):

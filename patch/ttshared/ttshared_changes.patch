@@ -184,7 +184,7 @@ index 7baee48..92c6559 100644
    }
  };
 diff --git a/lib/Analysis/UseAnalysis.cpp b/lib/Analysis/UseAnalysis.cpp
-index 62e4508..5cc2b09 100644
+index 62e4508..8af4e1c 100644
 --- a/lib/Analysis/UseAnalysis.cpp
 +++ b/lib/Analysis/UseAnalysis.cpp
 @@ -88,6 +88,20 @@ triton::UseAnalysis::visitOperation(Operation *op, ArrayRef<UseInfo *> operands,
@@ -219,10 +219,10 @@ index 62e4508..5cc2b09 100644
 -        // Setting tag for erasing op later
 -        op->setAttr("MetaUse", UnitAttr::get(context));
 +      auto opName = op->getName().getStringRef();
-+      if (!isa<mlir::scf::WhileOp>(op)) {
-+        assert(op->getNumResults() == 1 &&
-+              "Ops used for meta computation are expected to have one result");
-+      }
++      // if (!isa<mlir::scf::WhileOp>(op)) {
++      //   assert(op->getNumResults() == 1 &&
++      //         "Ops used for meta computation are expected to have one result");
++      // }
 +      for (auto it = 0; it < op->getNumResults(); ++it) {
 +        // Only set the tag if the operation uses tensors
 +        if (isa<ShapedType>(op->getResult(it).getType()) ||

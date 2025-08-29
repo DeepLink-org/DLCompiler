@@ -195,6 +195,7 @@ def compile_hint(ptr, hint_name, hint_val=None, _builder=None):
     hint_val = _unwrap_if_constexpr(hint_val) if hint_val else hint_val
     dl_semantic.compile_hint(ptr, hint_name, hint_val, _builder)
 
+
 @builtin
 def alloc(shape, value, dtype, layout=None, scope=None, _builder=None):
     """

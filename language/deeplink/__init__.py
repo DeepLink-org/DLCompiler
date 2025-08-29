@@ -23,7 +23,6 @@ __all__ = [
     "inline_lambda"
     "alloc",
     "compile_hint",
-    "multibuffer",
     "ND",
     "NZ",
     "fragment",

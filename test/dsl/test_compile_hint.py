@@ -17,7 +17,6 @@ def triton_compile_hint(in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_
         x0 = xindex
         tmp0 = tl.load(in_ptr0 + (x0), xmask)
         dl.compile_hint(tmp0, "hint_a")
-        dl.multibuffer(tmp0, 2)
         tmp2 = tmp0
         dl.compile_hint(tmp2, "hint_b", 42)
         dl.compile_hint(tmp2, "hint_c", True)

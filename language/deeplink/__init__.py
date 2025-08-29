@@ -6,7 +6,6 @@ from .core import (
     inline_lambda,
     alloc,
     compile_hint,
-    multibuffer,
     ND,
     NZ,
     fragment,

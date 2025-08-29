@@ -189,18 +189,15 @@ public:
     // Check if the kernel contains tl.dot. Without tl.dot,
     // the kernel would be pure AIV kernel.
     bool existDot = false;
-    moduleOp.walk([&](triton::DotOp dotOp) {
+    moduleOp.walk([&](linalg::MatmulOp dotOp) {
       existDot = true;
       return WalkResult::interrupt();
     });
-
     this->populateLinalgToLinkedConversionPatterns(patterns);
-
     if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
       moduleOp.emitError("Pattern application failed");
       signalPassFailure();
     }
-    
     size_t tritonFuncCount = 0;
     for (auto func : getOperation().getOps<triton::FuncOp>()) {
       ++tritonFuncCount;
@@ -222,11 +219,9 @@ public:
         [&](func::FuncOp func) { convertTTFunc(func, existDot); });
 
     PassManager pm(context);
-    pm.addPass(mlir::dicp::linked::createVerifyNoLinalgGenericPass());
     if (failed(pm.run(moduleOp))) {
         signalPassFailure();
     }
-
 
     // 强制在函数参数开头添加一个参数，代表工作空间的占位参数
     for (auto func : getOperation().getOps<func::FuncOp>()) {
@@ -234,7 +229,19 @@ public:
         continue;
 
       auto context = func.getContext();
-      constexpr int64_t workspaceArgIdx = 0;
+      constexpr int64_t syncBlockLockArgIdx = 0;
+      NamedAttribute syncBlockLockArgAttr(StringAttr::get(context, "syncBlockLock"),
+                                      UnitAttr::get(context));
+      MemRefType syncBlockLockArgType =
+          MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
+                          IntegerType::get(context, 8));
+      func.insertArgument(syncBlockLockArgIdx, // argIndex
+                          syncBlockLockArgType, // argType
+                          nullptr, func->getLoc()); // dicAttr
+      func->setAttr("SyncBlockLockArgIdx",
+                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 0));  // 64: 64位整型
+
+      constexpr int64_t workspaceArgIdx = 1;
       MemRefType workspaceArgType =
           MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
                           IntegerType::get(context, 8));
@@ -245,7 +252,7 @@ public:
                           /*argType*/ workspaceArgType,
                           /*dicAttr*/ nullptr, func->getLoc());
       func->setAttr("WorkspaceArgIdx",
-                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 0));
+                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
     }
 
   }

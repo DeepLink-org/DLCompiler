@@ -1,5 +1,5 @@
-# Triton
-triton for dsa && gpgpu
+# 介绍
+DLCompiler是面向DSA架构和GPGPU架构的高性能编译器。
 
 ## compile llvm project
 ```

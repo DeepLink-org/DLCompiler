@@ -1,8 +1,9 @@
 # 介绍
-DLCompiler是扩展Triton DSL的深度学习编译器，亮点：
-- 扩展DSL: 通过扩展DSL，让DSA芯片也能享受 GPU 级的编程体验和性能，成为 “跨架构 AI Kernel DSL” 。
-- 自动编译优化：通过智能核间调度，让多核协同发挥极致算力；结合创新的访存合并优化，将分散的数据访问自动重组为高速连续访问，显著提升算子性能与带宽利用率，为大模型和智能计算释放前所未有的潜能。
-<img width="1586" height="992" alt="image" src="https://github.com/user-attachments/assets/f6029cc0-2ec2-4caf-9b21-0fc55121ba93" />
+DLCompiler是上海人工智能实验室（上海 AI 实验室）DeepLink 团队开源扩展 Triton 的深度学习编译器：
+- 跨架构 DSL 扩展：通过扩展 DSL，让 DSA 芯片（昇腾芯片）也能享受 GPU 级的编程体验和性能，成为 “跨架构 AI Kernel DSL” 。
+- 智能自动优化：实现智能核间调度，充分释放多核算力；结合创新的访存合并优化，将离散访问自动重组为高速连续访问，大幅提升算子性能与带宽利用率。
+<img width="1586" height="992" alt="身位图-昇腾" src="https://github.com/user-attachments/assets/59c195cc-2702-4d5a-8559-3bed1722281e" />
+
 
 # 编译使用
 ## compile llvm project

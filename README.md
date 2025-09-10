@@ -85,14 +85,3 @@ bash compile_on_mlu.sh
 cd build/triton/tutorials
 python 01-vector-add.py
 ```
-
-# 支持模型框架列表
-
-## LMDeploy
-### 寒武纪云端智能加速卡
-| 模型              | 类型 | FP16/BF16 | KV INT8 | KV INT4 | W8A8 | W4A16 |
-| ---               | ---  | ---       |    ---  | ---     | ---  | ---   |
-| internlm2-chat-7b | LLM  | YES       |         |         |      |       |
-| internlm2_5-7b    | LLM  | YES       |         |         |      |       |
-| Qwen2-7B          | LLM  | YES       |         |         |      |       |
-| Llama-2-7b-hf     | LLM  | YES       |         |         |      |       |

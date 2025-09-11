@@ -38,9 +38,9 @@ python softmax.py
 bash format.sh
 ```
 
-# 华为昇腾芯片
+# 昇腾芯片
 ## 环境准备
-准备华为设备上环境，可以参考华为的链接：https://gitee.com/ascend/triton-ascend
+准备昇腾设备上环境，可以参考昇腾的链接：https://gitee.com/ascend/triton-ascend
 ### 安装ascend cann
 1. 要求CANN 版本 > 8.2.RC1.alpha002
 2. 社区下载链接：https://www.hiascend.com/developer/download/community/result?module=cann

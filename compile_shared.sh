@@ -8,6 +8,7 @@ export LC_ALL="zh_CN.UTF-8"
 # export LLVM_BUILD_DIR=/path/to/your/llvm-project/build
 # export LLVM_TGZ_PATH=/path/to/your/llvm-86b69c31-ubuntu-arm64.tar.gz      # 可选，用于指定LLVM的tgz包路径
 export TRITON_PLUGIN_DIRS=$(pwd)
+echo $TRITON_PLUGIN_DIRS
 apply_patch=false
 
 # 解析命令行参数
@@ -59,12 +60,16 @@ fi
 
 pip uninstall triton -y
 
-cd $TRITON_PLUGIN_DIRS/third_party/triton/python/
+# cd $TRITON_PLUGIN_DIRS/third_party/triton/python/
+cd $TRITON_PLUGIN_DIRS/third_party/triton/
 rm -rf build/
 
 if [ -z "$LLVM_BUILD_DIR" ]; then
+    # TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
+    # python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
+    echo "LLVM_BUILD_DIR is not set, will use LLVM_TGZ_PATH: $LLVM_TGZ_PATH"
     TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
-    python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
+    python3 -m pip install --no-build-isolation -vvv  '.[tests]' --trusted-host mirrors.huaweicloud.com -i https://mirrors.huaweicloud.com/repository/pypi/simple
 else
     echo "LLVM_BUILD_DIR is set to $LLVM_BUILD_DIR"
     LLVM_INCLUDE_DIRS=$LLVM_BUILD_DIR/include \

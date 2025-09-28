@@ -141,14 +141,14 @@ class DICPBackend(BaseBackend):
         return mod
     
     
-    def get_attrs_descriptor(self, params, args):
-        if self.driver.target == 'ascend':
-            from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
-            return AscendAttrsDescriptor(params, args)
-        else:
-            raise RuntimeError(f"backend {self.driver.target} not supported for get_attrs_descriptor.")
+    # def get_attrs_descriptor(self, params, args):
+    #     if self.driver.target == 'ascend':
+    #         from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
+    #         return AscendAttrsDescriptor(params, args)
+    #     else:
+    #         raise RuntimeError(f"backend {self.driver.target} not supported for get_attrs_descriptor.")
 
-    def add_stages(self, stages, options):
+    def add_stages(self, stages, options, language):
         if self.driver.target not in ['ascend', 'mlu']:
             stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         if self.driver.target == 'dicp':
@@ -250,7 +250,7 @@ class DICPBackend(BaseBackend):
             args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
             return DICPOptions(**args)
     
-    def get_codegen_implementation(self):
+    def get_codegen_implementation(self, options):
         codegen_fns = dict()
         if self.target.backend == 'ascend':
             from triton.backends.dicp_triton.npu import min_dot_size

@@ -7,7 +7,7 @@ import functools
 import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
-from triton.backends.compiler import BaseBackend, GPUTarget, AttrsDescriptor, register_descriptor
+from triton.backends.compiler import BaseBackend, GPUTarget
 from triton._C.libtriton import ir, passes
 from triton.runtime.cache import get_dump_manager
 from dataclasses import dataclass
@@ -322,11 +322,16 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_shared_opt_path = _get_triton_shared_opt_path()
+        triton_shared_opt_path = "/mnt/data01/zmz/workspace/04ttshared/modify/triton/build/cmake.linux-aarch64-cpython-3.10/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt"
+        shutil.copy(src_path, "./tt.kernel.ttir.mlir")
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
-            f'--triton-to-linalg',
+            # f'--triton-to-linalg',
+            f'--triton-to-linalg-experimental',
             "-o", dst_ttshared_path]
+        print(f"zmz debug cmd ttir_to_ttsharedir: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
+        shutil.copy(dst_ttshared_path, "./tt.kernel.ttshared.mlir")
         return Path(dst_ttshared_path).read_text()
 
 
@@ -337,9 +342,11 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dst_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(src_path).write_text(ttsharedir_code)
         dicp_opt_path = _get_dicp_opt_path()
+        dicp_opt_path = "/mnt/data01/zmz/workspace/04ttshared/Triton/third_party/triton/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/tools/dicp_triton_opt/dicp_opt"
         dicp_cmd_list = [dicp_opt_path, src_path,
             f'--linalg-to-linked=global-kernel=false named-ops=true',
             "-o", dst_path]
+        print(f"zmz debug cmd ttsharedir_to_linkedir: {dicp_cmd_list}")
         ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
         with open(dst_path, 'r') as f:
@@ -350,6 +357,22 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             content = content.replace("*xbf", "?xbf")
             with open(dst_path, 'w') as f:
                 f.write(content)
+
+        # 匹配形如 "memref<...> to tensor<...>" 的模式
+        pattern = r'(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)'
+        
+        with open(dst_path, 'r') as f:
+            lines = f.readlines()
+        
+        modified = []
+        for line in lines:
+            # 使用正则替换，保留memref和tensor类型，中间插入注释
+            new_line = re.sub(pattern, r'\1 // to \2', line)
+            modified.append(new_line)
+        
+        with open(dst_path, 'w') as f:
+            f.writelines(modified)
+        shutil.copy(dst_path, "./tt.kernel.linkedir.mlir")
         return Path(dst_path).read_text()
 
 
@@ -597,11 +620,11 @@ class CPUOptions:
         key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
         return hashlib.md5(key.encode("utf-8")).hexdigest()
 
-@register_descriptor
-class AscendAttrsDescriptor(AttrsDescriptor):
+# @register_descriptor
+# class AscendAttrsDescriptor(AttrsDescriptor):
 
-    def _add_backend_properties(self, params=None, values=None):
-        pass
+#     def _add_backend_properties(self, params=None, values=None):
+#         pass
 
 class NPUUtils(object):
     def __new__(cls):
@@ -631,7 +654,9 @@ class NPUUtils(object):
         self.npu_utils_mod = mod
 
     def load_binary(self, name, kernel, shared, device):
+        import sys
         fnname, mix_mode = name.split()
+        # return (self.npu_utils_mod.load_kernel_binary(fnname, kernel, shared, device, mix_mode), sys.maxsize)
         return self.npu_utils_mod.load_kernel_binary(fnname, kernel, shared, device, mix_mode)
 
     @functools.lru_cache()
@@ -796,6 +821,8 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
     def _ty_to_cpp(ty):
         if ty[0] == '*':
             return "void*"
+        if ty == "constexpr":
+            return "PyObject*"
         return {
             "i1": "int32_t",
             "i8": "int8_t",
@@ -813,6 +840,8 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
 
     def _extracted_ty(ty):
         if ty[0] == '*':
+            return "PyObject*"
+        if ty == "constexpr":
             return "PyObject*"
         return {
             'i1': 'int32_t',

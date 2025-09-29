@@ -25,13 +25,12 @@ echo apply_patch: $apply_patch
 echo "======================================================"
 
 if [[ $compile_triton_shared == true ]]; then
-    echo "come into compile_triton_shared"
     echo "start compile triton_shared"
     cd third_party
-    mkdir -p latest_triton_shared && rm -rf latest_triton_shared/*
-    cp -r triton_shared latest_triton_shared
-    cp -r triton latest_triton_shared
-    cd latest_triton_shared
+    mkdir -p build && rm -rf build/*
+    cp -r triton_shared build
+    cp -r triton build
+    cd build
     export TRITON_PLUGIN_DIRS=$(pwd)/triton_shared
     cd triton_shared && git clean -xdf && git checkout . && git checkout 2b728ad97bc02af821a0805b09075838911d4c19 && ls ../../../patch/v3_4/triton_shared.patch | xargs -n1 git apply && cd ../
     cd triton && git clean -xdf && git checkout . && cd ../

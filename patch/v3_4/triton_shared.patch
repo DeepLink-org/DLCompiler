@@ -143,19 +143,18 @@ index 1d9244d..6fc0df1 100644
    }
  };
 diff --git a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
-index 44ecd72..3c4e80d 100644
+index 44ecd72..6d05fd8 100644
 --- a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
 +++ b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
-@@ -101,5 +101,6 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
+@@ -101,5 +101,5 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
  
    // Note: the ordering here matters!
    // These patterns are added last to they will be tried last.
 -  linalg::populateElementwiseToLinalgConversionPatterns(patterns);
 +  // linalg::populateElementwiseToLinalgConversionPatterns(patterns);
-+  llvm::errs() << "zmz debug experiment: skip elementwise to linalg conversion\n";
  }
 diff --git a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp
-index 8c86fe2..8f16a44 100644
+index 8c86fe2..6aa07da 100644
 --- a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp
 +++ b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp
 @@ -146,7 +146,8 @@ public:
@@ -168,43 +167,16 @@ index 8c86fe2..8f16a44 100644
          });
  
      if (pidsToFuncArgs) {
-@@ -194,14 +195,17 @@ public:
-         addProgramInfo(func);
-       }
-     }
-+    llvm::errs() << "zmz debug After adding program info\n";
- 
-     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
-       signalPassFailure();
-     }
-+    llvm::errs() << "zmz debug After applyPartialConversion\n";
- 
-     if (failed(applyTensorConcatDecomposition())) {
-       signalPassFailure();
-     }
-+    llvm::errs() << "zmz debug After applyTensorConcatDecomposition\n";
- 
-     // Convert tt.func and tt.return into func's counterparts
-     if (ttToFuncFunc) {
-@@ -241,6 +245,7 @@ public:
-         func.erase();
-       });
-     }
-+    llvm::errs() << "zmz debug After ttToFuncFunc\n";
-   }
- };
- 
 diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
-index 1c8ed9c..9fa042e 100644
+index 1c8ed9c..f7b09fa 100644
 --- a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
 +++ b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
-@@ -91,5 +91,6 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
+@@ -91,5 +91,5 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
    // will be tried last. Incorrect ordering or having MetaOpConverter has lower
    // PatternBenefit will result in element-wise meta ops being converted to
    // linalg.generic ops.
 -  linalg::populateElementwiseToLinalgConversionPatterns(patterns);
 +//   linalg::populateElementwiseToLinalgConversionPatterns(patterns);
-+    llvm::errs() << "zmz debug skip populateElementwiseToLinalgConversionPatterns\n";
  }
 diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
 index 25b7db8..d31b410 100644

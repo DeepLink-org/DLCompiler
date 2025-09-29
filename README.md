@@ -63,7 +63,7 @@ bash compile_on_ascend.sh
 ### ttshared pipeline
 ```
 bash compile_shared.sh apply_patch=true     # 如果不应用patch，可以直接执行 bash compile_shared.sh
-export TRITON_SHARED_OPT_PATH=$PWD/third_party/latest_triton_shared/triton/build/cmake.linux-aarch64-cpython-3.10/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt
+export TRITON_SHARED_OPT_PATH=$PWD/third_party/build/triton/build/cmake.linux-aarch64-cpython-3.10/third_party/triton_shared/tools/triton-shared-opt/triton-shared-opt
 export DICP_OPT_PATH=$PWD/third_party/triton/python/build/cmake.linux-aarch64-cpython-3.10/third_party/dicp_triton/tools/dicp_triton_opt/dicp_opt
 export LOWER_BY_TTSHARED=1
 ```

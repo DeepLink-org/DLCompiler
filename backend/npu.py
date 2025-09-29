@@ -324,7 +324,6 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
-            # f'--triton-to-linalg',
             f'--triton-to-linalg-experimental',
             "-o", dst_ttshared_path]
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)

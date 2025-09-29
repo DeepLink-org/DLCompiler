@@ -2,18 +2,50 @@
 export LANG="zh_CN.UTF-8"
 export LC_ALL="zh_CN.UTF-8"
 
+home_path=$(pwd)
+# compile triton shared library with patch
+compile_triton_shared=false
+apply_patch=false
+
+# 遍历所有参数
+for arg in "$@"; do
+    if [ "$arg" = "compile_triton_shared=true" ]; then
+        echo "检测到 compile_triton_shared=true"
+        compile_triton_shared=true
+    elif [ "$arg" = "apply_patch=true" ]; then
+        echo "检测到 apply_patch=true"
+        apply_patch=true
+    fi
+done
+
+
+echo "start compile ========================================"
+echo compile_triton_shared: $compile_triton_shared
+echo apply_patch: $apply_patch
+echo "======================================================"
+
+if [[ $compile_triton_shared == true ]]; then
+    echo "come into compile_triton_shared"
+    echo "start compile triton_shared"
+    cd third_party
+    mkdir -p latest_triton_shared && rm -rf latest_triton_shared/*
+    cp -r triton_shared latest_triton_shared
+    cp -r triton latest_triton_shared
+    cd latest_triton_shared
+    export TRITON_PLUGIN_DIRS=$(pwd)/triton_shared
+    cd triton_shared && git clean -xdf && git checkout . && git checkout 2b728ad97bc02af821a0805b09075838911d4c19 && ls ../../../patch/v3_4/triton_shared.patch | xargs -n1 git apply && cd ../
+    cd triton && git clean -xdf && git checkout . && cd ../
+    cd triton && git checkout $(cat ../triton_shared/triton-hash.txt) && ls ../../../patch/v3_4/triton.patch | xargs -n1 git apply
+    TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true python3 -m pip install --no-build-isolation -vvv '.[tests]'
+    echo "triton_shared compile success!"
+fi
+
 # SET ENV
 # export JSON_PATH=/path/to/your/json/file
 # export GOOGLETEST_DIR=/path/to/your/googletest/directory
 # export LLVM_BUILD_DIR=/path/to/your/llvm-project/build
 # export LLVM_TGZ_PATH=/path/to/your/llvm-86b69c31-ubuntu-arm64.tar.gz      # 可选，用于指定LLVM的tgz包路径
-export TRITON_PLUGIN_DIRS=$(pwd)
-apply_patch=false
-
-# 解析命令行参数
-if [ "$1" = "apply_patch=true" ]; then
-    apply_patch=true
-fi
+export TRITON_PLUGIN_DIRS=$home_path
 
 is_npu=false
 check_npu() {

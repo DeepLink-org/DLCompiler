@@ -324,9 +324,21 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         triton_shared_opt_path = _get_triton_shared_opt_path()
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
-            f'--triton-to-linalg',
+            f'--triton-to-linalg-experimental',
             "-o", dst_ttshared_path]
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
+
+        # 匹配形如 "memref<...> to tensor<...>" 的模式
+        pattern = r'(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)'
+        with open(dst_ttshared_path, 'r') as f:
+            lines = f.readlines()
+        modified = []
+        for line in lines:
+            # 使用正则替换，保留memref和tensor类型，中间插入注释
+            new_line = re.sub(pattern, r'\1 // to \2', line)
+            modified.append(new_line)
+        with open(dst_ttshared_path, 'w') as f:
+            f.writelines(modified)
         return Path(dst_ttshared_path).read_text()
 
 

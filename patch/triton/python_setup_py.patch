@@ -1,5 +1,5 @@
 diff --git a/python/setup.py b/python/setup.py
-index 7bae45641..e45fa2da5 100644
+index 7bae45641..1187f8170 100644
 --- a/python/setup.py
 +++ b/python/setup.py
 @@ -160,6 +160,13 @@ class Package(NamedTuple):
@@ -30,3 +30,30 @@ index 7bae45641..e45fa2da5 100644
      return Package("llvm", name, url, "LLVM_INCLUDE_DIRS", "LLVM_LIBRARY_DIR", "LLVM_SYSPATH")
  
  
+@@ -486,6 +500,26 @@ class CMakeBuild(build_ext):
+         subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=cmake_dir)
+         subprocess.check_call(["cmake", "--build", ".", "--target", "mlir-doc"], cwd=cmake_dir)
+ 
++        cmake_build_dir = get_cmake_dir()
++        tools_src_dir = os.path.join(
++            cmake_build_dir,
++            "third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/"
++        )
++        dicp_opt_src = os.path.join(
++            cmake_build_dir,
++            "third_party/dicp_triton/tools/dicp_triton_opt/"
++        )
++        dicp_triton_dst_dir = os.path.join(os.path.dirname(__file__), "triton", "backends", "dicp_triton")
++        os.makedirs(dicp_triton_dst_dir, exist_ok=True)
++
++        shutil.copy(
++            os.path.join(tools_src_dir, "triton-shared-opt"),
++            os.path.join(dicp_triton_dst_dir, "triton-shared-opt-v3_2")
++        )
++        shutil.copy(
++            os.path.join(dicp_opt_src, "dicp_opt"),
++            dicp_triton_dst_dir
++        )
+ 
+ nvidia_version_path = os.path.join(get_base_dir(), "cmake", "nvidia-toolchain-version.json")
+ with open(nvidia_version_path, "r") as nvidia_version_file:

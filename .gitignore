@@ -95,3 +95,7 @@ tags
 # npu
 fusion_result.json
 *.log
+
+# package
+backend/triton-shared-opt-v3_2
+backend/dicp_opt

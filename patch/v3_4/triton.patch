@@ -31,15 +31,15 @@ index dffc45ab1..2fa173eb7 100644
  
  
 diff --git a/unittest/googletest.cmake b/unittest/googletest.cmake
-index 064dc8860..4a2f6307b 100644
+index 064dc8860..4ba22f32a 100644
 --- a/unittest/googletest.cmake
 +++ b/unittest/googletest.cmake
 @@ -1,6 +1,13 @@
  include(FetchContent)
  
 -set(GOOGLETEST_DIR "" CACHE STRING "Location of local GoogleTest repo to build against")
-+if(DEFINED ENV{GOOGLETEST_DIR})
-+    set(GOOGLETEST_DIR $ENV{GOOGLETEST_DIR})
++if(DEFINED ENV{GOOGLETEST_DIR34})
++    set(GOOGLETEST_DIR $ENV{GOOGLETEST_DIR34})
 +else()
 +    set(GOOGLETEST_DIR "")
 +endif()

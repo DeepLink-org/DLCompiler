@@ -77,15 +77,18 @@ def _get_triton_adapter_opt_path() -> str:
     return path
 
 def _get_dicp_opt_path() -> str:
-    path = os.getenv("DICP_OPT_PATH", "")
-    if path == "":
-        raise Exception("DICP_OPT_PATH is not set.")
+    base_path = os.path.dirname(__file__)
+    path = os.path.join(base_path, "dicp_opt")
     return path
 
 def _get_triton_shared_opt_path() -> str:
-    path = os.getenv("TRITON_SHARED_OPT_PATH", "")
-    if path == "":
-        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
+    base_path = os.path.dirname(__file__)
+    path = os.path.join(base_path, "triton-shared-opt-v3_2")
+    path = os.getenv("TRITON_SHARED_OPT_PATH", path)    # allow user override
+    if not os.path.exists(path):
+        raise EnvironmentError(f"Couldn't find triton-shared-opt at {path}, set TRITON_SHARED_OPT_PATH to override")
+    if path != os.path.join(base_path, "triton-shared-opt-v3_2"):
+        print(f"Using triton-shared-opt from TRITON_SHARED_OPT_PATH: {path}")
     return path
 
 def _get_mlir_path(path: str, *paths) -> str:
@@ -317,14 +320,17 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
 
 def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
     ttir_code = str(mod)
+    # 注释掉gpu.barrier
+    ttir_code = re.sub(r'gpu\.barrier', r'// gpu.barrier', ttir_code)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_shared_opt_path = _get_triton_shared_opt_path()
+        ttshared_cmd = '--triton-to-linalg-experimental' if "v3_2" not in triton_shared_opt_path else '--triton-to-linalg'
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
-            f'--triton-to-linalg-experimental',
+            ttshared_cmd,
             "-o", dst_ttshared_path]
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
 
@@ -501,7 +507,7 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
     linalg, metadata = _parse_linalg_metadata(linalg, metadata)
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
-        lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "0")
+        lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "1")
         if lower_by_ttshared == "1":
             ttadapter_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(ttadapter_path).write_text(linalg)

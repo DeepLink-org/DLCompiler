@@ -8,8 +8,8 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -43,7 +43,7 @@ static auto constexpr LAUNCH_GRID_RANK = getMaxEnumValForProgramIDDim() + 1;
 static unsigned int constexpr TRITON_PROGRAM_INFO_ARG_COUNT =
     LAUNCH_GRID_RANK * 2;
 
-void convertTTFunc(func::FuncOp func, const bool existDot) {
+void convertFuncFunc(func::FuncOp func, const bool existDot) {
   OpBuilder builder(func);
 
   auto name = func.getName();
@@ -130,12 +130,12 @@ void convertTTFunc(func::FuncOp func, const bool existDot) {
   IRMapping map;
   funcBody.cloneInto(&funcFuncBody, map);
 
-  for (Block &block : funcFuncBody.getBlocks()) {
-    auto term = block.getTerminator();
-    builder.setInsertionPoint(term);
-    builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
-    term->erase();
-  }
+  // for (Block &block : funcFuncBody.getBlocks()) {
+  //   auto term = block.getTerminator();
+  //   builder.setInsertionPoint(term);
+  //   builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
+  //   term->erase();
+  // }
   func.erase();
 }
 
@@ -216,7 +216,7 @@ public:
 
     // 函数头尾转换
     moduleOp.walk(
-        [&](func::FuncOp func) { convertTTFunc(func, existDot); });
+        [&](func::FuncOp func) { convertFuncFunc(func, existDot); });
 
     PassManager pm(context);
     if (failed(pm.run(moduleOp))) {

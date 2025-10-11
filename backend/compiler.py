@@ -189,7 +189,7 @@ class DICPBackend(BaseBackend):
         elif self.driver.target =='ascend':
             from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, ttir_to_ttsharedir, ttsharedir_to_linkedir, linalg_to_bin_enable_npu_compile
             stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
-            lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "0")
+            lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "1")
             if lower_by_ttshared == "0":
                 if options.enable_npu_compile:
                     stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)

@@ -327,7 +327,7 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_shared_opt_path = _get_triton_shared_opt_path()
-        ttshared_cmd = '--triton-to-linalg-experimental' if "third_party/build" in triton_shared_opt_path else '--triton-to-linalg'
+        ttshared_cmd = '--triton-to-linalg-experimental' if "v3_2" not in triton_shared_opt_path else '--triton-to-linalg'
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
             ttshared_cmd,

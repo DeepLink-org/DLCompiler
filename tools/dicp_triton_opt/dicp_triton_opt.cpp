@@ -78,6 +78,11 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   registerDICPDialects(registry);
-  return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "dicp optimizer\n", registry));
+
+  auto r = mlir::MlirOptMain(argc, argv, "dicp optimizer\n", registry);
+  if (!r.succeeded()) {
+    llvm::errs() << "MlirOptMain failed\n";
+  }
+
+  return mlir::asMainReturnCode(r);
 }

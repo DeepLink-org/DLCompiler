@@ -317,14 +317,17 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
 
 def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
     ttir_code = str(mod)
+    # 注释掉gpu.barrier
+    ttir_code = re.sub(r'gpu\.barrier', r'// gpu.barrier', ttir_code)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_shared_opt_path = _get_triton_shared_opt_path()
+        ttshared_cmd = '--triton-to-linalg-experimental' if "third_party/build" in triton_shared_opt_path else '--triton-to-linalg'
 
         cmd_shared_list = [triton_shared_opt_path, src_path,
-            f'--triton-to-linalg-experimental',
+            ttshared_cmd,
             "-o", dst_ttshared_path]
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
 

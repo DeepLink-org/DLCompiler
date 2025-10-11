@@ -96,6 +96,9 @@ rm -rf build/
 if [ -z "$LLVM_BUILD_DIR" ]; then
     TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
     python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
+    # echo "LLVM_BUILD_DIR is not set, using system LLVM or downloading prebuilt LLVM."
+    # TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
+    # python3 -m pip wheel --no-deps --no-build-isolation -w dist/ .
 else
     echo "LLVM_BUILD_DIR is set to $LLVM_BUILD_DIR"
     LLVM_INCLUDE_DIRS=$LLVM_BUILD_DIR/include \

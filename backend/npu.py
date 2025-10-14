@@ -21,6 +21,9 @@ import shutil
 ###################### utils.py start ######################
 
 TRITON_PROFILER_REGISTERED = False
+dump_ir = os.environ.get("TRITON_DUMP_IR", "0") == "1"
+if dump_ir:
+    os.environ['TRITON_ALWAYS_COMPILE'] = "1"
 
 def downgrade_llir(llir):
     llir = _downgrade_mem_attrs(llir)
@@ -332,6 +335,11 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         cmd_shared_list = [triton_shared_opt_path, src_path,
             ttshared_cmd,
             "-o", dst_ttshared_path]
+        if dump_ir:
+            if not os.path.exists("./tmp"):
+                os.makedirs("./tmp")
+            shutil.copy(src_path, "./tmp/kernel.ttir.mlir")
+            print(f"DEBUG dump ir[ttir_to_ttsharedir] command: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
 
         # 匹配形如 "memref<...> to tensor<...>" 的模式
@@ -345,6 +353,8 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             modified.append(new_line)
         with open(dst_ttshared_path, 'w') as f:
             f.writelines(modified)
+        if dump_ir:
+            shutil.copy(dst_ttshared_path, "./tmp/kernel.ttshared.mlir")
         return Path(dst_ttshared_path).read_text()
 
 
@@ -358,6 +368,8 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dicp_cmd_list = [dicp_opt_path, src_path,
             f'--linalg-to-linked=global-kernel=false named-ops=true',
             "-o", dst_path]
+        if dump_ir:
+            print(f"DEBUG dump ir[ttsharedir_to_linkedir] command: {dicp_cmd_list}")
         ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
         with open(dst_path, 'r') as f:
@@ -368,6 +380,8 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             content = content.replace("*xbf", "?xbf")
             with open(dst_path, 'w') as f:
                 f.write(content)
+        if dump_ir:
+            shutil.copy(dst_path, "./tmp/kernel.linkedir.mlir")
         return Path(dst_path).read_text()
 
 
@@ -547,6 +561,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             + _compile_option_list
             + ["-o", bin_file]
         )
+        if dump_ir:
+            print(f"DEBUG dump ir[bishengir-compile] command: {cmd_list}")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)

@@ -1,3 +1,29 @@
+diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dialect/Triton/IR/TritonOps.td
+index e9f892da0..38ec0b277 100644
+--- a/include/triton/Dialect/Triton/IR/TritonOps.td
++++ b/include/triton/Dialect/Triton/IR/TritonOps.td
+@@ -1410,5 +1410,21 @@ def TT_DescriptorScatterOp : TT_Op<"descriptor_scatter", [TT_DescriptorStoreLike
+   let hasVerifier = 1;
+ }
+ 
++def TT_AnnotationOp : TT_Op<"annotation", [Pure, MemoryEffects<[MemWrite]>]> {
++  let summary = "Annotate a tensor with key-value attribute pairs";
++  let description = [{
++    `tt.annotation` operation can be used to annotate a tensor with
++    key-value attribute pairs.
++
++    Example:
++    ```mlir
++    tt.annotation %target {key : val}
++    ```
++  }];
++  let arguments = (ins TT_Tensor:$src);
++  let assemblyFormat = [{
++    $src attr-dict `:` type($src)
++  }];
++}
+ 
+ #endif // Triton_OPS
 diff --git a/setup.py b/setup.py
 index dffc45ab1..2fa173eb7 100644
 --- a/setup.py

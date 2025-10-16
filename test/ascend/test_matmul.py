@@ -3,9 +3,9 @@ Matrix Multiplication
 ===============
 """
 
+import torch
 import triton
 import triton.language as tl
-import torch
 import triton.language.extra.deeplink as dl
 
 DEV = "npu"

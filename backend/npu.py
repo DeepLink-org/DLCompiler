@@ -21,8 +21,10 @@ import shutil
 ###################### utils.py start ######################
 
 TRITON_PROFILER_REGISTERED = False
-dump_ir = os.environ.get("TRITON_DUMP_IR", "0") == "1"
-if dump_ir:
+dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
+replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
+replace_linkded_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
+if dump_ir or (replace_ttshared_ir is not None) or (replace_linkded_ir is not None):
     os.environ['TRITON_ALWAYS_COMPILE'] = "1"
 
 def downgrade_llir(llir):
@@ -355,6 +357,9 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             f.writelines(modified)
         if dump_ir:
             shutil.copy(dst_ttshared_path, "./tmp/kernel.ttshared.mlir")
+        if replace_ttshared_ir is not None:
+            print(f"[DEBUG] Replace ttsharedir with {replace_ttshared_ir}")
+            return Path(replace_ttshared_ir).read_text()
         return Path(dst_ttshared_path).read_text()
 
 
@@ -382,6 +387,9 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
                 f.write(content)
         if dump_ir:
             shutil.copy(dst_path, "./tmp/kernel.linkedir.mlir")
+        if replace_linkded_ir is not None:
+            print(f"[DEBUG] Replace linkdedir with {replace_linkded_ir}")
+            return Path(replace_linkded_ir).read_text()
         return Path(dst_path).read_text()
 
 

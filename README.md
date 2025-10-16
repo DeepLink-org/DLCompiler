@@ -70,7 +70,7 @@ bash compile_shared.sh apply_patch=true     # 如果不应用patch，可以直�
 
 ## 查看编译过程的mlir文件
 ```
-export TRITON_DUMP_IR=1
+export DLC_DUMP_IR=1, 默认在当前目录下
 ```
 
 ## 测试

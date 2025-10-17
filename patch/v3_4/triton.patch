@@ -25,7 +25,7 @@ index e9f892da0..38ec0b277 100644
  
  #endif // Triton_OPS
 diff --git a/setup.py b/setup.py
-index dffc45ab1..2fa173eb7 100644
+index dffc45ab1..35c0a0da7 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -182,6 +182,13 @@ class Package:
@@ -56,6 +56,24 @@ index dffc45ab1..2fa173eb7 100644
      return Package("llvm", name, url, "LLVM_INCLUDE_DIRS", "LLVM_LIBRARY_DIR", "LLVM_SYSPATH", sym_name=sym_name)
  
  
+@@ -528,6 +542,17 @@ class CMakeBuild(build_ext):
+         subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=cmake_dir)
+         subprocess.check_call(["cmake", "--build", ".", "--target", "mlir-doc"], cwd=cmake_dir)
+ 
++        cmake_build_dir = get_cmake_dir()
++        opt_dir = os.path.join(
++            cmake_build_dir,
++            "third_party/triton_shared/tools/triton-shared-opt"
++        )
++
++        shutil.copy(
++            os.path.join(opt_dir, "triton-shared-opt"),
++            os.path.join(cmake_build_dir, "../../../")
++        )
++
+ 
+ def download_and_copy_dependencies():
+     nvidia_version_path = os.path.join(get_base_dir(), "cmake", "nvidia-toolchain-version.json")
 diff --git a/unittest/googletest.cmake b/unittest/googletest.cmake
 index 064dc8860..4ba22f32a 100644
 --- a/unittest/googletest.cmake

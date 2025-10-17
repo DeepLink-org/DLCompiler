@@ -93,6 +93,7 @@ tags
 *.ttir
 
 # npu
+kernel_meta/
 fusion_result.json
 *.log
 

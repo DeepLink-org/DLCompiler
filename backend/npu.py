@@ -89,11 +89,12 @@ def _get_dicp_opt_path() -> str:
 def _get_triton_shared_opt_path() -> str:
     base_path = os.path.dirname(__file__)
     path = os.path.join(base_path, "triton-shared-opt-v3_2")
+    path34 = os.path.join(base_path, "triton-shared-opt-v3_4")
+    if os.path.exists(path34):
+        path = path34
     path = os.getenv("TRITON_SHARED_OPT_PATH", path)    # allow user override
     if not os.path.exists(path):
         raise EnvironmentError(f"Couldn't find triton-shared-opt at {path}, set TRITON_SHARED_OPT_PATH to override")
-    if path != os.path.join(base_path, "triton-shared-opt-v3_2"):
-        print(f"Using triton-shared-opt from TRITON_SHARED_OPT_PATH: {path}")
     return path
 
 def _get_mlir_path(path: str, *paths) -> str:

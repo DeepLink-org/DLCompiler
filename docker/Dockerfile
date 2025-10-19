@@ -127,7 +127,22 @@ RUN set -ex && \
 
 ENV LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
 
+RUN mkdir -p /root/.triton
+COPY nvidia /root/.triton/nvidia
+
 COPY code .
 
 RUN ln -sf /usr/lib/aarch64-linux-gnu/libstdc++.so.6 $CONDA_DIR/envs/dlcompiler/lib/libstdc++.so.6 && \
     ldconfig
+
+RUN set -ex && \
+    source ~/.bashrc && \
+    conda activate dlcompiler && \
+    cd /root/workspace && \
+    export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH && \
+    ln -sf /usr/lib/aarch64-linux-gnu/libstdc++.so.6 $CONDA_DIR/envs/dlcompiler/lib/libstdc++.so.6 && \
+    ldconfig && \
+    echo "当前LD_LIBRARY_PATH: $LD_LIBRARY_PATH" && \
+    echo "Python路径: $(which python)" && \
+    echo "PIP路径: $(which pip)" && \
+    echo y | bash compile.sh

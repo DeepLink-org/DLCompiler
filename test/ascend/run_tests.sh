@@ -5,12 +5,12 @@ script=$(readlink -f "$0")
 script_dir=$(dirname "$script")
 
 function run_pytestcases() {
-#   if [ -d ${HOME}/.triton/dump ]; then
-#     rm -rf ${HOME}/.triton/dump
-#   fi
-#   if [ -d ${HOME}/.triton/cache ]; then
-#     rm -rf ${HOME}/.triton/cache
-#   fi
+  if [ -d ${HOME}/.triton/dump ]; then
+    rm -rf ${HOME}/.triton/dump
+  fi
+  if [ -d ${HOME}/.triton/cache ]; then
+    rm -rf ${HOME}/.triton/cache
+  fi
 
   cd ${script_dir}
   TARGET_DIR="$1"
@@ -19,7 +19,7 @@ function run_pytestcases() {
 
 }
 
-pytestcase_dir=("pytest_ut")
+pytestcase_dir=("passed_tests")
 for test_dir in "${pytestcase_dir[@]}"; do
     echo "run pytestcase in ${test_dir}"
     run_pytestcases ${test_dir}

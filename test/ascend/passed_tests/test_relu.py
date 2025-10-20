@@ -23,7 +23,7 @@ import triton.language as tl
 import torch
 import pytest
 import test_common
-import triton.language.extra.ascend.libdevice as libdevice
+import triton.language.extra.deeplink.libdevice as libdevice
 
 
 def torch_relu(x0, x1):
@@ -45,8 +45,8 @@ def triton_relu(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK
 
 @pytest.mark.parametrize('param_list',
                          [
-                             ['float32', (2, 4096, 8), 2, 32768, 1024],
-                             ['float16', (2, 4096, 8), 2, 32768, 1024],
+                             ['float32', (2, 4096, 8), 2, 32768, 512],
+                             ['float16', (2, 4096, 8), 2, 32768, 512],
                          ])
 def test_relu(param_list):
     # 生成数据

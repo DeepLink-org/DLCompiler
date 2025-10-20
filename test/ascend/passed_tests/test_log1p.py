@@ -23,7 +23,7 @@ import triton
 import triton.language as tl
 import torch
 import test_common
-import triton.language.extra.ascend.libdevice as libdevice
+import triton.language.extra.deeplink.libdevice as libdevice
 
 
 def torch_log1p(x0, x1):

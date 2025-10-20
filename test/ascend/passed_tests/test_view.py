@@ -37,7 +37,7 @@ def fn_npu_(output_ptr, x_ptr, XB: tl.constexpr, YB: tl.constexpr, ZB: tl.conste
 
     X = tl.load(x_ptr + idx)
 
-    ret = tl.view(X, (ZB, XB * YB))
+    ret = tl.reshape(X, (ZB, XB * YB))
 
     oidx = tl.arange(0, ZB)[:, None] * XB * YB + tl.arange(0, XB * YB)[None, :]
 

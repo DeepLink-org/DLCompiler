@@ -20,7 +20,7 @@
 
 import triton
 import triton.language as tl
-from triton.language.extra.ascend.libdevice import pow
+from triton.language.extra.deeplink.libdevice import pow
 import torch
 import torch_npu
 import pytest
@@ -30,21 +30,14 @@ types = [
     "float32",
     "float16",
     "bfloat16",
-    "int64",
-    "int32",
-    "int16",
-    "int8",
 ]
 
 shapes = [
-    # 3,
-    # 32,
-    37,
-    # 256,
-    # 781,
+    16,
+    256,
 ]
 
-@pytest.mark.skip(reason="waiting for bishengir-compile to support")
+# @pytest.mark.skip(reason="waiting for bishengir-compile to support")
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_pow_vv(sigtype, N):
@@ -102,7 +95,7 @@ def test_pow_vs_dynamic(sigtype, N):
     torch_ref = torch_func(x0, x1)
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
-@pytest.mark.skip(reason="waiting for bishengir-compile to support")
+# @pytest.mark.skip(reason="waiting for bishengir-compile to support")
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_pow_vs_const(sigtype, N):

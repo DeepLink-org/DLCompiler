@@ -18,6 +18,8 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 
@@ -42,6 +44,41 @@ inline constexpr unsigned getMaxEnumValForProgramIDDim() {
 static auto constexpr LAUNCH_GRID_RANK = getMaxEnumValForProgramIDDim() + 1;
 static unsigned int constexpr TRITON_PROGRAM_INFO_ARG_COUNT =
     LAUNCH_GRID_RANK * 2;
+
+class TritonTypeConverter : public mlir::TypeConverter {
+public:
+  explicit TritonTypeConverter() {
+    addConversion([](Type type) { return type; });
+
+    addConversion([](triton::PointerType ptrType) {
+      return MemRefType::get({ShapedType::kDynamic}, ptrType.getPointeeType());
+    });
+
+    addConversion([](TensorType tensorType) -> Type {
+      auto elemType = tensorType.getElementType();
+      if (auto ptrType = dyn_cast<triton::PointerType>(elemType)) {
+        elemType = ptrType.getPointeeType();
+      }
+      return MemRefType::get(tensorType.getShape(), elemType);
+    });
+  }
+};
+
+// TritonTypeConverter::TritonTypeConverter() {
+//   addConversion([](Type type) { return type; });
+
+//   addConversion([](triton::PointerType ptrType) {
+//     return MemRefType::get({ShapedType::kDynamic}, ptrType.getPointeeType());
+//   });
+
+//   addConversion([](TensorType tensorType) -> Type {
+//     auto elemType = tensorType.getElementType();
+//     if (auto ptrType = dyn_cast<triton::PointerType>(elemType)) {
+//       elemType = ptrType.getPointeeType();
+//     }
+//     return MemRefType::get(tensorType.getShape(), elemType);
+//   });
+// }
 
 void convertFuncFunc(func::FuncOp func, const bool existDot) {
   OpBuilder builder(func);
@@ -154,12 +191,13 @@ void addProgramInfo(func::FuncOp func, bool globalKernel) {
   }
 }
 
-struct TritonAnnotationConverter
-    : OpRewritePattern<triton::AnnotationOp> {
-  using OpRewritePattern<triton::AnnotationOp>::OpRewritePattern;
+class TritonAnnotationConverter
+    : public OpConversionPattern<triton::AnnotationOp> {
+public:
+  using OpConversionPattern<triton::AnnotationOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(triton::AnnotationOp op,
-                                PatternRewriter &rewriter) const final {
+  LogicalResult matchAndRewrite(triton::AnnotationOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const {
     auto markOp = rewriter.create<annotation::MarkOp>(op.getLoc(), op.getSrc());
     // Forward all annotations.
     markOp->setAttrs(op->getAttrs());
@@ -168,24 +206,148 @@ struct TritonAnnotationConverter
   }
 };
 
+class ExternElementwiseClOpConverter
+    : public OpConversionPattern<triton::ExternElementwiseOp> {
+public:
+  using OpConversionPattern<triton::ExternElementwiseOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(triton::ExternElementwiseOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const {
+    auto loc = op.getLoc();
+    if (!op.getPure()) {
+      op->emitWarning() << "impure elementwise op!";
+      return failure();
+    }
+    if (op.getSymbol().contains("__hmf_")) {
+      // 1. get or create the declaration of external elementwise function
+      Type dstTy = op.getResult().getType();
+      bool isDstScalar = !isa<RankedTensorType>(dstTy);
+      Type dstElemTy =
+          isDstScalar ? dstTy : cast<RankedTensorType>(dstTy).getElementType();
+      SmallVector<Type, 4> srcElemTys;
+      SmallVector<Value, 4> srcs;
+      for (auto src : op.getSrcs()) {
+        if (!isa<RankedTensorType>(src.getType())) {
+          src = rewriter.create<tensor::FromElementsOp>(
+              op.getLoc(), RankedTensorType::get({(int64_t)1}, src.getType()),
+              src);
+        }
+        srcs.push_back(src);
+        srcElemTys.push_back(
+            cast<RankedTensorType>(src.getType()).getElementType());
+      }
+      
+      FunctionType elemFuncType =
+          FunctionType::get(rewriter.getContext(), srcElemTys, {dstElemTy});
+      auto mod = SymbolTable::getNearestSymbolTable(op);
+      auto extFunc = dyn_cast_or_null<SymbolOpInterface>(
+          SymbolTable::lookupSymbolIn(mod, op.getSymbol()));
+      if (!extFunc) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(&mod->getRegion(0).front());
+        extFunc = rewriter.create<func::FuncOp>(rewriter.getUnknownLoc(),
+                                                op.getSymbol(), elemFuncType);
+        extFunc.setPrivate();
+        extFunc->setAttr(LLVM::LLVMDialect::getReadnoneAttrName(),
+                        UnitAttr::get(rewriter.getContext()));
+      }
+      assert(isa<FunctionOpInterface>(
+          SymbolTable::lookupSymbolIn(mod, op.getSymbol())));
+      // 2. prepare the output tensor
+      Value output;
+      if (isDstScalar) {
+        dstTy = RankedTensorType::get({(int64_t)1}, dstElemTy);
+      }
+      bool found = false;
+      for (Value v : srcs) {
+        if (v.getType() == dstTy) {
+          found = true;
+          output = v;
+          break;
+        }
+      }
+      if (!found) {
+        output = rewriter.create<tensor::EmptyOp>(
+            op.getLoc(), cast<RankedTensorType>(dstTy).getShape(), dstElemTy);
+      }
+      // 3. create the linalg.map op
+      auto mapOp = rewriter.create<linalg::MapOp>(
+          loc,
+          /*inputs=*/srcs,
+          /*init=*/output,
+          /*bodyBuilder=*/
+          [&](OpBuilder &builder, Location loc, ValueRange regionArgs) {
+            auto elemOp = builder.create<func::CallOp>(loc,
+                                                      /*name=*/op.getSymbol(),
+                                                      /*resultType=*/dstElemTy,
+                                                      /*operands=*/regionArgs);
+            builder.create<linalg::YieldOp>(loc, elemOp->getResults());
+          });
+      if (isDstScalar) {
+        // need to convert tensor back to scalar
+        auto indexType = rewriter.getIndexType();
+        Value zeroConstant = rewriter.create<arith::ConstantOp>(
+            loc, indexType, rewriter.getIntegerAttr(indexType, 0));
+        auto extractOp = rewriter.create<tensor::ExtractOp>(
+            loc, mapOp.getResults()[0], zeroConstant);
+        rewriter.replaceOp(op, extractOp);
+      } else {
+        rewriter.replaceOp(op, mapOp);
+      }
+      return success();
+    }
+    return failure();
+  }
+};
+
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<
         func::FuncDialect, arith::ArithDialect, math::MathDialect,
-        linalg::LinalgDialect, affine::AffineDialect,
-        scf::SCFDialect, tensor::TensorDialect, annotation::AnnotationDialect,
-        bufferization::BufferizationDialect, memref::MemRefDialect>();
+        linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
+        cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
+        bufferization::BufferizationDialect, memref::MemRefDialect,
+        annotation::AnnotationDialect>();
   }
 
-  void populateLinalgToLinkedConversionPatterns(RewritePatternSet &patterns) {
+  void populateLinalgToLinkedConversionPatterns(TypeConverter &typeConverter, RewritePatternSet &patterns) {
+    populateFunctionOpInterfaceTypeConversionPattern<triton::FuncOp>(
+      patterns, typeConverter);
     patterns.add<TritonAnnotationConverter>(patterns.getContext());
+    patterns.add<ExternElementwiseClOpConverter>(
+      patterns.getContext());
+    if (!this->namedOps) {
+      linalg::populateElementwiseToLinalgConversionPatterns(patterns);
+    }
   }
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
     MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
+    RewritePatternSet patterns(&getContext());
+    ConversionTarget target(getContext());
+    TritonTypeConverter tritonTypeConverter{};
+
+    target.addLegalDialect<func::FuncDialect, arith::ArithDialect, math::MathDialect,
+      linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
+      cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
+      bufferization::BufferizationDialect, memref::MemRefDialect,
+      annotation::AnnotationDialect>();
+    target.addLegalOp<ModuleOp>();
+    // 根据条件判断需要转换的OP
+    target.addDynamicallyLegalOp<mlir::UnrealizedConversionCastOp>(
+        [](mlir::Operation *op) {
+          if (op->use_empty()) {
+            return false;
+          } else {
+            return true;
+          }
+        });
+
+    target.addDynamicallyLegalOp<triton::FuncOp>([&](triton::FuncOp op) {
+      return tritonTypeConverter.isSignatureLegal(op.getFunctionType());
+    });
     // Check if the kernel contains tl.dot. Without tl.dot,
     // the kernel would be pure AIV kernel.
     bool existDot = false;
@@ -193,11 +355,7 @@ public:
       existDot = true;
       return WalkResult::interrupt();
     });
-    this->populateLinalgToLinkedConversionPatterns(patterns);
-    if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
-      moduleOp.emitError("Pattern application failed");
-      signalPassFailure();
-    }
+    this->populateLinalgToLinkedConversionPatterns(tritonTypeConverter, patterns);
     size_t tritonFuncCount = 0;
     for (auto func : getOperation().getOps<triton::FuncOp>()) {
       ++tritonFuncCount;
@@ -213,7 +371,6 @@ public:
     for (auto func : getOperation().getOps<func::FuncOp>()) {
       addProgramInfo(func, globalKernel);
     }
-
     // 函数头尾转换
     moduleOp.walk(
         [&](func::FuncOp func) { convertFuncFunc(func, existDot); });
@@ -255,6 +412,12 @@ public:
                     IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
     }
 
+    target.addIllegalOp<triton::ExternElementwiseOp>();
+    target.addIllegalOp<triton::AnnotationOp>();
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+      moduleOp->emitError("failed to apply Convertion Patterns");
+      signalPassFailure();
+    }
   }
 };
 

@@ -1,4 +1,5 @@
 from triton.backends.dicp_triton.utils import init_dicp_driver
+from . import libdevice
 from .core import (
     insert_slice, 
     extract_slice, 
@@ -17,6 +18,7 @@ from .core import (
 )
 
 __all__ = [
+    "libdevice",
     "insert_slice", 
     "extract_slice", 
     "parallel", 

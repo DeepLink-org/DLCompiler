@@ -28,8 +28,8 @@ if [[ $compile_triton_shared == true ]]; then
     echo "start compile triton_shared"
     cd third_party
     mkdir -p build && rm -rf build/*
-    git clone triton_shared build/triton_shared
-    git clone triton build/triton
+    git clone --no-hardlinks triton_shared build/triton_shared
+    git clone --no-hardlinks triton build/triton
     cd build
     export TRITON_PLUGIN_DIRS=$(pwd)/triton_shared
     cd triton_shared && git clean -xdf && git checkout . && git checkout 2b728ad97bc02af821a0805b09075838911d4c19 && ls ../../../patch/v3_4/triton_shared.patch | xargs -n1 git apply && cd ../

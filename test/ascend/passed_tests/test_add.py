@@ -65,6 +65,9 @@ def test_case(param_list):
 @pytest.mark.parametrize('param_list',
                          [
                              ['float32', (2, 4096, 8), 2, 32768, 1024],
+                             ['float32', (128, 4096, 1280), 1310720, 512, 64],
+                             ['float16', (128, 4096, 1280), 1310720, 512, 64],
+                             ['int8', (128, 4096, 1280), 1310720, 512, 64],
                          ]
                          )
 def test_all_blocks_parallel(param_list, monkeypatch):

@@ -138,6 +138,9 @@ def _get_ascend_path() -> str:
 def _is_ascend_sanitizer_enabled() -> bool:
     return os.getenv("TRITON_ENABLE_SANITIZER", 'false').lower() in ('true', '1')
 
+def _is_auto_map_parallel_blocks_enabled() -> bool:
+    return os.getenv("TRITON_ALL_BLOCKS_PARALLEL", "true").lower() in ("true", "1")
+
 def _build_npu_ext(obj_name: str, src_path, src_dir, *, kernel_launcher=None) -> str:
     suffix = sysconfig.get_config_var('EXT_SUFFIX')
     so_path = os.path.join(src_dir, f"{obj_name}{suffix}")
@@ -549,6 +552,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
 
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]
+        if _is_auto_map_parallel_blocks_enabled():
+            _compile_option_list += ["--enable-auto-blockify-loop"]    
         npu_compiler_path = _get_npucompiler_path()
 
         # support bishengir-compile more version
@@ -694,6 +699,10 @@ class NPUUtils(object):
     def get_aicore_num(self):
         # temporarily return empty arch descriptor
         return self.npu_utils_mod.get_aicore_num()
+    
+    @functools.lru_cache()
+    def get_aivector_core_num(self):
+        return self.get_device_properties("npu")["num_vectorcore"]
 
 class NPULauncher(object):
     def __init__(self, src, metadata):
@@ -898,6 +907,9 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
 
     enable_device_print = os.getenv("TRITON_DEVICE_PRINT", 'false').lower() in ('true', '1')
     enable_taskqueue = os.getenv("TRITON_ENABLE_TASKQUEUE", 'true').lower() in ('true', '1')
+    enable_auto_map_parallel_blocks = _is_auto_map_parallel_blocks_enabled()
+    npu_utils = NPUUtils()
+    num_physical_blocks = npu_utils.get_aivector_core_num() if mix_mode == "aiv" else npu_utils.get_aicore_num()
     task_type = "MSPROF_GE_TASK_TYPE_AIV" if mix_mode == "aiv" else "MSPROF_GE_TASK_TYPE_AI_CORE"
     LINE_CHANGE_CHAR = chr(10) # it is \n
 
@@ -1092,6 +1104,9 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
   name.append(kernelName);
   {'auto launch_call = [=]()' if enable_taskqueue else ''} {{
     uint32_t blockNum = gridX * gridY * gridZ;
+     {'if (blockNum > (uint32_t)' + str(num_physical_blocks) + ') { std::cout << "WARNING: Grid " << blockNum << " > physical limit ' + str(num_physical_blocks) + ', performance maybe reduced." << std::endl; }'}
+
+    {'blockNum = std::min(blockNum, (uint32_t)' + str(num_physical_blocks) + ');' if enable_auto_map_parallel_blocks else ''}
     {'cce::internal::DebugTunnelData *DTData = cce::internal::DebugTunnel::Open(blockNum);' if enable_device_print else ''}
     rtError_t ret;
     void *ffts_addr = NULL;

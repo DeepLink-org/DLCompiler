@@ -16,7 +16,6 @@ import importlib
 import shutil
 
 import setuptools
-import torch
 
 
 def build_for_backend(name, src, srcdir):
@@ -194,6 +193,7 @@ class DICPDriver(DriverBase):
         return ("dicp", 0)
 
     def get_current_stream(self, device):
+        import torch
         if self.target == "mlu":
             import torch_mlu
             if device is None:
@@ -214,6 +214,7 @@ class DICPDriver(DriverBase):
         return None
 
     def get_current_device(self):
+        import torch
         # dicp doesn't have a device to return. Return something.
         if self.target == "mlu":
             import torch_mlu

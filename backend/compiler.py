@@ -195,9 +195,12 @@ class DICPBackend(BaseBackend):
                     stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
                     stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
             else:
+                named_ops = False
+                if lower_by_ttshared == "2":
+                    named_ops = True
                 if options.enable_npu_compile:
                     stages["ttshared"] = lambda src, metadata: ttir_to_ttsharedir(src, metadata, options, named_ops=True)
-                    stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(src, metadata, options, named_ops=True)
+                    stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(src, metadata, options, named_ops=named_ops)
                     stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
         else:
             raise RuntimeError("backend not supported")

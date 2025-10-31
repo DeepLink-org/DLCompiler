@@ -375,7 +375,8 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         Path(src_path).write_text(ttsharedir_code)
         dicp_opt_path = _get_dicp_opt_path()
         dicp_cmd_list = [dicp_opt_path, src_path,
-            f'--linalg-to-linked=global-kernel=false named-ops=true',
+            "--linalg-to-linked=global-kernel=false",
+            "--linalg-to-linked=named-ops=true",
             "-o", dst_path]
         if dump_ir:
             print(f"DEBUG dump ir[ttsharedir_to_linkedir] command: {dicp_cmd_list}")

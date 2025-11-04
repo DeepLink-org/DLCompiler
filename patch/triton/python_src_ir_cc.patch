@@ -1,21 +1,25 @@
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 9945c6188..2303d0e6a 100644
+index 9945c6188..57d3765df 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -258,7 +258,12 @@ void init_triton_ir(py::module &&m) {
-       .def("param_types", [](FunctionType &self) {
-         return std::vector<Type>(self.getInputs().begin(),
-                                  self.getInputs().end());
--      });
-+      })
+@@ -255,9 +255,14 @@ void init_triton_ir(py::module &&m) {
+       });
+ 
+   py::class_<FunctionType>(m, "function_type", py::module_local())
+-      .def("param_types", [](FunctionType &self) {
+-        return std::vector<Type>(self.getInputs().begin(),
+-                                 self.getInputs().end());
++      .def("param_types",
++           [](FunctionType &self) {
++             return std::vector<Type>(self.getInputs().begin(),
++                                      self.getInputs().end());
++           })
 +      .def("result_types", [](FunctionType &self) {
 +        return std::vector<Type>(self.getResults().begin(),
 +                                 self.getResults().end());
-+      })
-+      ;
+       });
  
    py::class_<Location>(m, "location", py::module_local())
-       .def("__str__", [](Location &self) {
 @@ -373,6 +378,8 @@ void init_triton_ir(py::module &&m) {
    py::class_<Attribute>(m, "attribute", py::module_local());
    py::class_<IntegerAttr, Attribute>(m, "integer_attr", py::module_local());
@@ -30,16 +34,16 @@ index 9945c6188..2303d0e6a 100644
               return self.getBuilder().getI32IntegerAttr(value);
             })
 +      .def("get_string_attr",
-+            [](TritonOpBuilder &self, const std::string &str) {
-+              return self.getBuilder().getStringAttr(llvm::StringRef(str));
-+            })
++           [](TritonOpBuilder &self, const std::string &str) {
++             return self.getBuilder().getStringAttr(llvm::StringRef(str));
++           })
 +      .def(
 +          "get_unit_attr",
 +          [](TritonOpBuilder &self) { return self.getBuilder().getUnitAttr(); })
        // Use arith.ConstantOp to create constants
        // Constants
        .def("get_int1",
-@@ -1559,6 +1573,80 @@ void init_triton_ir(py::module &&m) {
+@@ -1559,6 +1573,88 @@ void init_triton_ir(py::module &&m) {
                       IntegerType::get(operand.getContext(), 32)),
                   operand);
             })
@@ -116,6 +120,14 @@ index 9945c6188..2303d0e6a 100644
 +             auto annotationOp = self.create<AnnotationOp>(ptr);
 +             annotationOp->setAttr(self.getBuilder().getStringAttr(attrKey),
 +                                   attrVal);
++           })
++      .def("create_custom_op_for_inter_core_sync",
++           [](TritonOpBuilder &self, std::string &op_name,
++              std::string &mode_or_sender, int id) -> void {
++             self.create<CustomSyncOp>(
++                 self.getBuilder().getStringAttr(op_name),
++                 self.getBuilder().getStringAttr(mode_or_sender),
++                 self.getBuilder().getI32IntegerAttr(id));
 +           })
        // Force GPU barrier
        .def("create_barrier",

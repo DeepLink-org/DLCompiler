@@ -216,6 +216,80 @@ def alloc(shape, value, dtype, layout=None, scope=None, _builder=None):
     return dl_semantic.alloc(shape, value, dtype, layout, scope, _builder)
 
 
+@builtin
+def multibuffer(src: tensor, size, _builder=None):
+    """
+    Set multi_buffer for an existing tensor
+    :src: tensor set to bufferize multiple time
+    :size: number of copies
+    """
+    buffer_size = _constexpr_to_value(size)
+    assert isinstance(buffer_size, int) and buffer_size == 2, f"only support bufferize equals 2"
+    dl_semantic.compile_hint(src, "multi_buffer", buffer_size, _builder)
+
+
+@builtin
+def sync_block_all(mode, event_id, _builder=None):
+    mode = _constexpr_to_value(mode)
+    event_id = _constexpr_to_value(event_id)
+    assert isinstance(mode, str), f"mode: {mode} is not string"
+    assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
+    assert mode == "all_cube" or mode == "all_vector" or mode == "all", f"ERROR: mode = {mode}, only supports all_cube/all_vector/all"
+    dl_semantic.custom_sync_op(_builder, "sync_block_all", mode=mode, event_id=event_id)
+
+
+class SyncFlagType:
+    ASCEND = ['cube_to_vector', 'vector_to_cube']
+
+    def __init__(self, name):
+        name = _unwrap_if_constexpr(name)
+        self.name = name
+        assert name in SyncFlagType.ASCEND, name
+    
+    def __str__(self):
+        return self.name
+
+    def codegen_name(self):
+        return self.name
+    
+    def sender(self):
+        if self.name == 'cube_to_vector':
+            return 'cube'
+        elif self.name == 'vector_to_cube':
+            return 'vector'
+        else:
+            assert self.name in SyncFlagType.ASCEND
+
+    @property
+    def cache_key_part(self) -> str:
+        """See cache_key_part() in triton.cc."""
+        return self.name
+
+    def __repr__(self):
+        """Output of repr needs to be an evaluatable expression"""
+        return f'triton.language.{self.codegen_name()}'
+
+
+class SyncFlag:
+    C2V = SyncFlagType('cube_to_vector')
+    V2C = SyncFlagType('vector_to_cube')
+
+
+@builtin
+def set_cross_flag(sync_flag_type: SyncFlagType ,event_id: int, _builder=None):
+    sender = _constexpr_to_value(sync_flag_type.sender())
+    event_id = _constexpr_to_value(event_id)
+    assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
+    dl_semantic.custom_sync_op(_builder, "sync_block_set", sender=sender, event_id=event_id)
+
+@builtin
+def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _builder=None):
+    sender = _constexpr_to_value(sync_flag_type.sender())
+    event_id = _constexpr_to_value(event_id)
+    assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
+    dl_semantic.custom_sync_op(_builder, "sync_block_wait", sender=sender, event_id=event_id)
+
+
 class parallel(range):
     """
     Iterator that counts upward forever, with parallel execution semantics.

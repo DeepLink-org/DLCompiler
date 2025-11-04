@@ -15,6 +15,7 @@ target_link_libraries(dicp_opt PRIVATE
   DICPNPU
   LinalgToNPU
   LinalgToLinked
+  LinkedToHIVM
   DICPLinalgExt
 
   TritonToLinalg

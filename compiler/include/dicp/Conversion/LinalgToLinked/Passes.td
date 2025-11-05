@@ -11,7 +11,7 @@ def LinalgToLinked : Pass<"linalg-to-linked", "mlir::ModuleOp"> {
           "bool", /*default*/"true",
           "generate a global kernel">,
       Option<"namedOps", "named-ops",
-          "bool", /*default*/"false",
+          "bool", /*default*/"true",
           "use linalg named ops instead of linalg.generic">
   ];
 }

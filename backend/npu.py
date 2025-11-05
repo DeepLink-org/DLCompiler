@@ -23,8 +23,8 @@ import shutil
 TRITON_PROFILER_REGISTERED = False
 dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
 replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
-replace_linkded_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
-if dump_ir or (replace_ttshared_ir is not None) or (replace_linkded_ir is not None):
+replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
+if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not None):
     os.environ['TRITON_ALWAYS_COMPILE'] = "1"
 
 def downgrade_llir(llir):
@@ -303,7 +303,7 @@ def make_ttir(mod, metadata, opt):
 
     return mod
 
-def ttir_to_linalg(mod, metadata, opt, *, named_ops=False):
+def ttir_to_linalg(mod, metadata, opt, *, named_ops=True):
     # use triton_adapter to lower Triton-MLIR to linalg
     # Get Triton-MLIR as string
     ttir_code = str(mod)
@@ -376,6 +376,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dicp_opt_path = _get_dicp_opt_path()
         dicp_cmd_list = [dicp_opt_path, src_path,
             f'--linalg-to-linked=global-kernel=false named-ops=true',
+            "--linked-to-hivm",
             "-o", dst_path]
         if dump_ir:
             print(f"DEBUG dump ir[ttsharedir_to_linkedir] command: {dicp_cmd_list}")
@@ -391,9 +392,9 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
                 f.write(content)
         if dump_ir:
             shutil.copy(dst_path, "./tmp/kernel.linkedir.mlir")
-        if replace_linkded_ir is not None:
-            print(f"[DEBUG] Replace linkdedir with {replace_linkded_ir}")
-            return Path(replace_linkded_ir).read_text()
+        if replace_linked_ir is not None:
+            print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
+            return Path(replace_linked_ir).read_text()
         return Path(dst_path).read_text()
 
 

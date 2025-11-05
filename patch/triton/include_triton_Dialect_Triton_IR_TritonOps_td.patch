@@ -1,8 +1,8 @@
 diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dialect/Triton/IR/TritonOps.td
-index 283dd9165..40f115f76 100644
+index 283dd9165..4735eaff9 100644
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1256,5 +1256,22 @@ def TT_ExperimentalTensormapFenceproxyAcquireOp: TT_Op<
+@@ -1256,5 +1256,30 @@ def TT_ExperimentalTensormapFenceproxyAcquireOp: TT_Op<
      }];
  }
  
@@ -23,5 +23,13 @@ index 283dd9165..40f115f76 100644
 +  }];
 +}
 +
++def TT_CustomSyncOp : TT_Op<"custom_sync",  [Pure, MemoryEffects<[MemWrite]>]> {
++  let summary = "self-defined custom sync operation";
++  let description = [{
++    `tt.custom_sync` triton custom sync op is designed to pass self-defined custom sync operation.
++  }];
++  let arguments = (ins StrAttr:$op_name, StrAttr:$mode_or_sender, I32Attr:$id);
++  let assemblyFormat = "$op_name attr-dict";
++}
  
  #endif // Triton_OPS

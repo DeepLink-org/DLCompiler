@@ -59,3 +59,16 @@ def alloc(shape: List[int], value, dtype: tl.dtype, layout, scope, builder: ir.b
     if scope is not None:
         builder.create_annotation(x.handle, "scope", builder.get_string_attr(str(scope)))
     return x
+
+
+def custom_sync_op(builder: ir.builder, op_name: str, **kwargs):
+    if op_name == "sync_block_all":
+        return builder.create_custom_op_for_inter_core_sync(op_name, kwargs["mode"], kwargs["event_id"])
+
+    elif op_name == "sync_block_set":
+        return builder.create_custom_op_for_inter_core_sync(op_name, kwargs["sender"], kwargs["event_id"])
+    
+    elif op_name == "sync_block_wait":
+        return builder.create_custom_op_for_inter_core_sync(op_name, kwargs["sender"], kwargs["event_id"])
+    
+    raise ValueError(f"Unsupported custom op: {op_name}")

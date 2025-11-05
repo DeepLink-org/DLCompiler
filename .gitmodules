@@ -10,6 +10,8 @@
 [submodule "third_party/triton_shared"]
 	path = third_party/triton_shared
 	url = git@github.com:microsoft/triton-shared.git
+	depth = 1
 [submodule "third_party/ascendnpu-ir"]
-	path = third_party/ascendnpu-ir
-	url = https://gitee.com/ascend/ascendnpu-ir.git
+        path = third_party/ascendnpu-ir
+        url = https://gitcode.com/Ascend/AscendNPU-IR.git
+        depth = 1

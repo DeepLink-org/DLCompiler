@@ -1,5 +1,6 @@
-#include "dicp/Conversion/LinalgToNPU/Passes.h"
 #include "dicp/Conversion/LinalgToLinked/Passes.h"
+#include "dicp/Conversion/LinalgToNPU/Passes.h"
+#include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
@@ -16,14 +17,15 @@ using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::npu::registerLinalgToNPUPass();
   dicp::linked::registerLinalgToLinkedPass();
-  registry.insert<bufferization::BufferizationDialect, dicp::npu::NPUDialect,
-                  mlir::dicp::LinalgExt::LinalgExtDialect,
-                  mlir::arith::ArithDialect, cf::ControlFlowDialect,
-                  func::FuncDialect, gpu::GPUDialect, linalg::LinalgDialect,
-                  index::IndexDialect, LLVM::LLVMDialect, math::MathDialect,
-                  memref::MemRefDialect, pdl::PDLDialect, scf::SCFDialect,
-                  tensor::TensorDialect, transform::TransformDialect,
-                  vector::VectorDialect, ub::UBDialect, triton::TritonDialect>();
+  dicp::linked::registerLinkedToHIVMPass();
+  registry.insert<
+      bufferization::BufferizationDialect, dicp::npu::NPUDialect,
+      mlir::dicp::LinalgExt::LinalgExtDialect, mlir::arith::ArithDialect,
+      cf::ControlFlowDialect, func::FuncDialect, gpu::GPUDialect,
+      linalg::LinalgDialect, index::IndexDialect, LLVM::LLVMDialect,
+      math::MathDialect, memref::MemRefDialect, pdl::PDLDialect,
+      scf::SCFDialect, tensor::TensorDialect, transform::TransformDialect,
+      vector::VectorDialect, ub::UBDialect, triton::TritonDialect>();
 
   arith::registerBufferDeallocationOpInterfaceExternalModels(registry);
   arith::registerBufferizableOpInterfaceExternalModels(registry);

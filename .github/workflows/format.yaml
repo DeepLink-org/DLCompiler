@@ -1,0 +1,73 @@
+name: DLCompiler format ci
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  markdownlint:
+    runs-on: ubuntu-latest
+    if: github.repository == 'DeepLink-org/DLCompiler'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 16
+    - name: Collect changed files
+      uses: tj-actions/changed-files@v40
+      id: changed-files
+      with:
+        files: '**/*.md'
+        separator: ','
+    - name: MarkdownLint
+      if: steps.changed-files.outputs.any_changed == 'true'
+      uses: DavidAnson/markdownlint-cli2-action@v14
+      with:
+        globs: ${{ steps.changed-files.outputs.all_changed_files }}
+        separator: ','
+
+  clang-format:
+    needs: markdownlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cpp-linter/cpp-linter-action@v2
+        id: cpp-lint
+        with:
+          style: file
+          ignore: 'third_party/*'
+          tidy-checks: '-*' # disable clang tidy at this stage
+          version: 17
+      - name: Fail test
+        if: steps.cpp-lint.outputs.checks-failed > 0
+        run: echo "Some files failed the linting checks!" && exit 1
+
+  python-black:
+    needs: markdownlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 确保能获取到 main 分支的历史
+      - name: Check formatting for PR files
+        run: |
+          # 获取当前分支相对于 main 分支的修改文件列表（只包含 Python 文件）
+          modified_py_files=$(git diff --name-only origin/main...HEAD | grep '\.py$')
+          
+          # 如果没有修改的 Python 文件，直接跳过
+          if [ -z "$modified_py_files" ]; then
+            echo "No Python files modified in this PR, skipping Black formatting"
+            exit 0
+          fi
+          
+          echo "Found modified Python files for PR:"
+          echo "$modified_py_files" | tr '\n' ' '  # 显示修改的文件列表
+          
+          # 使用 Black 检查这些文件（只检查，不修改）
+          pip install black
+          black --check --diff $modified_py_files

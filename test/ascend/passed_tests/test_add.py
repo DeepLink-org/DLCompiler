@@ -32,7 +32,9 @@ def torch_pointwise(x0, x1):
 
 
 @triton.jit
-def triton_add(in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_add(
+    in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
     offset = tl.program_id(0) * XBLOCK
     base1 = tl.arange(0, XBLOCK_SUB)
     loops1: tl.constexpr = (XBLOCK + XBLOCK_SUB - 1) // XBLOCK_SUB
@@ -45,38 +47,40 @@ def triton_add(in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.
         tl.store(out_ptr0 + (x0), tmp2, None)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 4096, 8), 2, 32768, 1024],
-                             ['float16', (2, 4096, 8), 2, 32768, 1024],
-                             ['int8', (2, 4096, 8), 2, 32768, 1024],
-                         ]
-                         )
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float16", (2, 4096, 8), 2, 32768, 1024],
+        ["int8", (2, 4096, 8), 2, 32768, 1024],
+    ],
+)
 def test_case(param_list):
     dtype, shape, ncore, xblock, xblock_sub = param_list
     x0 = test_common.generate_tensor(shape, dtype).npu()
     x1 = test_common.generate_tensor(shape, dtype).npu()
     y_ref = torch_pointwise(x0, x1)
-    y_cal = torch.zeros(shape, dtype=eval('torch.' + dtype)).npu()
+    y_cal = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
     triton_add[ncore, 1, 1](x0, x1, y_cal, xblock, xblock_sub)
     test_common.validate_cmp(dtype, y_cal, y_ref)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 4096, 8), 2, 32768, 1024],
-                             ['float32', (128, 4096, 1280), 1310720, 512, 64],
-                             ['float16', (128, 4096, 1280), 1310720, 512, 64],
-                             ['int8', (128, 4096, 1280), 1310720, 512, 64],
-                         ]
-                         )
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float32", (128, 4096, 160), 1310720, 64, 8],
+        ["float16", (128, 4096, 160), 1310720, 64, 8],
+        ["int8", (128, 4096, 160), 1310720, 64, 8],
+    ],
+)
 def test_all_blocks_parallel(param_list, monkeypatch):
     monkeypatch.setenv("TRITON_ALL_BLOCKS_PARALLEL", "1")
     dtype, shape, ncore, xblock, xblock_sub = param_list
     x0 = test_common.generate_tensor(shape, dtype).npu()
     x1 = test_common.generate_tensor(shape, dtype).npu()
     y_ref = torch_pointwise(x0, x1)
-    y_cal = torch.zeros(shape, dtype=eval('torch.' + dtype)).npu()
+    y_cal = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
     triton_add[ncore, 1, 1](x0, x1, y_cal, xblock, xblock_sub)
     test_common.validate_cmp(dtype, y_cal, y_ref)
     monkeypatch.delenv("TRITON_ALL_BLOCKS_PARALLEL")

@@ -12,11 +12,13 @@ from triton.backends.dicp_triton.driver import DICPDriver
 from typing import Any, Tuple, Dict
 from types import ModuleType
 
+
 def _get_dicp_triton_opt_path() -> str:
     path = os.getenv("DICP_TRITON_OPT_PATH", "")
     if path == "":
         raise Exception("DICP_TRITON_OPT_PATH is not set.")
     return path
+
 
 def _get_llvm_bin_path(bin_name: str) -> str:
     path = os.getenv("LLVM_BINARY_DIR", "")
@@ -24,12 +26,14 @@ def _get_llvm_bin_path(bin_name: str) -> str:
         raise Exception("LLVM_BINARY_DIR is not set.")
     return os.path.join(path, bin_name)
 
+
 def _get_triton_linalg_opt_path() -> str:
     # path = os.getenv("TRITON_LINALG_OPT_PATH", "")
     path = "triton-shared-opt"
     if path == "":
         raise Exception("TRITON_SHARED_OPT_PATH is not set.")
-    return path 
+    return path
+
 
 def _ttir_to_linalgdir(mod):
     ttir_code = str(mod)
@@ -38,35 +42,41 @@ def _ttir_to_linalgdir(mod):
         dst_path = os.path.join(tmpdir, "triton_linalg.mlir")
         Path(src_path).write_text(ttir_code)
         triton_linalg_opt_path = _get_triton_linalg_opt_path()
-        subprocess.check_call([triton_linalg_opt_path, src_path, "--triton-to-linalg", "-o", dst_path])
+        subprocess.check_call(
+            [triton_linalg_opt_path, src_path, "--triton-to-linalg", "-o", dst_path]
+        )
         return Path(dst_path).read_text()
+
 
 def _optimize_ttlinalgdir(ttlinalgdir: str):
     # We don't apply any optimizations now, but we can add passes if needed.
     return ttlinalgdir
 
+
 # get kernel name to recompile kernel
 def _linalgir_get_kernel_name(ttir: str) -> str:
-    '''
+    """
     Get kernel name from ttir.
     This Kernel name is required when launching the kernel.
-    '''
-    for line in ttir.split('\n'):
+    """
+    for line in ttir.split("\n"):
         line = line.strip()
-        if line.startswith('func.func'):
-            return line.split('@')[1].split("(")[0]
+        if line.startswith("func.func"):
+            return line.split("@")[1].split("(")[0]
     raise RuntimeError("can not get kernel name from ttir")
 
+
 def _ttir_get_kernel_name(ttir: str):
-    '''
+    """
     Get kernel name from ttir.
     This Kernel name is required when launching the kernel.
-    '''
-    for line in ttir.split('\n'):
+    """
+    for line in ttir.split("\n"):
         line = line.strip()
-        if line.startswith('tt.func'):
-            return line.split('@')[1].split("(")[0]
+        if line.startswith("tt.func"):
+            return line.split("@")[1].split("(")[0]
     return None
+
 
 # call llvm compiler to generate bin file
 def _linalg_to_fatbin(ttlinalgdir: str, metadata):
@@ -94,35 +104,38 @@ class DICPOptions:
     shared: bool = False
     allow_fp8e4nv: bool = False
     default_dot_input_precision: str = "tf32"
-    allowed_dot_input_precisions: Tuple[str] = ("tf32", "tf32x3", "ieee")      
+    allowed_dot_input_precisions: Tuple[str] = ("tf32", "tf32x3", "ieee")
+
     def __post_init__(self):
         pass
 
     def hash(self):
-        key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
+        key = "_".join([f"{name}-{val}" for name, val in self.__dict__.items()])
         return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
 
 class DICPBackend(BaseBackend):
     binary_ext = "ttlinalgdir"
-    def __init__(self, target:str) -> None:
+
+    def __init__(self, target: str) -> None:
         super().__init__(target)
         self.driver = DICPDriver(target)
-        if self.driver.target == 'dicp':
+        if self.driver.target == "dicp":
             self.binary_ext = "ttlinalgdir"
-        elif self.driver.target == 'mlu':
+        elif self.driver.target == "mlu":
             self.capability = target.arch
             assert isinstance(self.capability, int)
             self.binary_ext = "cnbin"
-        elif self.driver.target == 'maca':
+        elif self.driver.target == "maca":
             self.binary_ext = "mcfatbin"
-        elif self.driver.target == 'ascend':
+        elif self.driver.target == "ascend":
             self.binary_ext = "npubin"
         else:
             raise RuntimeError(f"Target '{self.target_type}' is not supported.")
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ['dicp', 'mlu', 'maca', 'ascend']
+        return target.backend in ["dicp", "mlu", "maca", "ascend"]
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -139,135 +152,213 @@ class DICPBackend(BaseBackend):
         metadata["name"] = _ttir_get_kernel_name(str(mod))
         metadata["shared"] = 0
         return mod
-    
-    
+
     def get_attrs_descriptor(self, params, args):
-        if self.driver.target == 'ascend':
+        if self.driver.target == "ascend":
             from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
+
             return AscendAttrsDescriptor(params, args)
         else:
-            raise RuntimeError(f"backend {self.driver.target} not supported for get_attrs_descriptor.")
+            raise RuntimeError(
+                f"backend {self.driver.target} not supported for get_attrs_descriptor."
+            )
 
     def add_stages(self, stages, options):
-        if self.driver.target not in ['ascend', 'mlu']:
-            stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        if self.driver.target == 'dicp':
-            stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(_ttir_to_linalgdir(src))
+        if self.driver.target not in ["ascend", "mlu"]:
+            stages["ttir"] = lambda src, metadata: self.make_ttir(
+                src, metadata, options
+            )
+        if self.driver.target == "dicp":
+            stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(
+                _ttir_to_linalgdir(src)
+            )
             stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
-        elif self.driver.target == 'mlu':
-            from triton.backends.dicp_triton.mlu import onchip_mem_analysis, make_ttir, make_linalg, make_optimized_linalg, make_mluir, make_optimize_mluir, make_mlisa, make_cnbin
+        elif self.driver.target == "mlu":
+            from triton.backends.dicp_triton.mlu import (
+                onchip_mem_analysis,
+                make_ttir,
+                make_linalg,
+                make_optimized_linalg,
+                make_mluir,
+                make_optimize_mluir,
+                make_mlisa,
+                make_cnbin,
+            )
+
             stages["ttir"] = lambda src, metadata: make_ttir(
-                src, metadata, options, self.capability)
+                src, metadata, options, self.capability
+            )
             if options.onchip_mem_analysis:
-                stages[
-                    "onchip_mem_analysis"] = lambda src, metadata: onchip_mem_analysis(
-                        src, options)
+                stages["onchip_mem_analysis"] = (
+                    lambda src, metadata: onchip_mem_analysis(src, options)
+                )
                 return
-            stages["linalg"] = lambda src, metadata: make_linalg(
-                src, metadata, options)
+            stages["linalg"] = lambda src, metadata: make_linalg(src, metadata, options)
             stages["linalgopt"] = lambda src, metadata: make_optimized_linalg(
-                src, options)
+                src, options
+            )
             stages["mluir"] = lambda src, metadata: make_mluir(src, options)
             stages["mluiropt"] = lambda src, metadata: make_optimize_mluir(
-                src, options, self.capability)
+                src, options, self.capability
+            )
             stages["mlisa"] = lambda src, metadata: make_mlisa(src)
             stages["cnbin"] = lambda src, metadata: make_cnbin(
-                src, options, self.capability)
+                src, options, self.capability
+            )
 
             # from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
             # stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver, options), False, True)
-        elif self.driver.target == 'maca':
-            from triton.backends.dicp_triton.maca import ttir_to_ttgir, optimize_ttgir, ttgir_to_llir, llir_to_mcfatbin, get_architecture_descriptor
+        elif self.driver.target == "maca":
+            from triton.backends.dicp_triton.maca import (
+                ttir_to_ttgir,
+                optimize_ttgir,
+                ttgir_to_llir,
+                llir_to_mcfatbin,
+                get_architecture_descriptor,
+            )
+
             arch = get_architecture_descriptor()
             extern_libs = dict()
-            stages["ttgir"] = lambda src, metadata: optimize_ttgir(ttir_to_ttgir(src, 4), options.num_stages, arch)
+            stages["ttgir"] = lambda src, metadata: optimize_ttgir(
+                ttir_to_ttgir(src, 4), options.num_stages, arch
+            )
             stages["llir"] = lambda src, metadata: ttgir_to_llir(src, arch)
-            mxcc_arch = os.environ.get('MACA_PATH') + "/mxgpu_llvm/bin/mxcc"
+            mxcc_arch = os.environ.get("MACA_PATH") + "/mxgpu_llvm/bin/mxcc"
             if mxcc_arch is None:
-                raise RuntimeError('mxcc_arch is None (not specified)')
-            stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'))
-        elif self.driver.target =='ascend':
-            from triton.backends.dicp_triton.npu import make_ttir, ttir_to_linalg, ttir_to_ttsharedir, ttsharedir_to_linkedir, linalg_to_bin_enable_npu_compile
+                raise RuntimeError("mxcc_arch is None (not specified)")
+            stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(
+                src, mxcc_arch, os.environ.get("MACA_PATH")
+            )
+        elif self.driver.target == "ascend":
+            from triton.backends.dicp_triton.npu import (
+                make_ttir,
+                ttir_to_linalg,
+                ttir_to_ttsharedir,
+                ttsharedir_to_linkedir,
+                linalg_to_bin_enable_npu_compile,
+                ttir_post,
+            )
+
             stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
             lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "1")
             if lower_by_ttshared == "0":
                 if options.enable_npu_compile:
-                    stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(src, metadata, options, named_ops=True)
-                    stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
+                    stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(
+                        src, metadata, options, named_ops=True
+                    )
+                    stages["npubin"] = (
+                        lambda src, metadata: linalg_to_bin_enable_npu_compile(
+                            src, metadata, options
+                        )
+                    )
             else:
                 if options.enable_npu_compile:
-                    stages["ttshared"] = lambda src, metadata: ttir_to_ttsharedir(src, metadata, options, named_ops=True)
-                    stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(src, metadata, options, named_ops=True)
-                    stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(src, metadata, options)
+                    stages["ttir_post"] = lambda src, metadata: ttir_post(
+                        src, metadata, options
+                    )
+                    stages["ttshared"] = lambda src, metadata: ttir_to_ttsharedir(
+                        src, metadata, options, named_ops=True
+                    )
+                    stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(
+                        src, metadata, options, named_ops=True
+                    )
+                    stages["npubin"] = (
+                        lambda src, metadata: linalg_to_bin_enable_npu_compile(
+                            src, metadata, options
+                        )
+                    )
         else:
             raise RuntimeError("backend not supported")
 
     def load_dialects(self, ctx):
-        if self.driver.target == 'mlu':
+        if self.driver.target == "mlu":
             from triton._C.libtriton import mlu
+
             mlu.load_dialects(ctx)
         return
 
     @functools.lru_cache()
     def hash(self):
         return self.target
-    
+
     def get_driver(self):
         return self.driver
-    
+
     # parse  add_kernel[(16,)](x, y, output, n_elements, BLOCK_SIZE=1024)
     def parse_options(self, options: dict) -> Any:
-        if self.target.backend == 'ascend':
+        if self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import NPUOptions
-            args = {k: options[k] for k in NPUOptions.__dataclass_fields__.keys() if k in options}
+
+            args = {
+                k: options[k]
+                for k in NPUOptions.__dataclass_fields__.keys()
+                if k in options
+            }
             options = NPUOptions(**args)
             return options
-        elif self.target.backend == 'mlu':
+        elif self.target.backend == "mlu":
             from triton.backends.dicp_triton.mlu import MLUOptions
-            args = {k: options[k] for k in MLUOptions.__dataclass_fields__.keys() if k in options}
+
+            args = {
+                k: options[k]
+                for k in MLUOptions.__dataclass_fields__.keys()
+                if k in options
+            }
             # When arch is less than mtp_5xx, tf32 is not supported, use fp32 for calculation.
             if "allowed_dot_input_precisions" not in args:
                 if self.capability < 500:
-                    args["allowed_dot_input_precisions"] = ("ieee")
+                    args["allowed_dot_input_precisions"] = "ieee"
 
             if "supported_fp8_dtypes" not in args:
                 supported_fp8_dtypes = set(MLUOptions.supported_fp8_dtypes)
                 if self.capability >= 600:
-                    supported_fp8_dtypes = supported_fp8_dtypes.union(("fp8e5", "fp8e4nv"))
+                    supported_fp8_dtypes = supported_fp8_dtypes.union(
+                        ("fp8e5", "fp8e4nv")
+                    )
                 args["supported_fp8_dtypes"] = tuple(sorted(supported_fp8_dtypes))
 
             args["max_num_imprecise_acc_default"] = 0
 
             if "enable_fp_fusion" not in args:
-                args["enable_fp_fusion"] = os.getenv("TRITON_DEFAULT_FP_FUSION", "1") == "1"
+                args["enable_fp_fusion"] = (
+                    os.getenv("TRITON_DEFAULT_FP_FUSION", "1") == "1"
+                )
 
             if "enable_mlu_bound_check" not in args:
-                args["enable_mlu_bound_check"] = os.getenv("TRITON_ENABLE_MLU_BOUND_CHECK",
-                                                        "0") == "1"
+                args["enable_mlu_bound_check"] = (
+                    os.getenv("TRITON_ENABLE_MLU_BOUND_CHECK", "0") == "1"
+                )
             return MLUOptions(**args)
         else:
-            args = {'arch': self.target}
-            args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
+            args = {"arch": self.target}
+            args.update(
+                {
+                    k: options[k]
+                    for k in DICPOptions.__dataclass_fields__.keys()
+                    if k in options
+                }
+            )
             return DICPOptions(**args)
-    
+
     def get_codegen_implementation(self):
         codegen_fns = dict()
-        if self.target.backend == 'ascend':
+        if self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import min_dot_size
-            codegen_fns = {
-                "min_dot_size": min_dot_size(self.target)
-            }
-        elif self.target.backend =='mlu':
+
+            codegen_fns = {"min_dot_size": min_dot_size(self.target)}
+        elif self.target.backend == "mlu":
             from triton.backends.dicp_triton.mlu import min_dot_size
+
             codegen_fns = {
                 "convert_custom_types": lambda arg, dst_ty: arg,
-                "min_dot_size": min_dot_size(self.target)
+                "min_dot_size": min_dot_size(self.target),
             }
         return codegen_fns
-    
+
     def pack_metadata(self, metadata):
-        if self.target.backend == 'ascend':
+        if self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
+
             # collect necessary metadata to launch kernels
             # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.
             # Get this name as the kernel_name to CANN runtime.
@@ -276,7 +367,7 @@ class DICPBackend(BaseBackend):
             # Considering '\n' is appended, thus the real kernel name <= 49.
             KERNEL_NAME_MAX_LEN = 49
             kernel_name_orig, mix_mode = metadata.name.split()
-            if (len(kernel_name_orig) > KERNEL_NAME_MAX_LEN):
+            if len(kernel_name_orig) > KERNEL_NAME_MAX_LEN:
                 kernel_name = kernel_name_orig[-KERNEL_NAME_MAX_LEN:]
                 # import warnings
                 # # red = "\x1b[31;20m"
@@ -291,8 +382,8 @@ class DICPBackend(BaseBackend):
                 "debug": metadata.debug,
                 "profiler_registered": TRITON_PROFILER_REGISTERED,
             }
-        elif self.target.backend == 'mlu':
-            return (metadata.num_warps, )
+        elif self.target.backend == "mlu":
+            return (metadata.num_warps,)
         return (
             metadata.num_warps,
             metadata.num_ctas,
@@ -304,16 +395,18 @@ class DICPBackend(BaseBackend):
 
     @functools.lru_cache()
     def hash(self):
-        if self.target.backend == 'mlu':
+        if self.target.backend == "mlu":
             from triton.backends.dicp_triton.mlu import get_cnas_version
+
             version = get_cnas_version()
-            return f'{version}-{self.capability}'
+            return f"{version}-{self.capability}"
         # TODO fetch compiler version
         version_key = self.target
         return str(version_key)
 
     def get_module_map(self) -> Dict[str, ModuleType]:
-        if self.target.backend =='mlu':
+        if self.target.backend == "mlu":
             from triton.language.extra.mlu import libdevice
+
             return {"triton.language.extra.libdevice": libdevice}
         return {}

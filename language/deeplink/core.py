@@ -3,7 +3,6 @@ from triton.language import semantic as tl_semantic
 from triton.language.core import (
     _tensor_member_fn,
     _shape_check_impl,
-    _constexpr_to_value,
     _unwrap_if_constexpr,
     builtin,
     constexpr,
@@ -13,6 +12,10 @@ from triton.language.core import (
 import builtins
 from . import semantic as dl_semantic
 
+def _constexpr_to_value(v):
+    if isinstance(v, constexpr):
+        return v.value
+    return v
 
 class layout:
     ASCEND = ['ND', 'NZ']

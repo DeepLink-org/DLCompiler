@@ -24,8 +24,47 @@ index e9f892da0..38ec0b277 100644
 +}
  
  #endif // Triton_OPS
+diff --git a/python/triton/backends/compiler.py b/python/triton/backends/compiler.py
+index 9bbc5eadb..1ee43dd4e 100644
+--- a/python/triton/backends/compiler.py
++++ b/python/triton/backends/compiler.py
+@@ -5,6 +5,10 @@ from typing import Dict, Union
+ from types import ModuleType
+ 
+ 
++class AttrsDescriptor:
++    print(f"zmz debug using dummy AttrsDescriptor")
++    pass
++
+ @dataclass(frozen=True)
+ class GPUTarget(object):
+     # Target backend, e.g., cuda, hip
+diff --git a/python/triton/compiler/compiler.py b/python/triton/compiler/compiler.py
+index 81d7b3267..3170459b0 100644
+--- a/python/triton/compiler/compiler.py
++++ b/python/triton/compiler/compiler.py
+@@ -15,6 +15,7 @@ import re
+ import functools
+ import os
+ import time
++import sys
+ 
+ # - ^\s*tt\.func\s+ : match the start of the string, any leading whitespace, the keyword func,
+ #    and any following whitespace
+@@ -463,8 +464,10 @@ class CompiledKernel:
+         if knobs.runtime.kernel_load_start_hook is not None:
+             knobs.runtime.kernel_load_start_hook(self.module, self.function, self.name, self.metadata_group, self.hash)
+         # TODO: n_regs, n_spills should be metadata generated when calling `ptxas`
+-        self.module, self.function, self.n_regs, self.n_spills, self.n_max_threads = driver.active.utils.load_binary(
++        # self.module, self.function, self.n_regs, self.n_spills, self.n_max_threads = driver.active.utils.load_binary(
++        self.module, self.function, self.n_regs, self.n_spills = driver.active.utils.load_binary(
+             self.name, self.kernel, self.metadata.shared, device)
++        self.n_max_threads = sys.maxsize
+         warp_size = driver.active.get_current_target().warp_size
+         if self.metadata.num_warps * warp_size > self.n_max_threads:
+             raise_(OutOfResources(self.metadata.num_warps * warp_size, self.n_max_threads, "threads"))
 diff --git a/setup.py b/setup.py
-index dffc45ab1..35c0a0da7 100644
+index dffc45ab1..8de405b57 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -182,6 +182,13 @@ class Package:
@@ -63,7 +102,7 @@ index dffc45ab1..35c0a0da7 100644
 +        cmake_build_dir = get_cmake_dir()
 +        opt_dir = os.path.join(
 +            cmake_build_dir,
-+            "third_party/triton_shared/tools/triton-shared-opt"
++            "third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt"
 +        )
 +
 +        shutil.copy(
@@ -74,6 +113,16 @@ index dffc45ab1..35c0a0da7 100644
  
  def download_and_copy_dependencies():
      nvidia_version_path = os.path.join(get_base_dir(), "cmake", "nvidia-toolchain-version.json")
+@@ -649,6 +674,9 @@ def get_packages():
+             # Install the contents of each backend's `tools` directory into
+             # `triton.tools.extra`.
+             for x in os.listdir(backend.tools_dir):
++                if x == "CMakeLists.txt":
++                    print(f"get_packages: skipping package for CMakeLists.txt: {x}", file=sys.stderr)
++                    continue
+                 yield f"triton.tools.extra.{x}"
+ 
+     if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
 diff --git a/unittest/googletest.cmake b/unittest/googletest.cmake
 index 064dc8860..4ba22f32a 100644
 --- a/unittest/googletest.cmake

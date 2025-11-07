@@ -23,6 +23,7 @@ echo "start compile ========================================"
 echo compile_triton_shared: $compile_triton_shared
 echo apply_patch: $apply_patch
 echo "======================================================"
+# export TRITON_PLUGIN_DIRS=$home_path
 
 if [[ $compile_triton_shared == true ]]; then
     echo "start compile triton_shared"
@@ -88,10 +89,18 @@ if [[ $apply_patch == true ]]; then
     fi
 fi
 
+echo "compile triton package"
+# exit 0
+
 pip uninstall triton -y
 
-cd $TRITON_PLUGIN_DIRS/third_party/triton/python/
+# cd $TRITON_PLUGIN_DIRS/third_party/triton/python/
+# rm -rf build/
+
+cd $TRITON_PLUGIN_DIRS/third_party/triton/
 rm -rf build/
+# TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true python3 -m pip install --no-build-isolation -vvv '.[tests]'  \
+#     -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
 if [ -z "$LLVM_BUILD_DIR" ]; then
     TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \

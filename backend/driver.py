@@ -11,12 +11,23 @@ from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
 from triton.backends.dicp_triton.utils import get_current_backend
 
-from triton.runtime.build import quiet
+# from triton.runtime.build import quiet
 import importlib
 import shutil
 
 import setuptools
+import sys
+import contextlib
+import io
 
+@contextlib.contextmanager
+def quiet():
+    old_stdout, old_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = old_stdout, old_stderr
 
 def build_for_backend(name, src, srcdir):
     suffix = sysconfig.get_config_var('EXT_SUFFIX')
@@ -75,6 +86,32 @@ def build_for_backend(name, src, srcdir):
     with quiet():
         setuptools.setup(**args)
     return so
+
+def _ty_to_cpp(ty):
+    if ty[0] == '*':
+        return "void*"
+    if ty == "constexpr":
+        return "PyObject*"
+    return {
+        "i1": "int32_t",
+        "i8": "int8_t",
+        "i16": "int16_t",
+        "i32": "int32_t",
+        "i64": "int64_t",
+        "u1": "uint32_t",
+        "u8": "uint8_t",
+        "u16": "uint16_t",
+        "u32": "uint32_t",
+        "u64": "uint64_t",
+        # Proper support for bfloat16 and float16 is not yet handled.
+        # https://github.com/microsoft/triton-shared/issues/348
+        # "fp16": "TODO",
+        # "bf16": "TODO",
+        "fp32": "float",
+        "f32": "float",
+        "fp64": "double",
+    }[ty]
+
 
 class DICUtils:
     def __new__(cls):
@@ -269,7 +306,7 @@ class DICPDriver(DriverBase):
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):
         return args
-    
+
     def get_device_interface(self):
         if self.target == "ascend":
             import torch
@@ -295,3 +332,11 @@ class DICPDriver(DriverBase):
             return torch.empty(int(cache_size // 4), dtype=torch.int, device='mlu')
         else:
             assert False, f"Not implemented for {self.target}"
+
+    def get_active_torch_device(self):
+        # todo: fix it.
+        import torch
+        return torch.device("cpu")
+
+    def map_python_to_cpp_type(self, ty: str) -> str:
+        return _ty_to_cpp(ty)

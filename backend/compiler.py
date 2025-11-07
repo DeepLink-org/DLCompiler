@@ -31,6 +31,7 @@ def _get_triton_linalg_opt_path() -> str:
         raise Exception("TRITON_SHARED_OPT_PATH is not set.")
     return path 
 
+# TODO(zmz) 考虑使用标准linalg？但是会缺失华为专属的改动
 def _ttir_to_linalgdir(mod):
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -148,7 +149,7 @@ class DICPBackend(BaseBackend):
         else:
             raise RuntimeError(f"backend {self.driver.target} not supported for get_attrs_descriptor.")
 
-    def add_stages(self, stages, options):
+    def add_stages(self, stages, options, language):
         if self.driver.target not in ['ascend', 'mlu']:
             stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
         if self.driver.target == 'dicp':
@@ -250,7 +251,7 @@ class DICPBackend(BaseBackend):
             args.update({k: options[k] for k in DICPOptions.__dataclass_fields__.keys() if k in options})
             return DICPOptions(**args)
     
-    def get_codegen_implementation(self):
+    def get_codegen_implementation(self, options):
         codegen_fns = dict()
         if self.target.backend == 'ascend':
             from triton.backends.dicp_triton.npu import min_dot_size

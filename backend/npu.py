@@ -7,7 +7,7 @@ import functools
 import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
-from triton.backends.compiler import BaseBackend, GPUTarget, AttrsDescriptor, register_descriptor
+from triton.backends.compiler import BaseBackend, GPUTarget
 from triton._C.libtriton import ir, passes
 from triton.runtime.cache import get_dump_manager
 from dataclasses import dataclass
@@ -645,11 +645,6 @@ class CPUOptions:
         key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
         return hashlib.md5(key.encode("utf-8")).hexdigest()
 
-@register_descriptor
-class AscendAttrsDescriptor(AttrsDescriptor):
-
-    def _add_backend_properties(self, params=None, values=None):
-        pass
 
 class NPUUtils(object):
     def __new__(cls):
@@ -680,7 +675,7 @@ class NPUUtils(object):
 
     def load_binary(self, name, kernel, shared, device):
         fnname, mix_mode = name.split()
-        return self.npu_utils_mod.load_kernel_binary(fnname, kernel, shared, device, mix_mode)
+        return self.npu_utils_mod.load_kernel_binary(fnname, kernel, shared, device, mix_mode)      # 输出参数个数不匹配
 
     @functools.lru_cache()
     def get_device_properties(self, device):
@@ -848,16 +843,23 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
     def _ty_to_cpp(ty):
         if ty[0] == '*':
             return "void*"
+        if ty == "constexpr":
+            return "PyObject*"
         return {
             "i1": "int32_t",
             "i8": "int8_t",
             "i16": "int16_t",
             "i32": "int32_t",
             "i64": "int64_t",
+            "u1": "uint32_t",
+            "u8": "uint8_t",
+            "u16": "uint16_t",
             "u32": "uint32_t",
             "u64": "uint64_t",
-            "fp16": "float",
-            "bf16": "float",
+            # Proper support for bfloat16 and float16 is not yet handled.
+            # https://github.com/microsoft/triton-shared/issues/348
+            # "fp16": "TODO",
+            # "bf16": "TODO",
             "fp32": "float",
             "f32": "float",
             "fp64": "double",
@@ -866,29 +868,25 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
     def _extracted_ty(ty):
         if ty[0] == '*':
             return "PyObject*"
-        return {
-            'i1': 'int32_t',
-            'i32': 'int32_t',
-            'i64': 'int64_t',
-            'u32': 'uint32_t',
-            'u64': 'uint64_t',
-            'fp16': 'float',
-            'bf16': 'float',
-            'fp32': 'float',
-            'f32': 'float',
-            'fp64': 'double',
-        }[ty]
+        if ty == "constexpr":
+            return "PyObject*"
+        return _ty_to_cpp(ty)
 
     def _format_of(ty):
         return {
-            "PyObject*": "O",
-            "float": "f",
-            "double": "d",
-            "long": "l",
-            "uint32_t": "I",
-            "int32_t": "i",
-            "uint64_t": "K",
-            "int64_t": "L",
+        "PyObject*": "O",
+        "constexpr": "O",
+        "float": "f",
+        "double": "d",
+        "long": "l",
+        "int8_t": "b",
+        "int16_t": "h",
+        "int32_t": "i",
+        "int64_t": "l",
+        "uint8_t": "B",
+        "uint16_t": "H",
+        "uint32_t": "I",
+        "uint64_t": "K",
         }[ty]
 
     arg_decls = ', '.join(f"{_ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())

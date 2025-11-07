@@ -17,6 +17,7 @@ using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::npu::registerLinalgToNPUPass();
   dicp::linked::registerLinalgToLinkedPass();
+  dicp::linked::registerBoolTritonPtrPromotionPass();
   dicp::linked::registerLinkedToHIVMPass();
   registry.insert<
       bufferization::BufferizationDialect, dicp::npu::NPUDialect,

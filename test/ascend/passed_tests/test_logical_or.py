@@ -18,45 +18,49 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import pytest
 import triton
 import triton.language as tl
 import torch
 import torch_npu
-import pytest
 import test_common
 
-def torch_pointwise(x0, x1):
-    res = x0 != x1
+
+def torch_logical_or(x0, x1):
+    res = torch.logical_or(x0, x1)
     return res
 
 
 @triton.jit
-def triton_neq(in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_logical_or(
+    in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
     offset = tl.program_id(0) * XBLOCK
     base1 = tl.arange(0, XBLOCK_SUB)
-    loops1: tl.constexpr = (XBLOCK + XBLOCK_SUB - 1) // XBLOCK_SUB
+    loops1: tl.constexpr = XBLOCK // XBLOCK_SUB
     for loop1 in range(loops1):
-        x0_prime = offset + (loop1 * XBLOCK_SUB) + base1
-        x0 = offset + (loop1 * XBLOCK_SUB) + base1
-        tmp0 = tl.load(in_ptr0 + (x0), None)
-        tmp1 = tl.load(in_ptr1 + (x0), None)
-        tmp2 = tmp0 != tmp1
-        tl.store(out_ptr0 + (x0), tmp2, None)
+        x_index = offset + (loop1 * XBLOCK_SUB) + base1
+        tmp0 = tl.load(in_ptr0 + x_index)
+        tmp1 = tl.load(in_ptr1 + x_index)
+        tmp2 = tmp0.logical_or(tmp1)
+        tl.store(out_ptr0 + x_index, tmp2)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 4096, 8), 2, 32768, 1024],
-                             ['float16', (2, 4096, 8), 2, 32768, 1024],
-                             ['int8', (2, 4096, 8), 2, 32768, 1024],
-                         ]
-                         )
-
-def test_case(param_list):
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["bool", (2, 4096, 8), 2, 32768, 1024],
+    ],
+)
+def test_logical_or(param_list):
+    # 生成数据
     dtype, shape, ncore, xblock, xblock_sub = param_list
     x0 = test_common.generate_tensor(shape, dtype).npu()
     x1 = test_common.generate_tensor(shape, dtype).npu()
-    y_ref = torch_pointwise(x0, x1)
-    y_cal = torch.zeros(shape, dtype = eval('torch.' + 'bool')).npu()
-    triton_neq[ncore, 1, 1](x0, x1, y_cal, xblock, xblock_sub)
-    test_common.validate_cmp(dtype, y_cal, y_ref)
+    # torch结果
+    torch_res = torch_logical_or(x0, x1)
+    # triton结果
+    triton_res = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
+    triton_logical_or[ncore, 1, 1](x0, x1, triton_res, xblock, xblock_sub)
+    # 比较结果
+    test_common.validate_cmp(dtype, triton_res, torch_res)

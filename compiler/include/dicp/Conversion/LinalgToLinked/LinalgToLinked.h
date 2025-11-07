@@ -7,4 +7,6 @@ namespace mlir::dicp::linked {
 
 std::unique_ptr<OperationPass<ModuleOp>> createLinalgToLinkedPass();
 
+std::unique_ptr<OperationPass<ModuleOp>> createBoolTritonPtrPromotionPass();
+
 } // namespace mlir::dicp::linked

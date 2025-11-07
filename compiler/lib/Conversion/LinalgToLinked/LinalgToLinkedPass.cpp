@@ -3,25 +3,23 @@
 #include "dicp/Conversion/LinalgToLinked/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/IR/TypeUtilities.h"
-#include "mlir/IR/OperationSupport.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
-#include "mlir/IR/Location.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/Passes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-
 
 #define DEBUG_TYPE "linalg-to-linked"
 #include "llvm/Support/Debug.h"
@@ -38,9 +36,7 @@ namespace {
 
 const std::string globalKernelAttr = "global_kernel";
 const std::string kernelMixModeName = "mix_mode";
-inline constexpr unsigned getMaxEnumValForProgramIDDim() {
-  return 2;
-}
+inline constexpr unsigned getMaxEnumValForProgramIDDim() { return 2; }
 static auto constexpr LAUNCH_GRID_RANK = getMaxEnumValForProgramIDDim() + 1;
 static unsigned int constexpr TRITON_PROGRAM_INFO_ARG_COUNT =
     LAUNCH_GRID_RANK * 2;
@@ -79,6 +75,124 @@ public:
 //     return MemRefType::get(tensorType.getShape(), elemType);
 //   });
 // }
+
+static LogicalResult convertMultipleBlockControlFlow(Operation *funcOp,
+                                                     OpBuilder &builder) {
+  if (!isa<func::FuncOp>(funcOp)) {
+    funcOp->emitError(
+        "convertMultipleBlockControlFlow can only process func::FuncOp!");
+    return failure();
+  }
+
+  SmallVector<Operation *> candidate;
+  SmallVector<Block *> eraseBlocks;
+  for (Block &block : dyn_cast<func::FuncOp>(funcOp).getBody()) {
+    auto curTerminator = block.getTerminator();
+    if (isa<cf::CondBranchOp>(curTerminator))
+      candidate.push_back(curTerminator);
+    else if (isa<func::ReturnOp>(curTerminator)) {
+      if (candidate.empty()) {
+        curTerminator->emitError(
+            "funcOp has more than one Block but got a early 'tt.return' Op.");
+        return failure();
+      }
+    } else
+      return failure();
+
+    if (!block.isEntryBlock())
+      eraseBlocks.push_back(&block);
+  }
+
+  if (candidate.empty()) {
+    funcOp->emitError("funcOp has more than one Block but no candidate "
+                      "Terminator was found!");
+    return failure();
+  }
+
+  llvm::BitVector visitFlag(candidate.size(), false);
+
+  // Recursive function to convert all cf::CondBranchOp to scf::IfOp
+  std::function<void(Operation *, Operation *)> convertToSCF =
+      [&](Operation *op, Operation *insertPosOp) -> void {
+    auto condBranchOp = dyn_cast_if_present<cf::CondBranchOp>(op);
+    auto iter = llvm::find(candidate, condBranchOp);
+    if (!(condBranchOp && iter != candidate.end())) {
+      op->emitError(
+          "convertToSCF must process with condBranchOp in candidates!");
+      return;
+    }
+    visitFlag.set(iter - candidate.begin());
+
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointAfter(insertPosOp);
+
+    // Well, here force to destory original control flow
+    builder.create<scf::IfOp>(
+        condBranchOp->getLoc(), condBranchOp.getCondition(),
+        /*thenBuilder=*/
+        [&](OpBuilder &builder, Location loc) {
+          SmallVector<Operation *> movedOps = llvm::map_to_vector(
+              condBranchOp.getTrueDest()->without_terminator(),
+              [](Operation &op) { return &op; });
+          for (auto *innerOp : movedOps) {
+            innerOp->moveBefore(builder.getInsertionBlock(),
+                                builder.getInsertionPoint());
+          }
+
+          auto blockTerm = condBranchOp.getTrueDest()->getTerminator();
+          if (isa<cf::CondBranchOp>(blockTerm)) {
+            if (movedOps.empty()) {
+              blockTerm->emitError(
+                  "movedOps can not be empty before entering convertToSCF!");
+              return;
+            }
+            convertToSCF(blockTerm, movedOps.back());
+          }
+
+          builder.create<scf::YieldOp>(loc);
+        },
+        /*elseBuilder=*/
+        [&](OpBuilder &builder, Location loc) {
+          SmallVector<Operation *> movedOps = llvm::map_to_vector(
+              condBranchOp.getFalseDest()->without_terminator(),
+              [](Operation &op) { return &op; });
+          for (auto *innerOp : movedOps) {
+            innerOp->moveBefore(builder.getInsertionBlock(),
+                                builder.getInsertionPoint());
+          }
+
+          auto blockTerm = condBranchOp.getFalseDest()->getTerminator();
+          if (isa<cf::CondBranchOp>(blockTerm)) {
+            if (movedOps.empty()) {
+              blockTerm->emitError(
+                  "movedOps can not be empty before entering convertToSCF!");
+              return;
+            }
+            convertToSCF(blockTerm, movedOps.back());
+          }
+
+          builder.create<scf::YieldOp>(loc);
+        });
+  };
+
+  Block::iterator insertOp(candidate.front());
+  --insertOp;
+  convertToSCF(candidate.front(), &(*insertOp));
+
+  if (!visitFlag.all())
+    return failure();
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(candidate.front());
+  builder.create<func::ReturnOp>(candidate.front()->getLoc());
+
+  for (Operation *eachTerm : candidate)
+    eachTerm->erase();
+  for (Block *block : llvm::reverse(eraseBlocks))
+    block->erase();
+
+  return success();
+}
 
 void convertFuncFunc(func::FuncOp func, const bool existDot) {
   OpBuilder builder(func);
@@ -167,15 +281,21 @@ void convertFuncFunc(func::FuncOp func, const bool existDot) {
   IRMapping map;
   funcBody.cloneInto(&funcFuncBody, map);
 
-  // for (Block &block : funcFuncBody.getBlocks()) {
-  //   auto term = block.getTerminator();
-  //   builder.setInsertionPoint(term);
-  //   builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
-  //   term->erase();
-  // }
+  // 消除多个return，否则会在one-shot buffer报错
+  if (!funcFuncBody.hasOneBlock()) {
+    if (failed(convertMultipleBlockControlFlow(funcFunc, builder))) {
+      llvm_unreachable("Encounter unsupported control flow");
+    }
+  }
+
+  for (Block &block : funcFuncBody.getBlocks()) {
+    auto term = block.getTerminator();
+    builder.setInsertionPoint(term);
+    builder.create<func::ReturnOp>(func.getLoc(), term->getOperands());
+    term->erase();
+  }
   func.erase();
 }
-
 
 void addProgramInfo(func::FuncOp func, bool globalKernel) {
   OpBuilder b(func);
@@ -211,7 +331,8 @@ class ExternElementwiseClOpConverter
 public:
   using OpConversionPattern<triton::ExternElementwiseOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(triton::ExternElementwiseOp op, OpAdaptor adaptor,
+  LogicalResult matchAndRewrite(triton::ExternElementwiseOp op,
+                                OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const {
     auto loc = op.getLoc();
     if (!op.getPure()) {
@@ -236,7 +357,7 @@ public:
         srcElemTys.push_back(
             cast<RankedTensorType>(src.getType()).getElementType());
       }
-      
+
       FunctionType elemFuncType =
           FunctionType::get(rewriter.getContext(), srcElemTys, {dstElemTy});
       auto mod = SymbolTable::getNearestSymbolTable(op);
@@ -249,7 +370,7 @@ public:
                                                 op.getSymbol(), elemFuncType);
         extFunc.setPrivate();
         extFunc->setAttr(LLVM::LLVMDialect::getReadnoneAttrName(),
-                        UnitAttr::get(rewriter.getContext()));
+                         UnitAttr::get(rewriter.getContext()));
       }
       assert(isa<FunctionOpInterface>(
           SymbolTable::lookupSymbolIn(mod, op.getSymbol())));
@@ -278,9 +399,9 @@ public:
           /*bodyBuilder=*/
           [&](OpBuilder &builder, Location loc, ValueRange regionArgs) {
             auto elemOp = builder.create<func::CallOp>(loc,
-                                                      /*name=*/op.getSymbol(),
-                                                      /*resultType=*/dstElemTy,
-                                                      /*operands=*/regionArgs);
+                                                       /*name=*/op.getSymbol(),
+                                                       /*resultType=*/dstElemTy,
+                                                       /*operands=*/regionArgs);
             builder.create<linalg::YieldOp>(loc, elemOp->getResults());
           });
       if (isDstScalar) {
@@ -303,20 +424,20 @@ public:
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<
-        func::FuncDialect, arith::ArithDialect, math::MathDialect,
-        linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
-        cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
-        bufferization::BufferizationDialect, memref::MemRefDialect,
-        annotation::AnnotationDialect>();
+    registry
+        .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
+                linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
+                cf::ControlFlowDialect, tensor::TensorDialect,
+                LLVM::LLVMDialect, bufferization::BufferizationDialect,
+                memref::MemRefDialect, annotation::AnnotationDialect>();
   }
 
-  void populateLinalgToLinkedConversionPatterns(TypeConverter &typeConverter, RewritePatternSet &patterns) {
+  void populateLinalgToLinkedConversionPatterns(TypeConverter &typeConverter,
+                                                RewritePatternSet &patterns) {
     populateFunctionOpInterfaceTypeConversionPattern<triton::FuncOp>(
-      patterns, typeConverter);
+        patterns, typeConverter);
     patterns.add<TritonAnnotationConverter>(patterns.getContext());
-    patterns.add<ExternElementwiseClOpConverter>(
-      patterns.getContext());
+    patterns.add<ExternElementwiseClOpConverter>(patterns.getContext());
     if (!this->namedOps) {
       linalg::populateElementwiseToLinalgConversionPatterns(patterns);
     }
@@ -329,11 +450,12 @@ public:
     ConversionTarget target(getContext());
     TritonTypeConverter tritonTypeConverter{};
 
-    target.addLegalDialect<func::FuncDialect, arith::ArithDialect, math::MathDialect,
-      linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
-      cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
-      bufferization::BufferizationDialect, memref::MemRefDialect,
-      annotation::AnnotationDialect>();
+    target.addLegalDialect<
+        func::FuncDialect, arith::ArithDialect, math::MathDialect,
+        linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
+        cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
+        bufferization::BufferizationDialect, memref::MemRefDialect,
+        annotation::AnnotationDialect>();
     target.addLegalOp<ModuleOp>();
     // 根据条件判断需要转换的OP
     target.addDynamicallyLegalOp<mlir::UnrealizedConversionCastOp>(
@@ -355,7 +477,8 @@ public:
       existDot = true;
       return WalkResult::interrupt();
     });
-    this->populateLinalgToLinkedConversionPatterns(tritonTypeConverter, patterns);
+    this->populateLinalgToLinkedConversionPatterns(tritonTypeConverter,
+                                                   patterns);
     size_t tritonFuncCount = 0;
     for (auto func : getOperation().getOps<triton::FuncOp>()) {
       ++tritonFuncCount;
@@ -372,12 +495,11 @@ public:
       addProgramInfo(func, globalKernel);
     }
     // 函数头尾转换
-    moduleOp.walk(
-        [&](func::FuncOp func) { convertFuncFunc(func, existDot); });
+    moduleOp.walk([&](func::FuncOp func) { convertFuncFunc(func, existDot); });
 
     PassManager pm(context);
     if (failed(pm.run(moduleOp))) {
-        signalPassFailure();
+      signalPassFailure();
     }
 
     // 强制在函数参数开头添加一个参数，代表工作空间的占位参数
@@ -387,16 +509,17 @@ public:
 
       auto context = func.getContext();
       constexpr int64_t syncBlockLockArgIdx = 0;
-      NamedAttribute syncBlockLockArgAttr(StringAttr::get(context, "syncBlockLock"),
-                                      UnitAttr::get(context));
+      NamedAttribute syncBlockLockArgAttr(
+          StringAttr::get(context, "syncBlockLock"), UnitAttr::get(context));
       MemRefType syncBlockLockArgType =
           MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
                           IntegerType::get(context, 8));
-      func.insertArgument(syncBlockLockArgIdx, // argIndex
-                          syncBlockLockArgType, // argType
+      func.insertArgument(syncBlockLockArgIdx,      // argIndex
+                          syncBlockLockArgType,     // argType
                           nullptr, func->getLoc()); // dicAttr
       func->setAttr("SyncBlockLockArgIdx",
-                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 0));  // 64: 64位整型
+                    IntegerAttr::get(IntegerType::get(&getContext(), 64),
+                                     0)); // 64: 64位整型
 
       constexpr int64_t workspaceArgIdx = 1;
       MemRefType workspaceArgType =

@@ -7,7 +7,12 @@ import functools
 import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
-from triton.backends.compiler import BaseBackend, GPUTarget, AttrsDescriptor, register_descriptor
+from triton.backends.compiler import (
+    BaseBackend,
+    GPUTarget,
+    AttrsDescriptor,
+    register_descriptor,
+)
 from triton._C.libtriton import ir, passes
 from triton.runtime.cache import get_dump_manager
 from dataclasses import dataclass
@@ -25,29 +30,32 @@ dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
 replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
 replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
 if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not None):
-    os.environ['TRITON_ALWAYS_COMPILE'] = "1"
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+
 
 def downgrade_llir(llir):
     llir = _downgrade_mem_attrs(llir)
     llir = _downgrade_stacksaverestore_intrinsics(llir)
     return llir
 
+
 def _downgrade_mem_attrs(llir: str):
     memory_pattern = r"memory\([^()]*\)"
+
     def replace_mem_attr(m):
         attrs = m[0][7:-1].split(",")
         if len(attrs) == 0:
             return "readnone"
-        loc_map = {"argmem":1, "inaccessiblemem":2, "other":4}
+        loc_map = {"argmem": 1, "inaccessiblemem": 2, "other": 4}
         loc_attr = 0
-        rw_map = {"readwrite":3, "write":2, "read":1, "none":0}
+        rw_map = {"readwrite": 3, "write": 2, "read": 1, "none": 0}
         rw_attr = 0
         for attr_pair in attrs:
             pair = attr_pair.split(":")
             assert len(pair) <= 2
             if len(pair) == 1:
                 rw = rw_map[pair[0].strip()]
-                loc = loc_map["other"] # all location
+                loc = loc_map["other"]  # all location
             else:
                 rw = rw_map[pair[1].strip()]
                 loc_str = pair[0].strip()
@@ -63,28 +71,37 @@ def _downgrade_mem_attrs(llir: str):
             rw_attr_str = rev_rw_map[rw_attr]
         else:
             rw_attr_str = ""
-        rev_loc_map = {1: "argmemonly", 2: "inaccessiblememonly", 3: "inaccessiblemem_or_argmemonly"}
+        rev_loc_map = {
+            1: "argmemonly",
+            2: "inaccessiblememonly",
+            3: "inaccessiblemem_or_argmemonly",
+        }
         if loc_attr in rev_loc_map:
             loc_attr_str = rev_loc_map[loc_attr]
         else:
             loc_attr_str = ""
         return rw_attr_str + " " + loc_attr_str
+
     return re.sub(memory_pattern, replace_mem_attr, llir)
+
 
 def _downgrade_stacksaverestore_intrinsics(llir: str):
     llir = re.sub(r"llvm\.stacksave\.\w+", "llvm.stacksave", llir)
     llir = re.sub(r"llvm\.stackrestore\.\w+", "llvm.stackrestore", llir)
     return llir
 
+
 def _get_triton_adapter_opt_path() -> str:
     path = os.path.dirname(__file__)
     path = os.path.join(path, "triton-adapter-opt")
     return path
 
+
 def _get_dicp_opt_path() -> str:
     base_path = os.path.dirname(__file__)
     path = os.path.join(base_path, "dicp_opt")
     return path
+
 
 def _get_triton_shared_opt_path() -> str:
     base_path = os.path.dirname(__file__)
@@ -92,10 +109,13 @@ def _get_triton_shared_opt_path() -> str:
     path34 = os.path.join(base_path, "triton-shared-opt-v3_4")
     if os.path.exists(path34):
         path = path34
-    path = os.getenv("TRITON_SHARED_OPT_PATH", path)    # allow user override
+    path = os.getenv("TRITON_SHARED_OPT_PATH", path)  # allow user override
     if not os.path.exists(path):
-        raise EnvironmentError(f"Couldn't find triton-shared-opt at {path}, set TRITON_SHARED_OPT_PATH to override")
+        raise EnvironmentError(
+            f"Couldn't find triton-shared-opt at {path}, set TRITON_SHARED_OPT_PATH to override"
+        )
     return path
+
 
 def _get_mlir_path(path: str, *paths) -> str:
     root_path = os.getenv("MLIR_ROOT", "")
@@ -103,46 +123,59 @@ def _get_mlir_path(path: str, *paths) -> str:
         raise EnvironmentError("MLIR_ROOT is not set.")
     return os.path.join(root_path, path, *paths)
 
+
 def _get_llvm_path(path: str, *paths) -> str:
     root_path = os.getenv("LLVM_ROOT", "")
     if root_path == "":
         raise EnvironmentError("LLVM_ROOT is not set.")
     return os.path.join(root_path, path, *paths)
 
+
 def _get_npucompiler_path() -> str:
     npu_compiler_path = shutil.which("bishengir-compile")
     if npu_compiler_path is None:
         npu_compiler_root = os.getenv("TRITON_NPU_COMPILER_PATH", "")
         if npu_compiler_root is None:
-            raise EnvironmentError("Couldn't find executable bishengir-compile or TRITON_NPU_COMPILER_PATH.")
+            raise EnvironmentError(
+                "Couldn't find executable bishengir-compile or TRITON_NPU_COMPILER_PATH."
+            )
         npu_compiler_path = os.path.join(npu_compiler_root, "npuc")
     npu_compiler_path = os.path.abspath(npu_compiler_path)
     return npu_compiler_path
+
 
 def _get_bisheng_path() -> str:
     bisheng_path = shutil.which("bisheng")
     if bisheng_path is None:
         npu_compiler_root = os.getenv("TRITON_NPU_COMPILER_PATH", "")
         if npu_compiler_root is None:
-            raise EnvironmentError("Couldn't find executable bisheng or TRITON_NPU_COMPILER_PATH")
+            raise EnvironmentError(
+                "Couldn't find executable bisheng or TRITON_NPU_COMPILER_PATH"
+            )
         bisheng_path = os.path.join(npu_compiler_root, "ccec")
     return bisheng_path
+
 
 @functools.lru_cache(None)
 def _get_ascend_path() -> str:
     path = os.getenv("ASCEND_HOME_PATH", "")
     if path == "":
-        raise EnvironmentError("ASCEND_HOME_PATH is not set, source <ascend-toolkit>/set_env.sh first")
+        raise EnvironmentError(
+            "ASCEND_HOME_PATH is not set, source <ascend-toolkit>/set_env.sh first"
+        )
     return Path(path)
 
+
 def _is_ascend_sanitizer_enabled() -> bool:
-    return os.getenv("TRITON_ENABLE_SANITIZER", 'false').lower() in ('true', '1')
+    return os.getenv("TRITON_ENABLE_SANITIZER", "false").lower() in ("true", "1")
+
 
 def _is_auto_map_parallel_blocks_enabled() -> bool:
-    return os.getenv("TRITON_ALL_BLOCKS_PARALLEL", "true").lower() in ("true", "1")
+    return os.getenv("TRITON_ALL_BLOCKS_PARALLEL", "false").lower() in ("true", "1")
+
 
 def _build_npu_ext(obj_name: str, src_path, src_dir, *, kernel_launcher=None) -> str:
-    suffix = sysconfig.get_config_var('EXT_SUFFIX')
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
     so_path = os.path.join(src_dir, f"{obj_name}{suffix}")
 
     cxx = os.environ.get("CC")
@@ -156,14 +189,14 @@ def _build_npu_ext(obj_name: str, src_path, src_dir, *, kernel_launcher=None) ->
     # disable all warnings
     cc_cmd += [f"-w"]
     # find the python library
-    if hasattr(sysconfig, 'get_default_scheme'):
+    if hasattr(sysconfig, "get_default_scheme"):
         scheme = sysconfig.get_default_scheme()
     else:
         scheme = sysconfig._get_default_scheme()
     # 'posix_local' is a custom scheme on Debian. However, starting Python 3.10, the default install
     # path changes to include 'local'. This change is required to use triton with system-wide python.
-    if scheme == 'posix_local':
-        scheme = 'posix_prefix'
+    if scheme == "posix_local":
+        scheme = "posix_prefix"
     py_include_dir = sysconfig.get_paths(scheme=scheme)["include"]
     cc_cmd += [f"-I{py_include_dir}"]
     # device_print.h
@@ -176,12 +209,14 @@ def _build_npu_ext(obj_name: str, src_path, src_dir, *, kernel_launcher=None) ->
         f"-I{os.path.join(asc_path, 'include/experiment/msprof')}",
         f"-I{pybind11.get_include()}",
         f"-L{os.path.join(asc_path, 'lib64')}",
-        "-lruntime", "-lascendcl",
-        ]
+        "-lruntime",
+        "-lascendcl",
+    ]
 
     if kernel_launcher == "torch":
         import torch
         import torch_npu
+
         torch_path = os.path.dirname(os.path.realpath(torch.__file__))
         torch_npu_path = os.path.dirname(os.path.realpath(torch_npu.__file__))
         use_cxx11_abi = _check_cxx11_abi()
@@ -202,12 +237,13 @@ def _build_npu_ext(obj_name: str, src_path, src_dir, *, kernel_launcher=None) ->
     else:
         raise RuntimeError("Failed to compile " + src_path)
 
+
 def _get_kernel_target(metadata: dict):
     if "target" not in metadata:
         raise Exception("No target provided!")
     sub_target = metadata["target"].arch
     assert isinstance(sub_target, str)
-    if sub_target.startswith('Ascend910B'):
+    if sub_target.startswith("Ascend910B"):
         mix_mode = metadata["mix_mode"]
         if mix_mode.lower().strip("_").startswith("aiv"):
             return "ascend_910b_vec", "c220-vec", "aiv"
@@ -215,30 +251,30 @@ def _get_kernel_target(metadata: dict):
             return "ascend_910b_cube", "c220-cube", "aic"
         else:
             return "ascend_910b", "c220", "mix"
-    elif sub_target.startswith('Ascend910'):
+    elif sub_target.startswith("Ascend910"):
         return "ascend_910", "c100", "mix"
     else:
         raise NotImplementedError(f"NPU subtarget {sub_target} not supported yet")
 
+
 def _check_cxx11_abi():
     import torch
+
     return 1 if torch._C._GLIBCXX_USE_CXX11_ABI else 0
+
 
 def convert_sigtype_to_int(sigty: str):
     MAP_SIGTYPE_TO_INT = {
         # Boolean
         "i1": 12,  # BOOL
-
         # Integer types
         "i8": 2,  # INT8
         "i16": 6,  # INT16
         "i32": 3,  # INT32
         "i64": 9,  # INT64
-
         # Unsigned integer types
         "u32": 8,  # UINT32
         "u64": 10,  # UINT64
-
         # Floating point types
         "fp16": 1,  # FLOAT16
         "bf16": 27,  # DT_BF16
@@ -271,9 +307,8 @@ def _check_bishengir_is_regbased() -> bool:
         print(f"ERROR: {e}")
         return False
 
+
 ###################### utils.py end ######################
-
-
 
 
 # TODO: materialize the concrete min shape
@@ -283,8 +318,8 @@ def min_dot_size(target: GPUTarget):
 
 
 def make_ttir(mod, metadata, opt):
-    if 'hash' not in metadata:
-        metadata['hash'] = hashlib.md5(f"{mod}-{metadata}".encode()).hexdigest()
+    if "hash" not in metadata:
+        metadata["hash"] = hashlib.md5(f"{mod}-{metadata}".encode()).hexdigest()
     # the same optimize pass for triton-ir as all other backends
     pm = ir.pass_manager(mod.context)
     pm.enable_debug()
@@ -297,50 +332,87 @@ def make_ttir(mod, metadata, opt):
     passes.common.add_symbol_dce(pm)
     pm.run(mod)
     if opt.debug:
-        dump_manager = get_dump_manager(metadata['hash'])
+        dump_manager = get_dump_manager(metadata["hash"])
         print(f"Dumping intermediate results to {dump_manager.cache_dir}")
-        dump_manager.put(str(mod), "kernel.ttir.mlir", binary = False)
+        dump_manager.put(str(mod), "kernel.ttir.mlir", binary=False)
 
     return mod
+
+
+def ttir_post(mod, metadata, opt):
+    ttir_code = str(mod)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
+        dst_path = os.path.join(tmpdir, "kernel.ttir_post.mlir")
+        Path(src_path).write_text(ttir_code)
+        dicp_opt_path = _get_dicp_opt_path()
+        dicp_cmd_list = [
+            dicp_opt_path,
+            src_path,
+            "--bool-triton-ptr-promotion",
+            "-o",
+            dst_path,
+        ]
+        if dump_ir:
+            print(f"DEBUG dump ir[ttir_post] command: {dicp_cmd_list}")
+        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
+        if dump_ir:
+            shutil.copy(dst_path, "./tmp/kernel.ttir_post.mlir")
+        return Path(dst_path).read_text()
+
 
 def ttir_to_linalg(mod, metadata, opt, *, named_ops=True):
     # use triton_adapter to lower Triton-MLIR to linalg
     # Get Triton-MLIR as string
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
-        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
+        src_path = os.path.join(tmpdir, "kernel.ttir_post.mlir")
         dst_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
         Path(src_path).write_text(ttir_code)
         triton_adapter_opt_path = _get_triton_adapter_opt_path()
 
-        cmd_list = [triton_adapter_opt_path, src_path,
-            f'--triton-to-linalg=global-kernel=false named-ops={named_ops}',
-            "-o", dst_path]
+        cmd_list = [
+            triton_adapter_opt_path,
+            src_path,
+            f"--triton-to-linalg=global-kernel=false named-ops={named_ops}",
+            "-o",
+            dst_path,
+        ]
         if _is_ascend_sanitizer_enabled():
-            cmd_list += ["--mlir-print-debuginfo"] # pass debug info
+            cmd_list += ["--mlir-print-debuginfo"]  # pass debug info
 
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if opt.debug:
-            dump_manager = get_dump_manager(metadata['hash'])
-            dump_manager.put(Path(dst_path).read_text(),
-                             "kernel.ttadapter.mlir", binary = False)
+            dump_manager = get_dump_manager(metadata["hash"])
+            dump_manager.put(
+                Path(dst_path).read_text(), "kernel.ttadapter.mlir", binary=False
+            )
 
         return Path(dst_path).read_text()
+
 
 def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
     ttir_code = str(mod)
     # 注释掉gpu.barrier
-    ttir_code = re.sub(r'gpu\.barrier', r'// gpu.barrier', ttir_code)
+    ttir_code = re.sub(r"gpu\.barrier", r"// gpu.barrier", ttir_code)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_shared_opt_path = _get_triton_shared_opt_path()
-        ttshared_cmd = '--triton-to-linalg-experimental' if "v3_2" not in triton_shared_opt_path else '--triton-to-linalg'
+        ttshared_cmd = (
+            "--triton-to-linalg-experimental"
+            if "v3_2" not in triton_shared_opt_path
+            else "--triton-to-linalg"
+        )
 
-        cmd_shared_list = [triton_shared_opt_path, src_path,
+        cmd_shared_list = [
+            triton_shared_opt_path,
+            src_path,
             ttshared_cmd,
-            "-o", dst_ttshared_path]
+            "-o",
+            dst_ttshared_path,
+        ]
         if dump_ir:
             if not os.path.exists("./tmp"):
                 os.makedirs("./tmp")
@@ -349,15 +421,15 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
 
         # 匹配形如 "memref<...> to tensor<...>" 的模式
-        pattern = r'(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)'
-        with open(dst_ttshared_path, 'r') as f:
+        pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
+        with open(dst_ttshared_path, "r") as f:
             lines = f.readlines()
         modified = []
         for line in lines:
             # 使用正则替换，保留memref和tensor类型，中间插入注释
-            new_line = re.sub(pattern, r'\1 // to \2', line)
+            new_line = re.sub(pattern, r"\1 // to \2", line)
             modified.append(new_line)
-        with open(dst_ttshared_path, 'w') as f:
+        with open(dst_ttshared_path, "w") as f:
             f.writelines(modified)
         if dump_ir:
             shutil.copy(dst_ttshared_path, "./tmp/kernel.ttshared.mlir")
@@ -374,21 +446,25 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dst_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
         Path(src_path).write_text(ttsharedir_code)
         dicp_opt_path = _get_dicp_opt_path()
-        dicp_cmd_list = [dicp_opt_path, src_path,
-            f'--linalg-to-linked=global-kernel=false named-ops=true',
+        dicp_cmd_list = [
+            dicp_opt_path,
+            src_path,
+            f"--linalg-to-linked=global-kernel=false named-ops=true",
             "--linked-to-hivm",
-            "-o", dst_path]
+            "-o",
+            dst_path,
+        ]
         if dump_ir:
             print(f"DEBUG dump ir[ttsharedir_to_linkedir] command: {dicp_cmd_list}")
         ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
-        with open(dst_path, 'r') as f:
+        with open(dst_path, "r") as f:
             content = f.read()
             # 将"*xfxxx"替换成"?xfxxx"
             content = content.replace("*xf", "?xf")
             content = content.replace("*xi", "?xi")
             content = content.replace("*xbf", "?xbf")
-            with open(dst_path, 'w') as f:
+            with open(dst_path, "w") as f:
                 f.write(content)
         if dump_ir:
             shutil.copy(dst_path, "./tmp/kernel.linkedir.mlir")
@@ -406,58 +482,65 @@ def linalg_to_llir(linalg: str, metadata, opt):
         Path(ttadapter_path).write_text(linalg)
         mlir_opt_path = _get_mlir_path("bin", "mlir-opt")
         # TritonAdapter-MLIR to LLVM-MLIR
-        subprocess.check_call([mlir_opt_path, ttadapter_path,
-            "--convert-linalg-to-affine-loops",
-            "--eliminate-empty-tensors",
-            "--empty-tensor-to-alloc-tensor",
-            "--one-shot-bufferize=allow-return-allocs-from-loops=true",
-            "--lower-affine",
-            "--convert-linalg-to-loops",
-            "--convert-scf-to-cf",
-            "--convert-cf-to-llvm",
-            "--convert-arith-to-llvm",
-            "--convert-math-to-llvm",
-            "--convert-complex-to-llvm",
-            "--convert-vector-to-llvm",
-            "--convert-index-to-llvm",
-            "--memref-expand",
-            "--expand-strided-metadata",
-            "--finalize-memref-to-llvm",
-            "--convert-func-to-llvm",
-            # Lowering memrefs creates more affine.apply ops.
-            # Lowering these affine ops again creates further arith ops,
-            # so we have to run these two passes again here.
-            "--lower-affine",
-            "--convert-arith-to-llvm",
-            # Remove all unrealized casts created
-            "--reconcile-unrealized-casts",
-            "-o",
-            llmlir_path])
+        subprocess.check_call(
+            [
+                mlir_opt_path,
+                ttadapter_path,
+                "--convert-linalg-to-affine-loops",
+                "--eliminate-empty-tensors",
+                "--empty-tensor-to-alloc-tensor",
+                "--one-shot-bufferize=allow-return-allocs-from-loops=true",
+                "--lower-affine",
+                "--convert-linalg-to-loops",
+                "--convert-scf-to-cf",
+                "--convert-cf-to-llvm",
+                "--convert-arith-to-llvm",
+                "--convert-math-to-llvm",
+                "--convert-complex-to-llvm",
+                "--convert-vector-to-llvm",
+                "--convert-index-to-llvm",
+                "--memref-expand",
+                "--expand-strided-metadata",
+                "--finalize-memref-to-llvm",
+                "--convert-func-to-llvm",
+                # Lowering memrefs creates more affine.apply ops.
+                # Lowering these affine ops again creates further arith ops,
+                # so we have to run these two passes again here.
+                "--lower-affine",
+                "--convert-arith-to-llvm",
+                # Remove all unrealized casts created
+                "--reconcile-unrealized-casts",
+                "-o",
+                llmlir_path,
+            ]
+        )
         if opt.debug:
-            dump_manager = get_dump_manager(metadata['hash'])
-            dump_manager.put(Path(llmlir_path).read_text(), "kernel.llir.mlir", binary = False)
+            dump_manager = get_dump_manager(metadata["hash"])
+            dump_manager.put(
+                Path(llmlir_path).read_text(), "kernel.llir.mlir", binary=False
+            )
 
         # LLVM-MLIR to LLVM-IR
         mlir_translate_path = _get_mlir_path("bin", "mlir-translate")
-        subprocess.check_call([mlir_translate_path, llmlir_path,
-            "--mlir-to-llvmir",
-            "-o",
-            llir_path])
+        subprocess.check_call(
+            [mlir_translate_path, llmlir_path, "--mlir-to-llvmir", "-o", llir_path]
+        )
         if opt.debug:
-            dump_manager = get_dump_manager(metadata['hash'])
-            dump_manager.put(Path(llir_path).read_text(), "kernel.ll", binary = False)
+            dump_manager = get_dump_manager(metadata["hash"])
+            dump_manager.put(Path(llir_path).read_text(), "kernel.ll", binary=False)
 
         return Path(llir_path).read_text()
+
 
 def llir_to_cpuasm(llir: str, metadata, opt):
     # add metadata at final stage
     # Note: Compiled Kernel requires to estimate size of shared memory to occupy
     # Currently, CPU backend requires no limit on shared memory size
-    metadata['shared'] = 1
+    metadata["shared"] = 1
     # We can get a function name (C naming) from
     # LLVM-IR by getting the first "define void @".
     fn_name = llir.split("define void @")[1].split("(")[0].strip()
-    metadata['name'] = fn_name + " cpu"
+    metadata["name"] = fn_name + " cpu"
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.ll")
         linked_path = os.path.join(tmpdir, "kernel_linked.ll")
@@ -465,26 +548,39 @@ def llir_to_cpuasm(llir: str, metadata, opt):
 
         llir = downgrade_llir(llir)
         if opt.debug:
-            dump_manager = get_dump_manager(metadata['hash'])
-            dump_manager.put(llir, "kernel_downgrade.ll", binary = False)
+            dump_manager = get_dump_manager(metadata["hash"])
+            dump_manager.put(llir, "kernel_downgrade.ll", binary=False)
 
         Path(src_path).write_text(llir)
 
         linker_path = _get_llvm_path("bin", "llvm-link")
         libclc_path = _get_llvm_path("lib", "clc", "libspirv-aarch64--.bc")
-        subprocess.check_call([linker_path, src_path, libclc_path, "--only-needed", "-S", "-o", linked_path])
+        subprocess.check_call(
+            [
+                linker_path,
+                src_path,
+                libclc_path,
+                "--only-needed",
+                "-S",
+                "-o",
+                linked_path,
+            ]
+        )
         if opt.debug:
-            dump_manager = get_dump_manager(metadata['hash'])
-            dump_manager.put(Path(linked_path).read_text(), "kernel_linked.ll", binary = False)
+            dump_manager = get_dump_manager(metadata["hash"])
+            dump_manager.put(
+                Path(linked_path).read_text(), "kernel_linked.ll", binary=False
+            )
 
         llc_path = _get_llvm_path("bin", "llc")
         subprocess.check_call([llc_path, linked_path, "-o", dst_path])
         if opt.debug:
-            dump_manager = get_dump_manager(metadata['hash'])
-            dump_manager.put(Path(dst_path).read_text(), "kernel.s", binary = False)
+            dump_manager = get_dump_manager(metadata["hash"])
+            dump_manager.put(Path(dst_path).read_text(), "kernel.s", binary=False)
 
         # Actually it's text-format assembly.  Use read_text().
         return Path(dst_path).read_text()
+
 
 def __get_metadata_attr_by_callback(lib, postfix: str, metadata, meta_key: str):
     func_symbol = metadata["kernel_name"] + postfix
@@ -493,6 +589,7 @@ def __get_metadata_attr_by_callback(lib, postfix: str, metadata, meta_key: str):
         callback_func.restype = ctypes.c_int64
         callback_func.argtypes = []
         metadata[meta_key] = callback_func()
+
 
 def _parse_linalg_metadata(linalg: str, metadata: dict):
     """
@@ -511,7 +608,9 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
     # Example: func.func @gather_sorted_kernel(%arg0: ...) -> gather_sorted_kernel
     KERNEL_NAME_REGEX = r"func\.func\s+@(\w+)"
     # Example: %arg1: memref<?xf32> {tt.divisibility = 16 : i32, tt.tensor_kind = 0 : i32} -> ('1', '0')
-    TENSOR_KIND_REGEX = r'%arg(\d+):[^,)]*?\{[^}]*?tt\.tensor_kind\s*=\s*([^:\s}]+)\s*:[^}]*?\}'
+    TENSOR_KIND_REGEX = (
+        r"%arg(\d+):[^,)]*?\{[^}]*?tt\.tensor_kind\s*=\s*([^:\s}]+)\s*:[^}]*?\}"
+    )
     # Example removal:   ', mix_mode = "aiv"' → ''
     REMOVE_MIX_MODE_REGEX = r', mix_mode\s*=\s*"[^"]*"'
     # Note: Compiled Kernel requires to estimate size of shared memory to occupy
@@ -524,7 +623,9 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
     # Check the function load_binary in npu_driver.py.
     metadata["name"] = metadata["kernel_name"] + " " + metadata["mix_mode"]
     # Parse all tensor kinds from arguments
-    metadata["tensor_kinds"] = [int(kind) for _, kind in re.findall(TENSOR_KIND_REGEX, linalg)]
+    metadata["tensor_kinds"] = [
+        int(kind) for _, kind in re.findall(TENSOR_KIND_REGEX, linalg)
+    ]
     # remove the mix_mode attribute
     linalg = re.sub(REMOVE_MIX_MODE_REGEX, "", linalg)
     return linalg, metadata
@@ -545,7 +646,7 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             bishengir_hivm_opt = "--enable-hivm-compile=true"
         bin_path = os.path.join(tmpdir, "kernel_reloc.o")
         callback_path = os.path.join(tmpdir, "libkernel.so")
-        multibuffer = metadata['multibuffer']
+        multibuffer = metadata["multibuffer"]
         _compile_option_list = []
         _compile_option_list += [
             f"--enable-auto-multi-buffer={multibuffer}",
@@ -554,7 +655,7 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]
         if _is_auto_map_parallel_blocks_enabled():
-            _compile_option_list += ["--enable-auto-blockify-loop"]    
+            _compile_option_list += ["--enable-auto-blockify-loop"]
         npu_compiler_path = _get_npucompiler_path()
 
         # support bishengir-compile more version
@@ -581,16 +682,23 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
-            __get_metadata_attr_by_callback(lib, "_infer_workspace_shape_function", metadata, "workspace_size")
-            __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_num_function", metadata, "lock_num")
-            __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_init_function", metadata, "lock_init_val")
+            __get_metadata_attr_by_callback(
+                lib, "_infer_workspace_shape_function", metadata, "workspace_size"
+            )
+            __get_metadata_attr_by_callback(
+                lib, "_infer_sync_block_lock_num_function", metadata, "lock_num"
+            )
+            __get_metadata_attr_by_callback(
+                lib, "_infer_sync_block_lock_init_function", metadata, "lock_init_val"
+            )
         return Path(bin_path).read_bytes()
 
+
 @dataclass(frozen=True)
-class NPUOptions():
+class NPUOptions:
     debug: bool = False
-    # sanitize_overflow: bool = False
-    sanitize_overflow: bool = True
+    sanitize_overflow: bool = False
+    # sanitize_overflow: bool = True
     llvm_version: int = 15
     kernel_name: str = "triton_"
 
@@ -619,7 +727,7 @@ class NPUOptions():
     stream: int = None
 
     def hash(self):
-        key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
+        key = "_".join([f"{name}-{val}" for name, val in self.__dict__.items()])
         return hashlib.md5(key.encode("utf-8")).hexdigest()
 
 
@@ -643,8 +751,9 @@ class CPUOptions:
     extern_libs: dict = None
 
     def hash(self):
-        key = '_'.join([f'{name}-{val}' for name, val in self.__dict__.items()])
+        key = "_".join([f"{name}-{val}" for name, val in self.__dict__.items()])
         return hashlib.md5(key.encode("utf-8")).hexdigest()
+
 
 @register_descriptor
 class AscendAttrsDescriptor(AttrsDescriptor):
@@ -652,9 +761,10 @@ class AscendAttrsDescriptor(AttrsDescriptor):
     def _add_backend_properties(self, params=None, values=None):
         pass
 
+
 class NPUUtils(object):
     def __new__(cls):
-        if not hasattr(cls, 'instance'):
+        if not hasattr(cls, "instance"):
             cls.instance = super(NPUUtils, cls).__new__(cls)
         return cls.instance
 
@@ -674,6 +784,7 @@ class NPUUtils(object):
                 with open(so, "rb") as f:
                     cache_path = cache.put(f.read(), fname, binary=True)
         import importlib.util
+
         spec = importlib.util.spec_from_file_location("npu_utils", cache_path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -681,7 +792,9 @@ class NPUUtils(object):
 
     def load_binary(self, name, kernel, shared, device):
         fnname, mix_mode = name.split()
-        return self.npu_utils_mod.load_kernel_binary(fnname, kernel, shared, device, mix_mode)
+        return self.npu_utils_mod.load_kernel_binary(
+            fnname, kernel, shared, device, mix_mode
+        )
 
     @functools.lru_cache()
     def get_device_properties(self, device):
@@ -689,7 +802,7 @@ class NPUUtils(object):
         # fetch available memory at runtime
         num_aic = self.get_aicore_num()
         num_aiv = num_aic * 2
-        return {"max_shared_mem" : 1, "num_aicore" : num_aic, "num_vectorcore" : num_aiv}
+        return {"max_shared_mem": 1, "num_aicore": num_aic, "num_vectorcore": num_aiv}
 
     @functools.lru_cache()
     def get_arch(self):
@@ -700,38 +813,44 @@ class NPUUtils(object):
     def get_aicore_num(self):
         # temporarily return empty arch descriptor
         return self.npu_utils_mod.get_aicore_num()
-    
+
     @functools.lru_cache()
     def get_aivector_core_num(self):
         return self.get_device_properties("npu")["num_vectorcore"]
 
+
 class NPULauncher(object):
     def __init__(self, src, metadata):
         debug_mode = metadata.debug
-        workspace_size = int(metadata.workspace_size) \
-                              if hasattr(metadata, 'workspace_size') else -1
-        lock_init_value = int(metadata.lock_init_value) \
-                              if hasattr(metadata, 'lock_init_value') else 0
-        lock_num = int(metadata.lock_num) \
-                              if hasattr(metadata, 'lock_num') else -1
+        workspace_size = (
+            int(metadata.workspace_size) if hasattr(metadata, "workspace_size") else -1
+        )
+        lock_init_value = (
+            int(metadata.lock_init_value) if hasattr(metadata, "lock_init_value") else 0
+        )
+        lock_num = int(metadata.lock_num) if hasattr(metadata, "lock_num") else -1
         constants = src.constants if hasattr(src, "constants") else dict()
         cst_key = lambda i: src.fn.arg_names.index(i) if isinstance(i, str) else i
         constants = {cst_key(key): value for key, value in constants.items()}
         signature = {cst_key(key): value for key, value in src.signature.items()}
         mix_mode = metadata.mix_mode
-        wrapper_src = generate_npu_wrapper_src(constants, signature, \
-                                               workspace_size, mix_mode, \
-                                               lock_num, lock_init_value)
+        wrapper_src = generate_npu_wrapper_src(
+            constants, signature, workspace_size, mix_mode, lock_num, lock_init_value
+        )
         so_launcher_path = make_npu_launcher_stub(wrapper_src, debug_mode)
         # initialize launcher
         import importlib.util
-        spec = importlib.util.spec_from_file_location("__triton_launcher", so_launcher_path)
+
+        spec = importlib.util.spec_from_file_location(
+            "__triton_launcher", so_launcher_path
+        )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         self.launch = getattr(mod, "launch")
 
     def __call__(self, *args, **kwargs):
         self.launch(*args, **kwargs)
+
 
 def make_npu_launcher_stub(src, debug=False):
     """
@@ -744,13 +863,13 @@ def make_npu_launcher_stub(src, debug=False):
     # linking to a launcher with wrong cxx11_abi.
     use_cxx11_abi = _check_cxx11_abi()
     name = f"launcher_cxx11abi{use_cxx11_abi}"
-    suffix = sysconfig.get_config_var('EXT_SUFFIX')
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
     so_name = f"{name}{suffix}"
 
     if debug:
         dump_manager = get_dump_manager(so_cache_key)
         print(f"Dumping {name}.cxx to {dump_manager.cache_dir}")
-        dump_manager.put(src, f"{name}.cxx", binary = False)
+        dump_manager.put(src, f"{name}.cxx", binary=False)
 
     cache_path = so_cache_manager.get_file(so_name)
     if cache_path is not None:
@@ -762,12 +881,17 @@ def make_npu_launcher_stub(src, debug=False):
         src_path = os.path.join(tmpdir, f"{name}.cxx")
         with open(src_path, "w") as f:
             f.write(src)
-        enable_taskqueue = os.getenv("TRITON_ENABLE_TASKQUEUE", 'true').lower() in ('true', '1')
-        if (enable_taskqueue):
+        enable_taskqueue = os.getenv("TRITON_ENABLE_TASKQUEUE", "true").lower() in (
+            "true",
+            "1",
+        )
+        if enable_taskqueue:
             kernel_launcher_type = "torch"
         else:
             kernel_launcher_type = None
-        so = _build_npu_ext(name, src_path, tmpdir, kernel_launcher=kernel_launcher_type)
+        so = _build_npu_ext(
+            name, src_path, tmpdir, kernel_launcher=kernel_launcher_type
+        )
         if debug:
             with open(so, "rb") as f:
                 return dump_manager.put(f.read(), so_name, binary=True)
@@ -777,47 +901,52 @@ def make_npu_launcher_stub(src, debug=False):
 
 def extract_device_print_code_from_cann():
     from triton.backends.ascend.utils import _get_bisheng_path
+
     ccec_compiler_bin_folder, _ = os.path.split(os.path.realpath(_get_bisheng_path()))
     ccec_compiler_folder, _ = os.path.split(ccec_compiler_bin_folder)
     clang_version = os.listdir(os.path.join(ccec_compiler_folder, "lib/clang/"))[0]
-    ccelib_path = os.path.join(ccec_compiler_folder, f"lib/clang/{clang_version}/include/ccelib")
+    ccelib_path = os.path.join(
+        ccec_compiler_folder, f"lib/clang/{clang_version}/include/ccelib"
+    )
 
     def read_header(header_path):
-        with open(os.path.join(ccelib_path, header_path), 'r') as f:
+        with open(os.path.join(ccelib_path, header_path), "r") as f:
             code = f.read()
 
         # remove all #include "..."
         lines = code.splitlines()
         purged_lines = []
         for line in lines:
-            normalized_line = ' '.join(line.split())
+            normalized_line = " ".join(line.split())
             if not normalized_line.startswith('#include "'):
                 purged_lines.append(line)
-        code = '\n'.join(purged_lines)
+        code = "\n".join(purged_lines)
 
         # remove [aicore] functions
         aicore_positions = []
-        for m in re.finditer('\[aicore\]', code):
+        for m in re.finditer("\[aicore\]", code):
             aicore_positions.append(m.start())
 
         def find_aicore_function_span(src, pos):
             for i in range(pos - 1, -1, -1):
-                if src[i] == '}':  # this relies on that all [aicore] functions come after normal functions
+                if (
+                    src[i] == "}"
+                ):  # this relies on that all [aicore] functions come after normal functions
                     left = i + 1
                     break
             n = len(src)
             brace_nest = 0
             for j in range(pos, n, 1):
-                if src[j] == '{':
+                if src[j] == "{":
                     brace_nest += 1
-                elif src[j] == '}':
+                elif src[j] == "}":
                     brace_nest -= 1
                     if brace_nest == 0:
                         right = j
                         break
             return left, right
 
-        new_code = ''
+        new_code = ""
         segment_start = 0
         for pos in aicore_positions:
             left, right = find_aicore_function_span(code, pos)
@@ -826,28 +955,37 @@ def extract_device_print_code_from_cann():
         new_code += code[segment_start:]
 
         # remove __gm__ and rename macros
-        new_code = new_code.replace('__gm__', ' ')
-        new_code = new_code.replace('__CCELIB_RT_ERROR_NONE', 'RT_ERROR_NONE')
-        new_code = new_code.replace('__CCELIB_RT_MEMORY_HBM', 'RT_MEMORY_HBM')
-        new_code = new_code.replace('__CCELIB_RT_MEMCPY_HOST_TO_DEVICE', 'RT_MEMCPY_HOST_TO_DEVICE')
-        new_code = new_code.replace('__CCELIB_RT_MEMCPY_DEVICE_TO_HOST', 'RT_MEMCPY_DEVICE_TO_HOST')
+        new_code = new_code.replace("__gm__", " ")
+        new_code = new_code.replace("__CCELIB_RT_ERROR_NONE", "RT_ERROR_NONE")
+        new_code = new_code.replace("__CCELIB_RT_MEMORY_HBM", "RT_MEMORY_HBM")
+        new_code = new_code.replace(
+            "__CCELIB_RT_MEMCPY_HOST_TO_DEVICE", "RT_MEMCPY_HOST_TO_DEVICE"
+        )
+        new_code = new_code.replace(
+            "__CCELIB_RT_MEMCPY_DEVICE_TO_HOST", "RT_MEMCPY_DEVICE_TO_HOST"
+        )
         return new_code
 
-    # the following headers should be included in this order 
-    return '\n'.join([
-        read_header('common/common_impl.h'),
-        read_header('internal/debug_tunnel/payload.h'),
-        read_header('internal/debug_tunnel/payload_impl.h'),
-        read_header('internal/debug_tunnel/tunnel.h'),
-        read_header('internal/debug_tunnel/tunnel_impl.h')
-    ])
+    # the following headers should be included in this order
+    return "\n".join(
+        [
+            read_header("common/common_impl.h"),
+            read_header("internal/debug_tunnel/payload.h"),
+            read_header("internal/debug_tunnel/payload_impl.h"),
+            read_header("internal/debug_tunnel/tunnel.h"),
+            read_header("internal/debug_tunnel/tunnel_impl.h"),
+        ]
+    )
 
 
 # the template is from triton-adapter HEAD. Wrapping the generated kernel binary into a python module
-def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, lock_num, lock_ini_val):
+def generate_npu_wrapper_src(
+    constants, signature, workspace_size, mix_mode, lock_num, lock_ini_val
+):
     import os
+
     def _ty_to_cpp(ty):
-        if ty[0] == '*':
+        if ty[0] == "*":
             return "void*"
         return {
             "i1": "int32_t",
@@ -865,19 +1003,19 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
         }[ty]
 
     def _extracted_ty(ty):
-        if ty[0] == '*':
+        if ty[0] == "*":
             return "PyObject*"
         return {
-            'i1': 'int32_t',
-            'i32': 'int32_t',
-            'i64': 'int64_t',
-            'u32': 'uint32_t',
-            'u64': 'uint64_t',
-            'fp16': 'float',
-            'bf16': 'float',
-            'fp32': 'float',
-            'f32': 'float',
-            'fp64': 'double',
+            "i1": "int32_t",
+            "i32": "int32_t",
+            "i64": "int64_t",
+            "u32": "uint32_t",
+            "u64": "uint64_t",
+            "fp16": "float",
+            "bf16": "float",
+            "fp32": "float",
+            "f32": "float",
+            "fp64": "double",
         }[ty]
 
     def _format_of(ty):
@@ -892,7 +1030,7 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
             "int64_t": "L",
         }[ty]
 
-    arg_decls = ', '.join(f"{_ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())
+    arg_decls = ", ".join(f"{_ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())
     """
     args:
         int gridX, gridY, gridZ;
@@ -902,17 +1040,33 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
         PyObject* launch_enter_hook, *launch_exit_hook;
         *args_expand
     """
-    format = "iiiKKOOOO" + ''.join([_format_of(_extracted_ty(ty)) for ty in signature.values()])
+    format = "iiiKKOOOO" + "".join(
+        [_format_of(_extracted_ty(ty)) for ty in signature.values()]
+    )
 
-    grid_info = {'X': 'i32', 'Y': 'i32', 'Z': 'i32'}
+    grid_info = {"X": "i32", "Y": "i32", "Z": "i32"}
 
-    enable_device_print = os.getenv("TRITON_DEVICE_PRINT", 'false').lower() in ('true', '1')
-    enable_taskqueue = os.getenv("TRITON_ENABLE_TASKQUEUE", 'true').lower() in ('true', '1')
+    enable_device_print = os.getenv("TRITON_DEVICE_PRINT", "false").lower() in (
+        "true",
+        "1",
+    )
+    enable_taskqueue = os.getenv("TRITON_ENABLE_TASKQUEUE", "true").lower() in (
+        "true",
+        "1",
+    )
     enable_auto_map_parallel_blocks = _is_auto_map_parallel_blocks_enabled()
     npu_utils = NPUUtils()
-    num_physical_blocks = npu_utils.get_aivector_core_num() if mix_mode == "aiv" else npu_utils.get_aicore_num()
-    task_type = "MSPROF_GE_TASK_TYPE_AIV" if mix_mode == "aiv" else "MSPROF_GE_TASK_TYPE_AI_CORE"
-    LINE_CHANGE_CHAR = chr(10) # it is \n
+    num_physical_blocks = (
+        npu_utils.get_aivector_core_num()
+        if mix_mode == "aiv"
+        else npu_utils.get_aicore_num()
+    )
+    task_type = (
+        "MSPROF_GE_TASK_TYPE_AIV"
+        if mix_mode == "aiv"
+        else "MSPROF_GE_TASK_TYPE_AI_CORE"
+    )
+    LINE_CHANGE_CHAR = chr(10)  # it is \n
 
     cpp_device_pointer = """
 typedef struct _DevicePtrInfo {
@@ -1097,15 +1251,15 @@ extern "C" {
 
 {cpp_device_pointer}
 
-static void _launch(const char* kernelName, const void* func, rtStream_t stream, int gridX, int gridY, int gridZ, std::vector<std::vector<int64_t>> &tensorShapes, std::vector<int> &tensorKinds, {arg_decls}) {{
+static void _launch(const char* kernelName, const void* func, rtStream_t stream, int gridX, int gridY, int gridZ, std::vector<std::vector<int64_t>> &tensorShapes, std::vector<int> &tensorKinds{', ' + arg_decls if len(signature) > 0 else ''}) {{
   // only 1D parallelization is supported for NPU
   // Pointer type becomes flattend 1-D Memref tuple: base_ptr, data_ptr, offset, shape, stride
   // base_ptr offset shape and stride are not used, arbitrarily set for now
   std::string name = "";
   name.append(kernelName);
-  {'auto launch_call = [=]()' if enable_taskqueue else ''} {{
+   {'auto launch_call = [=]()' if enable_taskqueue else ''} {{
     uint32_t blockNum = gridX * gridY * gridZ;
-     {'if (blockNum > (uint32_t)' + str(num_physical_blocks) + ') { std::cout << "WARNING: Grid " << blockNum << " > physical limit ' + str(num_physical_blocks) + ', performance maybe reduced." << std::endl; }'}
+    {'if (blockNum > (uint32_t)' + str(num_physical_blocks) + ') { std::cout << "WARNING: Grid " << blockNum << " > physical limit ' + str(num_physical_blocks) + ', performance maybe reduced." << std::endl;if (blockNum > 65535 && !' + str(enable_auto_map_parallel_blocks).lower() + ') {std::cout << "Grid " << blockNum << " > 65535, Please set TRITON_ALL_BLOCKS_PARALLEL=1 to enable all blocks parallel execution." << std::endl; } }'}
 
     {'blockNum = std::min(blockNum, (uint32_t)' + str(num_physical_blocks) + ');' if enable_auto_map_parallel_blocks else ''}
     {'cce::internal::DebugTunnelData *DTData = cce::internal::DebugTunnel::Open(blockNum);' if enable_device_print else ''}
@@ -1152,7 +1306,7 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
       static_cast<void*>(ffts_addr),
       static_cast<void*>(syncBlockLock),
       static_cast<void*>(workspace_addr),
-      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if i not in constants)},
+      {(', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if i not in constants) + ',') if len(signature) > 0 else ''}
       {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(grid{mark})' for mark, ty in grid_info.items())}
       {', static_cast<void*>(DTData)' if enable_device_print else ''}
     }};
@@ -1248,7 +1402,7 @@ static PyObject* launch(PyObject* self, PyObject* args) {{
 
   // raise exception asap
   {"; ".join([f"DevicePtrInfo ptr_info{i} = getPointer(_arg{i}, {i}); if (!ptr_info{i}.valid) return NULL;" if ty[0]=="*" else "" for i, ty in signature.items()])};
-  _launch(kernelName, function, stream, gridX, gridY, gridZ, tensorShapes, tensorKinds, {', '.join(f"ptr_info{i}.dev_ptr" if ty[0]=="*" else f"_arg{i}" for i, ty in signature.items())});
+  _launch(kernelName, function, stream, gridX, gridY, gridZ, tensorShapes, tensorKinds{', ' + ', '.join(f"ptr_info{i}.dev_ptr" if ty[0]=="*" else f"_arg{i}" for i, ty in signature.items()) if len(signature) > 0 else ''});
   if (PyErr_Occurred()) {{
     return NULL;
   }}

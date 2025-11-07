@@ -1,6 +1,7 @@
 add_triton_library(LinalgToLinked
   LinalgToLinkedPass.cpp
   VerifyNoLinalgGenericPass.cpp
+  BoolTritonPtrPromotionPass.cpp
 
   DEPENDS
   DICPNPUIncGen

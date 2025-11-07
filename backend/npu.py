@@ -553,7 +553,7 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]
         if _is_auto_map_parallel_blocks_enabled():
-            _compile_option_list += ["--enable-auto-blockify-loop"]    
+            _compile_option_list += ["--enable-auto-blockify-loop"]
         npu_compiler_path = _get_npucompiler_path()
 
         # support bishengir-compile more version
@@ -583,6 +583,10 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             __get_metadata_attr_by_callback(lib, "_infer_workspace_shape_function", metadata, "workspace_size")
             __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_num_function", metadata, "lock_num")
             __get_metadata_attr_by_callback(lib, "_infer_sync_block_lock_init_function", metadata, "lock_init_val")
+        if dump_ir:
+            shutil.copy(bin_path, "./tmp/kernel.bin")
+            # bin_path = "/mnt/data01/zmz/workspace/04ttshared/update/T32/Triton/tmp/kernel.bin"
+            # print(f"zmz debug change bin_path: {bin_path}")
         return Path(bin_path).read_bytes()
 
 @dataclass(frozen=True)
@@ -851,15 +855,8 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
             "i16": "int16_t",
             "i32": "int32_t",
             "i64": "int64_t",
-            "u1": "uint32_t",
-            "u8": "uint8_t",
-            "u16": "uint16_t",
             "u32": "uint32_t",
             "u64": "uint64_t",
-            # Proper support for bfloat16 and float16 is not yet handled.
-            # https://github.com/microsoft/triton-shared/issues/348
-            # "fp16": "TODO",
-            # "bf16": "TODO",
             "fp32": "float",
             "f32": "float",
             "fp64": "double",
@@ -870,25 +867,42 @@ def generate_npu_wrapper_src(constants, signature, workspace_size, mix_mode, loc
             return "PyObject*"
         if ty == "constexpr":
             return "PyObject*"
-        return _ty_to_cpp(ty)
+        return {
+            'i1': 'int32_t',
+            'i32': 'int32_t',
+            'i64': 'int64_t',
+            'u32': 'uint32_t',
+            'u64': 'uint64_t',
+            'fp16': 'float',
+            'bf16': 'float',
+            'fp32': 'float',
+            'f32': 'float',
+            'fp64': 'double',
+        }[ty]
 
     def _format_of(ty):
         return {
-        "PyObject*": "O",
-        "constexpr": "O",
-        "float": "f",
-        "double": "d",
-        "long": "l",
-        "int8_t": "b",
-        "int16_t": "h",
-        "int32_t": "i",
-        "int64_t": "l",
-        "uint8_t": "B",
-        "uint16_t": "H",
-        "uint32_t": "I",
-        "uint64_t": "K",
+            "PyObject*": "O",
+            "constexpr": "O",
+            "float": "f",
+            "double": "d",
+            "long": "l",
+            "uint32_t": "I",
+            "int32_t": "i",
+            "uint64_t": "K",
+            "int64_t": "L",
         }[ty]
+    print("zmz DEBUG: signature =", signature)
+    print("zmz DEBUG: constants =", constants)
+    const_indices = set()
+    for k in constants.keys():
+        if isinstance(k, tuple):
+            const_indices.add(k[0])
+        else:
+            const_indices.add(k)
 
+    # 转为 sorted list 保证顺序一致
+    const_indices = sorted(const_indices)
     arg_decls = ', '.join(f"{_ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())
     """
     args:
@@ -1142,18 +1156,34 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
       void* ffts_addr __attribute__((aligned(8)));
       void* syncBlockLock __attribute__((aligned(8)));
       void* workspace_addr __attribute__((aligned(8)));
-      {' '.join(f'{_ty_to_cpp(ty)} arg{i} __attribute__((aligned({4 if ty[0] != "*" and ty[-2:] != "64" else 8})));' for i, ty in signature.items() if i not in constants)}
-      {' '.join(f'{_ty_to_cpp(ty)} grid{mark} __attribute__((aligned(4)));' for mark, ty in grid_info.items())}
+      {' '.join(f'{_ty_to_cpp(ty)} arg{i} __attribute__((aligned({4 if ty[0] != "*" and ty[-2:] != "64" else 8})));' for i, ty in signature.items() if ty != "constexpr")}
+      {' '.join(f'{_ty_to_cpp(ty)} grid{mark} __attribute__((aligned(4)));' for mark, ty in grid_info.items() if ty != "constexpr")}
       {'void* DTData __attribute__((aligned(8)));' if enable_device_print else ''}
     }} args = {{
       static_cast<void*>(ffts_addr),
       static_cast<void*>(syncBlockLock),
       static_cast<void*>(workspace_addr),
-      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if i not in constants)},
-      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(grid{mark})' for mark, ty in grid_info.items())}
+      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if ty != "constexpr")},
+      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(grid{mark})' for mark, ty in grid_info.items() if ty != "constexpr")}
       {', static_cast<void*>(DTData)' if enable_device_print else ''}
     }};
     {cpp_msprof_call_before_launch}
+
+
+    // ========== DEBUG: dump args buffer (hex) ==========
+    {{
+        printf(">>> Launch kernel: %s | blockNum=%u | args_size=%zu\\n", 
+               name.c_str(), blockNum, sizeof(args));
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(&args);
+        size_t dump_size = (sizeof(args) < 256) ? sizeof(args) : 256;
+        for (size_t i = 0; i < dump_size; i += 8) {{
+            uint64_t val = *reinterpret_cast<const uint64_t*>(p + i);
+            printf("    args[%03zu]: 0x%016lx\\n", i, val);
+        }}
+        fflush(stdout);
+    }}
+    // ===================================================
+
     ret = rtKernelLaunch(func, blockNum, static_cast<void*>(&args), sizeof(args), NULL, stream);
     {'void *&stream_ref = const_cast<void*&>(stream);' if enable_device_print else ''}
     {'cce::internal::DebugTunnel::Close(DTData, stream_ref);' if enable_device_print else ''}

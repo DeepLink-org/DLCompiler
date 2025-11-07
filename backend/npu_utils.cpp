@@ -58,23 +58,40 @@ registerKernel(const char *name, const void *data, size_t data_size, int shared,
 }
 
 static PyObject *loadKernelBinary(PyObject *self, PyObject *args) {
-  const char *name;        // kernel name
-  const char *data;        // binary pointer
-  Py_ssize_t data_size;    // binary size
-  int shared;              // shared_memory(meaningless now)
-  int device;              // device ID
-  const char *kernel_mode; // kernel mode
+  const char *name;
+  const char *data;
+  Py_ssize_t data_size;
+  int shared;
+  int device;
+  const char *kernel_mode;
 
   if (!PyArg_ParseTuple(args, "ss#iis", &name, &data, &data_size, &shared,
                         &device, &kernel_mode)) {
     return NULL;
   }
 
+  // ===== DEBUG: 打印 kernel 名称和 binary 头部 =====
+  printf(">>> Loading kernel: %s (size=%ld bytes) on device %d, mode=%s\n",
+         name, data_size, device, kernel_mode);
+  if (data_size >= 16) {
+    printf(">>> Binary header (first 16 bytes): ");
+    for (int i = 0; i < 16; ++i) {
+      printf("%02x ", (unsigned char)data[i]);
+    }
+    printf("\n");
+  }
+  // ==============================================
+
   auto [module_handle, func_handle] =
       registerKernel(name, data, data_size, shared, device, kernel_mode);
 
   uint64_t mod = reinterpret_cast<uint64_t>(module_handle);
   uint64_t func = reinterpret_cast<uint64_t>(func_handle);
+
+  // ===== DEBUG: 打印返回的句柄 =====
+  printf(">>> Loaded kernel handles: module=0x%lx, func=0x%lx\n", mod, func);
+  // =================================
+
   if (PyErr_Occurred()) {
     return NULL;
   }

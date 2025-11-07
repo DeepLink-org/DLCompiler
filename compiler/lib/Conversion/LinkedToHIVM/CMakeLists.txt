@@ -1,14 +1,14 @@
-add_triton_library(LinkedToHIVM
-  LinkedToHIVM.cpp
+# add_triton_library(LinkedToHIVM
+#   LinkedToHIVM.cpp
 
-  DEPENDS
-  LinkedToHIVMConversionPassIncGen
+#   DEPENDS
+#   LinkedToHIVMConversionPassIncGen
 
-  LINK_LIBS
-  BiShengIRHIVMDialect
-  MLIRIR
-  MLIRPass
-  MLIRTransforms
-  MLIRSupport
-  TritonIR
-)
+#   LINK_LIBS
+#   BiShengIRHIVMDialect
+#   MLIRIR
+#   MLIRPass
+#   MLIRTransforms
+#   MLIRSupport
+#   TritonIR
+# )

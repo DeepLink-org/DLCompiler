@@ -7,12 +7,6 @@ import functools
 import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
-from triton.backends.compiler import (
-    BaseBackend,
-    GPUTarget,
-    AttrsDescriptor,
-    register_descriptor,
-)
 from triton._C.libtriton import ir, passes
 from triton.runtime.cache import get_dump_manager
 from dataclasses import dataclass
@@ -100,6 +94,7 @@ def _get_triton_adapter_opt_path() -> str:
 def _get_dicp_opt_path() -> str:
     base_path = os.path.dirname(__file__)
     path = os.path.join(base_path, "dicp_opt")
+    path = "/mnt/data01/zmz/workspace/04ttshared/update/Triton/third_party/triton/triton/backends/dicp_triton/dicp_opt"
     return path
 
 
@@ -107,6 +102,7 @@ def _get_triton_shared_opt_path() -> str:
     base_path = os.path.dirname(__file__)
     path = os.path.join(base_path, "triton-shared-opt-v3_2")
     path34 = os.path.join(base_path, "triton-shared-opt-v3_4")
+    path34 = "/mnt/data01/zmz/workspace/04ttshared/update/Triton/third_party/triton/triton/backends/dicp_triton/triton-shared-opt-v3_4"
     if os.path.exists(path34):
         path = path34
     path = os.getenv("TRITON_SHARED_OPT_PATH", path)  # allow user override
@@ -420,17 +416,6 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             print(f"DEBUG dump ir[ttir_to_ttsharedir] command: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
 
-        # 匹配形如 "memref<...> to tensor<...>" 的模式
-        pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
-        with open(dst_ttshared_path, "r") as f:
-            lines = f.readlines()
-        modified = []
-        for line in lines:
-            # 使用正则替换，保留memref和tensor类型，中间插入注释
-            new_line = re.sub(pattern, r"\1 // to \2", line)
-            modified.append(new_line)
-        with open(dst_ttshared_path, "w") as f:
-            f.writelines(modified)
         if dump_ir:
             shutil.copy(dst_ttshared_path, "./tmp/kernel.ttshared.mlir")
         if replace_ttshared_ir is not None:
@@ -450,7 +435,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             dicp_opt_path,
             src_path,
             f"--linalg-to-linked=global-kernel=false named-ops=true",
-            "--linked-to-hivm",
+            # "--linked-to-hivm",
             "-o",
             dst_path,
         ]
@@ -466,6 +451,18 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             content = content.replace("*xbf", "?xbf")
             with open(dst_path, "w") as f:
                 f.write(content)
+
+        # 匹配形如 "memref<...> to tensor<...>" 的模式
+        pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
+        with open(dst_path, "r") as f:
+            lines = f.readlines()
+        modified = []
+        for line in lines:
+            # 使用正则替换，保留memref和tensor类型，中间插入注释
+            new_line = re.sub(pattern, r"\1 // to \2", line)
+            modified.append(new_line)
+        with open(dst_path, "w") as f:
+            f.writelines(modified)
         if dump_ir:
             shutil.copy(dst_path, "./tmp/kernel.linkedir.mlir")
         if replace_linked_ir is not None:
@@ -755,12 +752,6 @@ class CPUOptions:
         return hashlib.md5(key.encode("utf-8")).hexdigest()
 
 
-@register_descriptor
-class AscendAttrsDescriptor(AttrsDescriptor):
-
-    def _add_backend_properties(self, params=None, values=None):
-        pass
-
 
 class NPUUtils(object):
     def __new__(cls):
@@ -987,6 +978,8 @@ def generate_npu_wrapper_src(
     def _ty_to_cpp(ty):
         if ty[0] == "*":
             return "void*"
+        if ty == "constexpr":
+            return "PyObject*"
         return {
             "i1": "int32_t",
             "i8": "int8_t",
@@ -1004,6 +997,8 @@ def generate_npu_wrapper_src(
 
     def _extracted_ty(ty):
         if ty[0] == "*":
+            return "PyObject*"
+        if ty == "constexpr":
             return "PyObject*"
         return {
             "i1": "int32_t",
@@ -1299,15 +1294,15 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
       void* ffts_addr __attribute__((aligned(8)));
       void* syncBlockLock __attribute__((aligned(8)));
       void* workspace_addr __attribute__((aligned(8)));
-      {' '.join(f'{_ty_to_cpp(ty)} arg{i} __attribute__((aligned({4 if ty[0] != "*" and ty[-2:] != "64" else 8})));' for i, ty in signature.items() if i not in constants)}
-      {' '.join(f'{_ty_to_cpp(ty)} grid{mark} __attribute__((aligned(4)));' for mark, ty in grid_info.items())}
+      {' '.join(f'{_ty_to_cpp(ty)} arg{i} __attribute__((aligned({4 if ty[0] != "*" and ty[-2:] != "64" else 8})));' for i, ty in signature.items() if ty != "constexpr")}
+      {' '.join(f'{_ty_to_cpp(ty)} grid{mark} __attribute__((aligned(4)));' for mark, ty in grid_info.items() if ty != "constexpr")}
       {'void* DTData __attribute__((aligned(8)));' if enable_device_print else ''}
     }} args = {{
       static_cast<void*>(ffts_addr),
       static_cast<void*>(syncBlockLock),
       static_cast<void*>(workspace_addr),
-      {(', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if i not in constants) + ',') if len(signature) > 0 else ''}
-      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(grid{mark})' for mark, ty in grid_info.items())}
+      {(', '.join(f'static_cast<{_ty_to_cpp(ty)}>(arg{i})' for i, ty in signature.items() if ty != "constexpr") + ',') if len(signature) > 0 else ''}
+      {', '.join(f'static_cast<{_ty_to_cpp(ty)}>(grid{mark})' for mark, ty in grid_info.items() if ty != "constexpr")}
       {', static_cast<void*>(DTData)' if enable_device_print else ''}
     }};
     {cpp_msprof_call_before_launch}

@@ -283,7 +283,7 @@ void BoolTritonPtrPromotionPass::runOnOperation() {
     RewritePatternSet patterns(ctx);
     patterns.add<BitcastCanonicalizer>(ctx);
     patterns.add<BitcastConverter>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(moduleOp, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(moduleOp, std::move(patterns)))) {
       moduleOp->emitError("failed to apply Canonicalizer Patterns");
       signalPassFailure();
     }

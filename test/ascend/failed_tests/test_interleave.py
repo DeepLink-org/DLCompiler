@@ -75,5 +75,4 @@ def test_interleave(para_type,data_type,XB,YB,ZB):
 
     fn_npu_[1,1,1](output,x,y,XB,YB,ZB)
     print(output)
-
     test_common.validate_cmp(para_type, ans, output)

@@ -32,7 +32,6 @@ def fn_npu_(output_ptr, x_ptr, XB: tl.constexpr, YB: tl.constexpr, ZB: tl.conste
     xidx = tl.arange(0, XB)
     yidx = tl.arange(0, YB)
     zidx = tl.arange(0, ZB)
-
     i = tl.arange(0, 4)
     j = tl.arange(0, 4)
     xx, yy = tl.swizzle2d(i, j, size_i=4, size_j=4, size_g=2)

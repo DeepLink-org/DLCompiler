@@ -59,4 +59,3 @@ def test_cases():
     ret = torch.randn((size[0]), device='npu', dtype=torch.float32).npu().reshape(size[0])
     triton_unlign[1, 1, 1](b, ret, size[0], size[1], size[0], size[0], 32)
     assert torch.allclose(c, ret, rtol=1e-03, atol=1e-03, equal_nan=True)
-

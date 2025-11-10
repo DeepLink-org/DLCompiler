@@ -24,6 +24,7 @@ import triton
 import triton.language as tl
 import torch_npu
 
+
 @triton.jit
 def _rms_norm_fwd_fused(
     X,  # pointer to the input
@@ -57,6 +58,7 @@ def _rms_norm_fwd_fused(
         # Write output
         tl.store(Y + cols, y.to(tl.float16), mask=mask)
 
+
 # have to change the block_size
 @torch.inference_mode()
 def rms_norm(x, weight, eps, out=None):
@@ -75,7 +77,16 @@ def rms_norm(x, weight, eps, out=None):
     BLOCK_SIZE = 128 * 2 * 2 * 2 * 2 * 2 * 2
     num_warps = 8
     # enqueue kernel
-    kernel = _rms_norm_fwd_fused[(M,)](x_arg, y, weight, x_arg.stride(0), N, eps, BLOCK_SIZE=BLOCK_SIZE, num_warps=num_warps)
+    kernel = _rms_norm_fwd_fused[(M,)](
+        x_arg,
+        y,
+        weight,
+        x_arg.stride(0),
+        N,
+        eps,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=num_warps,
+    )
     return y, kernel
 
 

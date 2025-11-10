@@ -31,7 +31,9 @@ def torch_maximum(x0, x1):
 
 
 @triton.jit
-def triton_maximum(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_maximum(
+    in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
     xoffset = tl.program_id(0) * XBLOCK
     for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
         x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
@@ -42,12 +44,14 @@ def triton_maximum(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBL
         tl.store(out_ptr0 + x_index, tmp2, xmask)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 4096, 8), 2, 32768, 1024],
-                             ['float16', (2, 4096, 8), 2, 32768, 1024],
-                             ['int8', (2, 4096, 8), 2, 32768, 1024],
-                         ])
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float16", (2, 4096, 8), 2, 32768, 1024],
+        ["int8", (2, 4096, 8), 2, 32768, 1024],
+    ],
+)
 def test_maximum(param_list):
     # 生成数据
     dtype, shape, ncore, xblock, xblock_sub = param_list

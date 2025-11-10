@@ -30,23 +30,27 @@ import re
 
 shape = (8,)
 XS = 8
-XVALS_INT = [0, 
-             -128, # torch.iinfo(torch.int8).min
-             127, # torch.iinfo(torch.int8).max
-             -32768, # torch.iinfo(torch.int16).min
-             32767, # torch.iinfo(torch.int16).max
-             -2147483648, # torch.iinfo(torch.int32).min
-             2147483647, # torch.iinfo(torch.int32).max
-             9223372036854775807] # torch.iinfo(torch.int64).max
-             
-XVALS_FP = [0.0000000000e+00, # 0
-            1.1921000009e-07, # torch.finfo(torch.float32).eps
-            9.7655999707e-04, # torch.finfo(torch.float16).eps
-            7.8125000000e-03, # torch.finfo(torch.bfloat16).eps
-            3.4027999388e+38, # torch.finfo(torch.float32).max
-            6.5504000000e+04, # torch.finfo(torch.float16).max
-            3.3894999515e+38, # torch.finfo(torch.bfloat16).max
-            1.0000000000e+00] # 1
+XVALS_INT = [
+    0,
+    -128,  # torch.iinfo(torch.int8).min
+    127,  # torch.iinfo(torch.int8).max
+    -32768,  # torch.iinfo(torch.int16).min
+    32767,  # torch.iinfo(torch.int16).max
+    -2147483648,  # torch.iinfo(torch.int32).min
+    2147483647,  # torch.iinfo(torch.int32).max
+    9223372036854775807,
+]  # torch.iinfo(torch.int64).max
+
+XVALS_FP = [
+    0.0000000000e00,  # 0
+    1.1921000009e-07,  # torch.finfo(torch.float32).eps
+    9.7655999707e-04,  # torch.finfo(torch.float16).eps
+    7.8125000000e-03,  # torch.finfo(torch.bfloat16).eps
+    3.4027999388e38,  # torch.finfo(torch.float32).max
+    6.5504000000e04,  # torch.finfo(torch.float16).max
+    3.3894999515e38,  # torch.finfo(torch.bfloat16).max
+    1.0000000000e00,
+]  # 1
 
 
 def torch_func(x0, x1):
@@ -55,14 +59,22 @@ def torch_func(x0, x1):
 
 
 @triton.jit
-def triton_kernel(out_ptr0, in_ptr0, in_ptr1, XBLOCK: tl.constexpr, print_data_ptr: tl.constexpr,
-                  assert_data_ptr: tl.constexpr):
+def triton_kernel(
+    out_ptr0,
+    in_ptr0,
+    in_ptr1,
+    XBLOCK: tl.constexpr,
+    print_data_ptr: tl.constexpr,
+    assert_data_ptr: tl.constexpr,
+):
     idx = tl.arange(0, XBLOCK)
     tmp0 = tl.load(in_ptr0 + idx)
     tmp1 = tl.load(in_ptr1 + idx)
     tmp2 = tmp0 + tmp1
     tl.static_print(print_data_ptr)
-    tl.static_assert(assert_data_ptr == assert_data_ptr, "assert_data should equal assert_data")
+    tl.static_assert(
+        assert_data_ptr == assert_data_ptr, "assert_data should equal assert_data"
+    )
     tl.store(out_ptr0 + idx, tmp2)
 
 
@@ -73,7 +85,7 @@ def triton_func(x0, x1, XS, print_data_ptr, assert_data_ptr):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['int8'])
+@pytest.mark.parametrize("sigtype", ["int8"])
 @test_common.capture_output("-128")
 def test_static_print_int8(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -87,7 +99,7 @@ def test_static_print_int8(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['int16'])
+@pytest.mark.parametrize("sigtype", ["int16"])
 @test_common.capture_output("-32768")
 def test_static_print_int16(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -101,7 +113,7 @@ def test_static_print_int16(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['int32'])
+@pytest.mark.parametrize("sigtype", ["int32"])
 @test_common.capture_output("-2147483648")
 def test_static_print_int32(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -115,7 +127,7 @@ def test_static_print_int32(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['int64'])
+@pytest.mark.parametrize("sigtype", ["int64"])
 @test_common.capture_output("9223372036854775807")
 def test_static_print_int64(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -129,7 +141,7 @@ def test_static_print_int64(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['float16'])
+@pytest.mark.parametrize("sigtype", ["float16"])
 @test_common.capture_output("1.1921000009e-07")
 def test_static_print_float16(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -143,7 +155,7 @@ def test_static_print_float16(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['float32'])
+@pytest.mark.parametrize("sigtype", ["float32"])
 @test_common.capture_output("0.0078125")
 def test_static_print_float32(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -157,7 +169,7 @@ def test_static_print_float32(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['bfloat16'])
+@pytest.mark.parametrize("sigtype", ["bfloat16"])
 @test_common.capture_output("0.00097655999707")
 def test_static_print_bfloat16(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
@@ -171,7 +183,7 @@ def test_static_print_bfloat16(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for TA to support")
-@pytest.mark.parametrize('sigtype', ['int8'])
+@pytest.mark.parametrize("sigtype", ["int8"])
 @test_common.capture_output("True")
 def test_static_print_bool(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")

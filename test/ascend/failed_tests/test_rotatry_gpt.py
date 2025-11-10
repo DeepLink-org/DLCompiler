@@ -160,13 +160,13 @@ def rotary_embedding(state, cos, sin):
 
 def torch_rotary_embedding(state, cos, sin):
     _, _, dim = state.shape
-    state_x = state[:, :, 0 : dim : 2]
-    state_y = state[:, :, 1 : dim : 2]
+    state_x = state[:, :, 0:dim:2]
+    state_y = state[:, :, 1:dim:2]
     out_x = state_x * cos - state_y * sin
     out_y = state_x * sin + state_y * cos
     out = torch.empty_like(state).npu()
-    out[:, :, 0 : dim : 2] = out_x
-    out[:, :, 1 : dim : 2] = out_y
+    out[:, :, 0:dim:2] = out_x
+    out[:, :, 1:dim:2] = out_y
     return out
 
 
@@ -190,6 +190,7 @@ def _rotary_emb(dtype):
     # print(triton_result[1][0])
     # Note: This test is not accurate enough.
     assert torch.allclose(torch_result, triton_result, atol=1e-2, rtol=1e-7)
+
 
 def test_rotary_emb():
     _rotary_emb(torch.float16)

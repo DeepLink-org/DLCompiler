@@ -31,7 +31,9 @@ def torch_or(x0, x1):
 
 
 @triton.jit
-def triton_or(in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_or(
+    in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
     offset = tl.program_id(0) * XBLOCK
     base1 = tl.arange(0, XBLOCK_SUB)
     loops1: tl.constexpr = XBLOCK // XBLOCK_SUB
@@ -43,10 +45,12 @@ def triton_or(in_ptr0, in_ptr1, out_ptr0, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.c
         tl.store(out_ptr0 + x_index, tmp2, None)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['int32', (2, 4096, 8), 2, 32768, 1024],
-                         ])
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["int32", (2, 4096, 8), 2, 32768, 1024],
+    ],
+)
 def test_or(param_list):
     # 生成数据
     dtype, shape, ncore, xblock, xblock_sub = param_list
@@ -55,7 +59,7 @@ def test_or(param_list):
     # torch结果
     torch_res = torch_or(x0, x1)
     # triton结果
-    triton_res = torch.zeros(shape, dtype=eval('torch.' + dtype)).npu()
+    triton_res = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
     triton_or[ncore, 1, 1](x0, x1, triton_res, xblock, xblock_sub)
     # 比较结果
     test_common.validate_cmp(dtype, triton_res, torch_res)

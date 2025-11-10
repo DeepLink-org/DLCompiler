@@ -27,18 +27,18 @@ import triton
 from triton.language.math import tanh
 import triton.language as tl
 
-device = 'npu'
+device = "npu"
 
 
 @triton.jit
 def triton_multi_return_cross_entropy_case(
-        X_ptr,
-        Y_ptr,
-        X_stride,
-        Y_stride,
-        n_cols,
-        ignore_index,
-        BLOCK_SIZE: tl.constexpr,
+    X_ptr,
+    Y_ptr,
+    X_stride,
+    Y_stride,
+    n_cols,
+    ignore_index,
+    BLOCK_SIZE: tl.constexpr,
 ):
     program_id = tl.program_id(0).to(tl.int64)
 
@@ -57,16 +57,17 @@ def triton_multi_return_cross_entropy_case(
             tl.store(X_ptr + X_offsets, 0.0, mask=X_offsets < n_cols)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             [1024, 152064, 11480, 'bfloat16', 'int32', 'float32'],
-                         ]
-                         )
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        [1024, 152064, 11480, "bfloat16", "int32", "float32"],
+    ],
+)
 def test_case(param_list):
     N, M, V, dtype_1, dtype_2, dtype_3 = param_list
-    logits_chunk = torch.rand([N, M], device=device, dtype=eval('torch.' + dtype_1))
-    target_chunk = torch.rand(N, device=device, dtype=eval('torch.' + dtype_2))
-    loss_1d_slice = torch.rand(N, device=device, dtype=eval('torch.' + dtype_3))
+    logits_chunk = torch.rand([N, M], device=device, dtype=eval("torch." + dtype_1))
+    target_chunk = torch.rand(N, device=device, dtype=eval("torch." + dtype_2))
+    loss_1d_slice = torch.rand(N, device=device, dtype=eval("torch." + dtype_3))
     ce_weight = None
     z_loss_1d_slice = None
     softcap = None
@@ -80,32 +81,33 @@ def test_case(param_list):
         n_cols=logits_chunk.stride(-2),
         ignore_index=-100,
         BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=32)
+        num_warps=32,
+    )
 
 
 @triton.jit
 def liger_cross_entropy_kernel(
-        X_ptr,
-        X_stride,
-        Y_ptr,
-        Y_stride,
-        weight_ptr,
-        loss_ptr,
-        z_loss_ptr,
-        loss_stride,
-        n_cols,
-        n_non_ignore,
-        sum_non_ignore_weight,
-        weight_sum,
-        ignore_index,
-        lse_square_scale: tl.constexpr,
-        label_smoothing: tl.constexpr,
-        reduction: tl.constexpr,  # set it as constexpr since reduction is always known at compile time
-        softcap,
-        RETURN_Z_LOSS: tl.constexpr,
-        BLOCK_SIZE: tl.constexpr,
-        HAS_WEIGHT: tl.constexpr,
-        HAS_SOFTCAPPING: tl.constexpr,
+    X_ptr,
+    X_stride,
+    Y_ptr,
+    Y_stride,
+    weight_ptr,
+    loss_ptr,
+    z_loss_ptr,
+    loss_stride,
+    n_cols,
+    n_non_ignore,
+    sum_non_ignore_weight,
+    weight_sum,
+    ignore_index,
+    lse_square_scale: tl.constexpr,
+    label_smoothing: tl.constexpr,
+    reduction: tl.constexpr,  # set it as constexpr since reduction is always known at compile time
+    softcap,
+    RETURN_Z_LOSS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_SOFTCAPPING: tl.constexpr,
 ):
     """
     This kernel computes both cross entropy loss and the gradient of the input.
@@ -163,7 +165,9 @@ def liger_cross_entropy_kernel(
     # 3. [Online softmax] first pass: find max + sum
     m = float("-inf")  # m is the max value. use the notation from the paper
     d = 0.0  # d is the sum. use the notation from the paper
-    ori_X_y = tl.load(X_ptr + y).cast(tl.float32)  # we need to store the original value of X_y for the loss calculation
+    ori_X_y = tl.load(X_ptr + y).cast(
+        tl.float32
+    )  # we need to store the original value of X_y for the loss calculation
     if HAS_SOFTCAPPING:
         ori_X_y = softcap * tanh(ori_X_y / softcap)
 
@@ -186,9 +190,13 @@ def liger_cross_entropy_kernel(
             # scale X beforehand to avoid overflow
             if HAS_WEIGHT:
                 weight_block = tl.load(weight_ptr + X_offsets, mask=X_offsets < n_cols)
-                scaled_x_sum += tl.sum(tl.where(X_offsets < n_cols, -eps * X_block * weight_block, 0.0))
+                scaled_x_sum += tl.sum(
+                    tl.where(X_offsets < n_cols, -eps * X_block * weight_block, 0.0)
+                )
             else:
-                scaled_x_sum += tl.sum(tl.where(X_offsets < n_cols, -eps * X_block, 0.0))
+                scaled_x_sum += tl.sum(
+                    tl.where(X_offsets < n_cols, -eps * X_block, 0.0)
+                )
         m_new = tl.maximum(m, block_max)
         d = d * tl.exp(m - m_new) + tl.sum(tl.exp(X_block - m_new))
         m = m_new
@@ -228,7 +236,9 @@ def liger_cross_entropy_kernel(
             # derivative of original_loss
             dloss_ori = (1 - label_smoothing) * softmax_X
             # specially handle dx_y
-            dloss_ori = tl.where(X_offsets != y, dloss_ori, dloss_ori - (1 - label_smoothing))
+            dloss_ori = tl.where(
+                X_offsets != y, dloss_ori, dloss_ori - (1 - label_smoothing)
+            )
             dloss_ori = dloss_ori * weight_y
             # derivative of smooth_loss
             dloss_smooth = eps * (-weight_block + softmax_X * weight_sum)
@@ -293,11 +303,11 @@ def liger_cross_entropy_kernel(
 
 @triton.jit
 def element_mul_kernel(
-        X_ptr,
-        X_stride,
-        grad_output_ptr,
-        n_cols,
-        BLOCK_SIZE: tl.constexpr,
+    X_ptr,
+    X_stride,
+    grad_output_ptr,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """
     This function multiplies each element of the tensor pointed by X_ptr with the value pointed by grad_output_ptr.
@@ -331,17 +341,19 @@ MAX_FUSED_SIZE = 65536 // 2
 
 
 def cross_entropy_forward(
-        _input,
-        target,
-        weight,
-        ignore_index,
-        lse_square_scale,
-        label_smoothing,
-        reduction,
-        softcap,
-        return_z_loss,
+    _input,
+    target,
+    weight,
+    ignore_index,
+    lse_square_scale,
+    label_smoothing,
+    reduction,
+    softcap,
+    return_z_loss,
 ):
-    assert isinstance(return_z_loss, bool), f"return_z_loss must be True or False. Got: {return_z_loss}"
+    assert isinstance(
+        return_z_loss, bool
+    ), f"return_z_loss must be True or False. Got: {return_z_loss}"
 
     BT, V = _input.shape
     n_rows = BT
@@ -349,22 +361,34 @@ def cross_entropy_forward(
     BLOCK_SIZE = min(MAX_FUSED_SIZE, triton.next_power_of_2(V))
     # unreduced loss
     loss_1d = torch.zeros(n_rows, dtype=_input.dtype, device=_input.device)
-    z_loss_1d = torch.zeros(n_rows, dtype=_input.dtype, device=_input.device) if return_z_loss else None
+    z_loss_1d = (
+        torch.zeros(n_rows, dtype=_input.dtype, device=_input.device)
+        if return_z_loss
+        else None
+    )
 
     target_mask = target != ignore_index
     n_non_ignore = target_mask.sum().item()
-    assert (target * target_mask).max() < _input.shape[-1], (
-        f"Target {target.max()} is out of bounds. Expected < {_input.shape[-1]}"
-    )
-    assert (target * target_mask).min() >= 0, f"Target {target.min()} is out of bounds. Expected >= 0"
+    assert (target * target_mask).max() < _input.shape[
+        -1
+    ], f"Target {target.max()} is out of bounds. Expected < {_input.shape[-1]}"
+    assert (
+        target * target_mask
+    ).min() >= 0, f"Target {target.min()} is out of bounds. Expected >= 0"
     sum_non_ignore_weight = n_non_ignore
     weight_sum = 0.0
     if weight is not None:
-        assert weight.shape[0] == V, f"If given, weight has to be a Tensor of size V. Got: {weight.shape}"
-        assert torch.is_floating_point(weight), (
-            f"If given, weight has to be a Tensor of floating point dtype. Got: {weight.dtype}"
+        assert (
+            weight.shape[0] == V
+        ), f"If given, weight has to be a Tensor of size V. Got: {weight.shape}"
+        assert torch.is_floating_point(
+            weight
+        ), f"If given, weight has to be a Tensor of floating point dtype. Got: {weight.dtype}"
+        sum_non_ignore_weight = (
+            torch.gather(weight, dim=0, index=target.masked_select(target_mask))
+            .sum()
+            .item()
         )
-        sum_non_ignore_weight = torch.gather(weight, dim=0, index=target.masked_select(target_mask)).sum().item()
         weight_sum = weight.sum().item()
         # ensure weight is contiguous
         if weight.stride(-1) != 1:
@@ -445,16 +469,16 @@ class LigerCrossEntropyFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(
-            ctx,
-            _input: torch.Tensor,
-            target: torch.Tensor,
-            weight: Optional[torch.FloatTensor],
-            ignore_index: int = -100,
-            lse_square_scale: float = 0.0,
-            label_smoothing: float = 0.0,
-            reduction: str = "mean",
-            softcap: Optional[float] = None,
-            return_z_loss: bool = False,
+        ctx,
+        _input: torch.Tensor,
+        target: torch.Tensor,
+        weight: Optional[torch.FloatTensor],
+        ignore_index: int = -100,
+        lse_square_scale: float = 0.0,
+        label_smoothing: float = 0.0,
+        reduction: str = "mean",
+        softcap: Optional[float] = None,
+        return_z_loss: bool = False,
     ):
         """
         The forward pass of the Liger Cross Entropy loss.
@@ -523,17 +547,17 @@ class LigerCrossEntropyFunction(torch.autograd.Function):
 
 
 def liger_cross_entropy(
-        input,
-        target,
-        weight=None,
-        size_average=None,
-        ignore_index: int = -100,
-        reduce=None,
-        reduction: str = "mean",
-        label_smoothing: float = 0.0,
-        lse_square_scale: float = 0.0,
-        softcap: Optional[float] = None,
-        return_z_loss: bool = False,
+    input,
+    target,
+    weight=None,
+    size_average=None,
+    ignore_index: int = -100,
+    reduce=None,
+    reduction: str = "mean",
+    label_smoothing: float = 0.0,
+    lse_square_scale: float = 0.0,
+    softcap: Optional[float] = None,
+    return_z_loss: bool = False,
 ):
     loss, z_loss = LigerCrossEntropyFunction.apply(
         input,
@@ -552,13 +576,13 @@ def liger_cross_entropy(
 
 
 def _test_correctness_functional(
-        B,
-        T,
-        V,
-        scalar,
-        dtype,
-        atol,
-        rtol,
+    B,
+    T,
+    V,
+    scalar,
+    dtype,
+    atol,
+    rtol,
 ):
     _input = torch.randn(B * T, V, device=device, dtype=dtype) * scalar
 
@@ -578,7 +602,9 @@ def _test_correctness_functional(
         softcap=30.0,
         return_z_loss=True,
     )
-    y2, y2_z = LigerCrossEntropyFunction.apply(x2, target, None, 0, 1e-4, 0.1, "mean", 30.0, True)
+    y2, y2_z = LigerCrossEntropyFunction.apply(
+        x2, target, None, 0, 1e-4, 0.1, "mean", 30.0, True
+    )
 
     assert torch.allclose(y1, y2, atol=atol, rtol=rtol)
     assert torch.allclose(y1_z, y2_z, atol=atol, rtol=rtol)

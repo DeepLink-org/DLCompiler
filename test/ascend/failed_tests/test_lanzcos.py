@@ -151,7 +151,12 @@ def lanczos_resize_cpu(img_src, img_dst, img_coeffs, dst_rows, dst_cols):
             img_dst[0, :, i, j] = np.clip(res, 0.0, 1.0)
 
 
-@pytest.mark.parametrize("shapes", [[360, 640, 140, 280],])
+@pytest.mark.parametrize(
+    "shapes",
+    [
+        [360, 640, 140, 280],
+    ],
+)
 def test_lanzcos(shapes):
     c_lanczosCoeffs = torch.randn(10000, dtype=torch.float32, device="npu") / 4.0
     src_rows, src_cols, dst_rows, dst_cols = shapes

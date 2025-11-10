@@ -25,6 +25,7 @@ import triton
 import triton.language as tl
 from numpy.random import RandomState
 
+
 # inp the two 32 bit signed integers.
 @triton.jit
 def umulhi_kernel(X, Y, Z, N: tl.constexpr):

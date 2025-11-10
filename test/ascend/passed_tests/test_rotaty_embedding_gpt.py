@@ -165,7 +165,7 @@ def rotary_emb(tokens, heads, headdim, dtype):
     tokens_num = tokens
     num_heads = heads
     head_dim = headdim
-    #max_positions = 1024
+    # max_positions = 1024
 
     # torch.float16 has floating point problem in Triton 2.0.0
     # But it works fine in Triton 2.1.0
@@ -178,6 +178,7 @@ def rotary_emb(tokens, heads, headdim, dtype):
     rotary_embedding(state, cos, sin)
     triton_result = state  # state is modified in-place
     torch.testing.assert_close(torch_result, triton_result, rtol=1e-3, atol=1e-3)
+
 
 def test_cases():
     rotary_emb(256, 96, 128, torch.float16)

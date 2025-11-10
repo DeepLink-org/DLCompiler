@@ -59,7 +59,15 @@ def max_with_index(value, index, dim):
 
 
 @triton.jit
-def triton_4(in_ptr2, in_ptr4, out_ptr10, x0_numel, r1_numel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_4(
+    in_ptr2,
+    in_ptr4,
+    out_ptr10,
+    x0_numel,
+    r1_numel,
+    XBLOCK: tl.constexpr,
+    XBLOCK_SUB: tl.constexpr,
+):
     RBLOCK: tl.constexpr = 4
     offset = tl.program_id(0) * XBLOCK
     base1 = tl.arange(0, XBLOCK_SUB)
@@ -84,7 +92,7 @@ def triton_4(in_ptr2, in_ptr4, out_ptr10, x0_numel, r1_numel, XBLOCK: tl.constex
 
 def test_max_with_index_dim0():
     mask = torch.randint(low=0, high=2, size=(512, 2, 4), dtype=torch.int32).npu()
-    weights = torch.randn((512, 4), device='npu', dtype=torch.float32)
+    weights = torch.randn((512, 4), device="npu", dtype=torch.float32)
     buf32 = torch.randint(low=0, high=8, size=(512,), dtype=torch.int32).npu()
     XBLOCK = 32
     XBLOCK_SUB = 32

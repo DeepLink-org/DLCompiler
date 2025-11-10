@@ -41,14 +41,15 @@ def swap_kernel(
     tl.store(y_ptr + offsets, x)
 
 
-
 def swap(x: torch.Tensor, y: torch.Tensor, size):
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     swap_kernel[grid](x, y, BLOCK_SIZE=size)
 
 
-@pytest.mark.parametrize('shape', [(1,), (3,), (4,), (7,), (8,), (11,), (16,), (512,), (1024,)])
+@pytest.mark.parametrize(
+    "shape", [(1,), (3,), (4,), (7,), (8,), (11,), (16,), (512,), (1024,)]
+)
 def test(shape):
     x = torch.rand(shape).npu()
     y = torch.rand(shape).npu()

@@ -65,8 +65,17 @@ def torch_max_pr_index(x0):
 
 # x0_numel 128, r1_numel 65, 128, 128, 32
 @triton.jit
-def triton_kernel(in_ptr0, in_ptr1, out_ptr0, out_ptr1, x0_numel, r1_numel, XBLOCK: tl.constexpr,
-                  XBLOCK_SUB: tl.constexpr, RBLOCK: tl.constexpr):
+def triton_kernel(
+    in_ptr0,
+    in_ptr1,
+    out_ptr0,
+    out_ptr1,
+    x0_numel,
+    r1_numel,
+    XBLOCK: tl.constexpr,
+    XBLOCK_SUB: tl.constexpr,
+    RBLOCK: tl.constexpr,
+):
     offset = tl.program_id(0) * XBLOCK
     base1 = tl.arange(0, XBLOCK_SUB)
     loops1: tl.constexpr = (XBLOCK + XBLOCK_SUB - 1) // XBLOCK_SUB
@@ -87,27 +96,31 @@ def triton_kernel(in_ptr0, in_ptr1, out_ptr0, out_ptr1, x0_numel, r1_numel, XBLO
             tl.store(out_ptr1 + r1, tmp5[None, :], None)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (128, 65), 1, 128, 65, 32],
-                         ]
-                         )
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (128, 65), 1, 128, 65, 32],
+    ],
+)
 def test_max_with_index_dim0(param_list):
     dtype, shape, ncore, XB, YB, RBLOCK = param_list
     import math
+
     numel = math.prod(shape)
     xblock = numel // shape[-1] // ncore
-    assert (ncore * xblock * shape[-1] == numel)
+    assert ncore * xblock * shape[-1] == numel
 
     b = test_common.generate_tensor(shape, dtype).npu()
-    idx = torch.zeros((shape), device='npu', dtype=torch.int32)
+    idx = torch.zeros((shape), device="npu", dtype=torch.int32)
     c, d = torch.max(b, dim=0)
 
     print(f"std_ret = {c[0:4]}")
 
-    ret = torch.empty((YB), device='npu', dtype=torch.float32)
-    ret1 = torch.zeros((YB), device='npu', dtype=torch.int32)
-    triton_kernel[ncore, 1, 1](b, idx, ret, ret1, shape[0], shape[1], shape[0], shape[0], RBLOCK)
+    ret = torch.empty((YB), device="npu", dtype=torch.float32)
+    ret1 = torch.zeros((YB), device="npu", dtype=torch.int32)
+    triton_kernel[ncore, 1, 1](
+        b, idx, ret, ret1, shape[0], shape[1], shape[0], shape[0], RBLOCK
+    )
     print(f"triton_ret = {ret[0:4]}")
     d = d.to(torch.int32)
     ret1 = ret1.to(torch.int32)

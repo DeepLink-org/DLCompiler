@@ -26,7 +26,9 @@ import triton.language as tl
 import test_common
 
 
-@pytest.mark.parametrize("dtype", ['float32', 'float16', 'bfloat16', 'int32', 'int64', 'int16', 'int8'])
+@pytest.mark.parametrize(
+    "dtype", ["float32", "float16", "bfloat16", "int32", "int64", "int16", "int8"]
+)
 @pytest.mark.parametrize("M_BLOCK,N_BLOCK", [(2, 16), (8, 16)])
 def test_tensor_descriptor_load_store(dtype, M_BLOCK, N_BLOCK):
     @triton.jit
@@ -59,12 +61,25 @@ def test_tensor_descriptor_load_store(dtype, M_BLOCK, N_BLOCK):
     torch.testing.assert_close(inp, out)
 
 
-@pytest.mark.parametrize("dtype", ['float32', 'float16', 'bfloat16', 'int32', 'int64', 'int16', 'int8'])
+@pytest.mark.parametrize(
+    "dtype", ["float32", "float16", "bfloat16", "int32", "int64", "int16", "int8"]
+)
 def test_tensor_descriptor_load_store3d(dtype):
 
     @triton.jit
-    def kernel(out_ptr, a_ptr, M, N, K, stride_m, stride_n, stride_k, M_BLOCK: tl.constexpr, N_BLOCK: tl.constexpr,
-               K_BLOCK: tl.constexpr):
+    def kernel(
+        out_ptr,
+        a_ptr,
+        M,
+        N,
+        K,
+        stride_m,
+        stride_n,
+        stride_k,
+        M_BLOCK: tl.constexpr,
+        N_BLOCK: tl.constexpr,
+        K_BLOCK: tl.constexpr,
+    ):
         in_desc = tl.make_tensor_descriptor(
             a_ptr,
             shape=[M, N, K],
@@ -100,7 +115,9 @@ def test_tensor_descriptor_load_store3d(dtype):
     grid_n = N // N_BLOCK
     grid_k = K // K_BLOCK
 
-    kernel[(grid_m, grid_n, grid_k)](out, inp, *inp.shape, *out.stride(), M_BLOCK, N_BLOCK, K_BLOCK)
+    kernel[(grid_m, grid_n, grid_k)](
+        out, inp, *inp.shape, *out.stride(), M_BLOCK, N_BLOCK, K_BLOCK
+    )
     torch.testing.assert_close(inp.reshape(M * N * K), out.reshape(M * N * K))
 
 
@@ -143,7 +160,9 @@ def test_tensor_descriptor_functional_interface(dtype):
 
 
 @pytest.mark.parametrize("dtype_str", ["int32"])
-@pytest.mark.parametrize("shape", [(128, 2, 4), (64, 2, 4), (32, 2, 4), (2, 4, 32), (2, 4, 2)])
+@pytest.mark.parametrize(
+    "shape", [(128, 2, 4), (64, 2, 4), (32, 2, 4), (2, 4, 32), (2, 4, 2)]
+)
 @pytest.mark.parametrize("axis", [0, 1, 2])
 @pytest.mark.parametrize("device", ["npu"])
 def test_reduce_max(dtype_str, shape, axis, device):
@@ -175,11 +194,11 @@ def test_reduce_max(dtype_str, shape, axis, device):
         output = tl.max(val, axis=axis)
         out_desc.store([0], output.reshape(out_desc.block_shape))
 
-    inp = torch.arange(math.prod(shape), 
-                         dtype=getattr(torch, dtype_str),
-                         device=device).reshape(shape)
+    inp = torch.arange(
+        math.prod(shape), dtype=getattr(torch, dtype_str), device=device
+    ).reshape(shape)
     expected, indices = torch.max(inp.to(torch.int64), dim=axis)
     expected = expected.to(torch.int32)
     actual = torch.zeros(expected.shape, dtype=getattr(torch, dtype_str), device=device)
-    kernel[(1, )](inp, actual, *shape, *expected.shape, axis=axis)
+    kernel[(1,)](inp, actual, *shape, *expected.shape, axis=axis)
     assert torch.equal(expected, actual)

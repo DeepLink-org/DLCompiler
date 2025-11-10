@@ -1,4 +1,4 @@
-#include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
+#include "dicp/Dialect/TritonExt/Transforms/Passes.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -33,13 +33,13 @@
 
 using namespace mlir;
 using namespace dicp;
-using namespace linked;
+using namespace trtion_ext;
 using namespace triton;
 
-namespace mlir::dicp::linked {
+namespace mlir::dicp::trtion_ext {
 #define GEN_PASS_DEF_BOOLTRITONPTRPROMOTION
-#include "dicp/Conversion/LinalgToLinked/Passes.h.inc"
-} // namespace mlir::dicp::linked
+#include "dicp/Dialect/TritonExt/Transforms/Passes.h.inc"
+} // namespace mlir::dicp::trtion_ext
 
 namespace {
 
@@ -270,7 +270,7 @@ static void converti1ArgInTTFunc(triton::FuncOp func) {
 }
 
 struct BoolTritonPtrPromotionPass
-    : mlir::dicp::linked::impl::BoolTritonPtrPromotionBase<
+    : mlir::dicp::trtion_ext::impl::BoolTritonPtrPromotionBase<
           BoolTritonPtrPromotionPass> {
   void runOnOperation() override;
 };
@@ -292,6 +292,6 @@ void BoolTritonPtrPromotionPass::runOnOperation() {
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
-linked::createBoolTritonPtrPromotionPass() {
+trtion_ext::createBoolTritonPtrPromotionPass() {
   return std::make_unique<BoolTritonPtrPromotionPass>();
 }

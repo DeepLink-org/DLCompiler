@@ -3,6 +3,8 @@
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Dialect/TritonExt/Transforms/Passes.h"
+
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
@@ -11,13 +13,15 @@
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+
 #include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::npu::registerLinalgToNPUPass();
   dicp::linked::registerLinalgToLinkedPass();
-  dicp::linked::registerBoolTritonPtrPromotionPass();
+  dicp::trtion_ext::registerBoolTritonPtrPromotionPass();
+  dicp::trtion_ext::registerCanonicalizeCmpiPass();
   dicp::linked::registerLinkedToHIVMPass();
   registry.insert<
       bufferization::BufferizationDialect, dicp::npu::NPUDialect,

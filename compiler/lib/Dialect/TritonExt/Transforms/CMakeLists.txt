@@ -1,13 +1,11 @@
-add_triton_library(LinalgToLinked
-  LinalgToLinkedPass.cpp
-  VerifyNoLinalgGenericPass.cpp
+add_triton_library(TritonExtTransforms
+  BoolTritonPtrPromotionPass.cpp
+  CanonicalizeCmpiPass.cpp
 
   DEPENDS
-  DICPNPUIncGen
-  LinalgToLinkedConversionPassIncGen
+  TritonExtTransformsIncGen
 
   LINK_LIBS PUBLIC
-  BiShengIRAnnotationDialect
   TritonTilingExtIR
   MLIRArithDialect
   MLIRDialectUtils
@@ -21,7 +19,6 @@ add_triton_library(LinalgToLinked
   TritonIR
   TritonTransforms
   TritonSharedAnalysis
-  DICPNPU
 
   TritonArithToLinalg
   StructuredToMemref

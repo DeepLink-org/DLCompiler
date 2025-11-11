@@ -3,85 +3,85 @@ from triton.language import core
 
 
 @core.extern
-def reciprocal(arg0, _builder=None):
+def reciprocal(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_recipf", core.dtype("fp32")),
             (core.dtype("fp16"),): ("__hmf_recipDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def log1p(arg0, _builder=None):
+def log1p(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_log1pf", core.dtype("fp32")),
             (core.dtype("fp16"),): ("__hmf_log1pDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 
 @core.extern
-def relu(arg0, _builder=None):
+def relu(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_reluf", core.dtype("fp32")),
             (core.dtype("fp16"),): ("__hmf_reluDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 
 @core.extern
-def isinf(arg0, _builder=None):
+def isinf(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_isinf", core.dtype("int1")),
             (core.dtype("fp16"),): ("__hmf_isinf", core.dtype("int1")),
             (core.dtype("bf16"),): ("__hmf_isinf", core.dtype("int1")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 
 @core.extern
-def tan(arg0, _builder=None):
+def tan(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_tanf", core.dtype("fp32")),
             (core.dtype("fp16"),): ("__hmf_tanDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 
 @core.extern
-def atan(arg0, _builder=None):
+def atan(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_atanf", core.dtype("fp32")),
             (core.dtype("fp16"),): ("__hmf_atanDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def tanh(arg0, _builder=None):
+def tanh(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"), ): ("__hmf_tanhf", core.dtype("fp32")),
             (core.dtype("fp16"), ): ("__hmf_tanhDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def ilogb(arg0, _builder=None):
+def ilogb(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_ilogbf", core.dtype("fp32")),
             (core.dtype("fp16"),): ("__hmf_ilogbDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 
 @core.extern
-def ldexp(arg0, arg1, _builder=None):
+def ldexp(arg0, arg1, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0, arg1], {
             (core.dtype("fp32"), core.dtype("fp32")): ("__hmf_ldexpf", core.dtype("fp32")),
             (core.dtype("fp16"), core.dtype("fp16")): ("__hmf_ldexpDh", core.dtype("fp16")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def pow(arg0, arg1, _builder=None):
+def pow(arg0, arg1, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0, arg1], {
             (core.dtype("fp32"), core.dtype("fp32")): ("__hmf_powf", core.dtype("fp32")),
@@ -91,19 +91,19 @@ def pow(arg0, arg1, _builder=None):
             (core.dtype("int32"), core.dtype("int32")): ("__hmf_powi", core.dtype("int32")),
             (core.dtype("int16"), core.dtype("int16")): ("__hmf_powi", core.dtype("int16")),
             (core.dtype("int8"), core.dtype("int8")): ("__hmf_powi", core.dtype("int8")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def isnan(arg0, _builder=None):
+def isnan(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"),): ("__hmf_isnan", core.dtype("int1")),
             (core.dtype("fp16"),): ("__hmf_isnan", core.dtype("int1")),
             (core.dtype("bf16"),): ("__hmf_isnan", core.dtype("int1")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def flip(arg0, arg1=None, _builder=None):
+def flip(arg0, arg1=None, _semantic=None):
     if arg1 == None:
         return core.extern_elementwise(
             "", "", [arg0], {
@@ -115,7 +115,7 @@ def flip(arg0, arg1=None, _builder=None):
                 (core.dtype("int32"), ): ("__hmf_flipi32", core.dtype("int32")),
                 (core.dtype("uint32"), ): ("__hmf_flipui32", core.dtype("uint32")),
                 (core.dtype("int64"), ): ("__hmf_flipi64", core.dtype("int64")),
-            }, is_pure=True, _builder=_builder)
+            }, is_pure=True, _semantic=_semantic)
 
     return core.extern_elementwise(
         "", "", [arg0, arg1], {
@@ -127,11 +127,11 @@ def flip(arg0, arg1=None, _builder=None):
             (core.dtype("int32"), core.dtype("int32")): ("__hmf_flipi32", core.dtype("int32")),
             (core.dtype("uint32"), core.dtype("int32")): ("__hmf_flipui32", core.dtype("uint32")),
             (core.dtype("int64"), core.dtype("int32")): ("__hmf_flipi64", core.dtype("int64")),
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)
 
 @core.extern
-def round(arg0, _builder=None):
+def round(arg0, _semantic=None):
     return core.extern_elementwise(
         "", "", [arg0], {
             (core.dtype("fp32"), ): ("__hmf_roundf", core.dtype("fp32")),            
-        }, is_pure=True, _builder=_builder)
+        }, is_pure=True, _semantic=_semantic)

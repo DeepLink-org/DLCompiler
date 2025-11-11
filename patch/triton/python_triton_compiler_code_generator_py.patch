@@ -1,0 +1,95 @@
+diff --git a/python/triton/compiler/code_generator.py b/python/triton/compiler/code_generator.py
+index df09b3198..c40e6444c 100644
+--- a/python/triton/compiler/code_generator.py
++++ b/python/triton/compiler/code_generator.py
+@@ -20,7 +20,6 @@ from .._utils import find_paths_if, get_iterable_path, set_iterable_path
+ 
+ from .errors import (CompilationError, CompileTimeAssertionFailure, UnsupportedLanguageConstruct)
+ 
+-
+ def check_identifier_legality(name, type):
+     pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+     if not re.match(pattern, name):
+@@ -578,6 +577,39 @@ class CodeGenerator(ast.NodeVisitor):
+         assert isinstance(args, language.core.tuple)
+         return args.values
+ 
++    def visit_Lambda(self, node):
++        # 1. get lambda argument names
++        arg_names = [arg.arg for arg in node.args.args]
++
++        # 2. collect lambda closure variables
++        class ClosureCollector(ast.NodeVisitor):
++            def __init__(self):
++                self.vars = set()
++
++            def visit_Name(self, node):
++                if isinstance(node.ctx, ast.Load):
++                    self.vars.add(node.id)
++                self.generic_visit(node)
++
++        collector = ClosureCollector()
++        collector.visit(node.body)
++
++        # 3. get closure variables
++        closure_vars = {}
++        closure_names = []
++        for var_name in collector.vars:
++            if var_name in self.lscope and var_name not in arg_names:
++                closure_vars[var_name] = self.lscope[var_name]
++                closure_names.append(var_name)
++
++        # 4. create inline_lambda object
++        return language.extra.deeplink.inline_lambda(
++            node=node,
++            closure_values=list(closure_vars.values()),
++            closure_names=closure_names,
++            arg_names=arg_names
++        )
++
+     def visit_FunctionDef(self, node):
+         arg_names, kwarg_names = self.visit(node.args)
+         if self.fn:
+@@ -1137,7 +1169,8 @@ class CodeGenerator(ast.NodeVisitor):
+         flatten = False
+         warp_specialize = False
+         disable_licm = False
+-        if IteratorClass is language.range:
++        bind_sub_block = None
++        if IteratorClass in [language.range, language.extra.deeplink.parallel]:
+             iterator = IteratorClass(*iter_args, **iter_kwargs)
+             # visit iterator arguments
+             # note: only `range` iterator is supported now
+@@ -1151,6 +1184,8 @@ class CodeGenerator(ast.NodeVisitor):
+             flatten = iterator.flatten
+             warp_specialize = iterator.warp_specialize
+             disable_licm = iterator.disable_licm
++            if (IteratorClass is language.extra.deeplink.parallel):
++                bind_sub_block = iterator.bind_sub_block
+         elif IteratorClass is range:
+             # visit iterator arguments
+             # note: only `range` iterator is supported now
+@@ -1210,6 +1245,9 @@ class CodeGenerator(ast.NodeVisitor):
+             if disable_licm:
+                 for_op.set_attr("llvm.loop_annotation", self.builder.get_disable_loop_licm_attr())
+ 
++            if (bind_sub_block is not None) and bind_sub_block:
++                for_op.set_attr("bind_sub_block", self.builder.get_bool_attr(bind_sub_block))
++
+             self.scf_stack.append(node)
+             for_op_body = for_op.get_body(0)
+             self.builder.set_insertion_point_to_start(for_op_body)
+@@ -1363,6 +1401,13 @@ class CodeGenerator(ast.NodeVisitor):
+ 
+     def visit_Call(self, node):
+         fn = _unwrap_if_constexpr(self.visit(node.func))
++
++        if isinstance(fn, language.extra.deeplink.inline_lambda):
++            # get the arguments
++            args = [self.visit(arg) for arg in node.args]
++            # call the lambda function
++            return fn(*args, generator=self)
++
+         if not isinstance(fn, BoundJITMethod):
+             static_implementation = self.statically_implemented_functions.get(fn)
+             if static_implementation is not None:

@@ -1,8 +1,8 @@
 diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dialect/Triton/IR/TritonOps.td
-index e9f892da0..38ec0b277 100644
+index e9f892da0..07b83751f 100644
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1410,5 +1410,21 @@ def TT_DescriptorScatterOp : TT_Op<"descriptor_scatter", [TT_DescriptorStoreLike
+@@ -1410,5 +1410,30 @@ def TT_DescriptorScatterOp : TT_Op<"descriptor_scatter", [TT_DescriptorStoreLike
    let hasVerifier = 1;
  }
  
@@ -21,6 +21,15 @@ index e9f892da0..38ec0b277 100644
 +  let assemblyFormat = [{
 +    $src attr-dict `:` type($src)
 +  }];
++}
++
++def TT_CustomSyncOp : TT_Op<"custom_sync",  [Pure, MemoryEffects<[MemWrite]>]> {
++  let summary = "self-defined custom sync operation";
++  let description = [{
++    `tt.custom_sync` triton custom sync op is designed to pass self-defined custom sync operation.
++  }];
++  let arguments = (ins StrAttr:$op_name, StrAttr:$mode_or_sender, I32Attr:$id);
++  let assemblyFormat = "$op_name attr-dict";
 +}
  
  #endif // Triton_OPS

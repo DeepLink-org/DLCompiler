@@ -1003,6 +1003,7 @@ def generate_npu_wrapper_src(
             "i16": "int16_t",
             "i32": "int32_t",
             "i64": "int64_t",
+            "u1": "uint32_t",
             "u32": "uint32_t",
             "u64": "uint64_t",
             "fp16": "float",

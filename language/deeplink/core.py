@@ -8,6 +8,7 @@ from triton.language.core import (
     constexpr,
     tensor,
     range,
+    slice,
 )
 import builtins
 from . import semantic as dl_semantic
@@ -95,9 +96,11 @@ def _extract_slice(sl: slice, shape: constexpr):
 
 @_tensor_member_fn
 @builtin
-def __getitem__(self, slices, _builder=None):
-    if isinstance(slices, (slice, constexpr, tensor)) or slices is None:
+def __getitem__(self, slices, _semantic=None):
+    if isinstance(slices, (builtins.slice, slice, constexpr, tensor)) or slices is None:
         slices = [slices]
+    if isinstance(slices, tuple):
+        slices = slices.values
     ret = self
     offsets = []
     sizes = []
@@ -106,15 +109,15 @@ def __getitem__(self, slices, _builder=None):
     need_extract_slice = False
     for dim, sl in enumerate(slices):
         if sl is None or isinstance(sl, constexpr) and sl.value is None:
-            ret = tl_semantic.expand_dims(ret, dim, _builder)
-            offsets.append(_builder.get_int32(0))
+            ret = tl_semantic.expand_dims(ret, dim, _semantic.builder)
+            offsets.append(_semantic.builder.get_int32(0))
             dst_shape.append(constexpr(1))
             sizes.append(constexpr(1))
             strides.append(constexpr(1))
         elif isinstance(sl, slice) and sl.start is None and sl.stop is None and sl.step is None:
             pass
         elif sl is None or isinstance(sl, (constexpr, int)) and sl.value is not None:
-            offsets.append(_builder.get_int32(_constexpr_to_value(sl)))
+            offsets.append(_semantic.builder.get_int32(_constexpr_to_value(sl)))
             need_extract_slice = True
             sizes.append(constexpr(1))
             strides.append(constexpr(1))
@@ -135,10 +138,10 @@ def __getitem__(self, slices, _builder=None):
 
     if need_extract_slice:
         new_offsets = [
-            tl_semantic.to_tensor(o, _builder) if not isinstance(o, tensor) else o
+            tl_semantic.to_tensor(o, _semantic.builder) if not isinstance(o, tensor) else o
             for o in offsets
         ]
-        ret = dl_semantic.extract_slice(self, new_offsets, sizes, strides, _builder)
+        ret = dl_semantic.extract_slice(self, new_offsets, sizes, strides, _semantic.builder)
     return ret
 
 

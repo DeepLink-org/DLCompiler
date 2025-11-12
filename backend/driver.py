@@ -11,11 +11,22 @@ from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
 from triton.backends.dicp_triton.utils import get_current_backend
 
-from triton.runtime.build import quiet
 import importlib
 import shutil
 
 import setuptools
+import sys
+import contextlib
+import io
+
+@contextlib.contextmanager
+def quiet():
+    old_stdout, old_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = old_stdout, old_stderr
 
 
 def build_for_backend(name, src, srcdir):
@@ -295,3 +306,28 @@ class DICPDriver(DriverBase):
             return torch.empty(int(cache_size // 4), dtype=torch.int, device='mlu')
         else:
             assert False, f"Not implemented for {self.target}"
+
+    def get_active_torch_device(self):
+        # todo: fix it.
+        import torch
+        return torch.device("cpu")
+
+    def map_python_to_cpp_type(self, ty: str) -> str:
+        if ty[0] == "*":
+            return "void*"
+        if ty == "constexpr":
+            return "PyObject*"
+        return {
+            "i1": "int32_t",
+            "i8": "int8_t",
+            "i16": "int16_t",
+            "i32": "int32_t",
+            "i64": "int64_t",
+            "u32": "uint32_t",
+            "u64": "uint64_t",
+            "fp16": "float",
+            "bf16": "float",
+            "fp32": "float",
+            "f32": "float",
+            "fp64": "double",
+        }[ty]

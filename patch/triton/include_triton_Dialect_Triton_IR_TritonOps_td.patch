@@ -1,9 +1,9 @@
 diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dialect/Triton/IR/TritonOps.td
-index 283dd9165..4735eaff9 100644
+index e9f892da0..07b83751f 100644
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1256,5 +1256,30 @@ def TT_ExperimentalTensormapFenceproxyAcquireOp: TT_Op<
-     }];
+@@ -1410,5 +1410,30 @@ def TT_DescriptorScatterOp : TT_Op<"descriptor_scatter", [TT_DescriptorStoreLike
+   let hasVerifier = 1;
  }
  
 +def TT_AnnotationOp : TT_Op<"annotation", [Pure, MemoryEffects<[MemWrite]>]> {

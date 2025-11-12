@@ -93,7 +93,7 @@ notify_apply_patch() {
 
 pip uninstall triton -y
 
-cd $TRITON_PLUGIN_DIRS/third_party/triton/python/
+cd $TRITON_PLUGIN_DIRS/third_party/triton/
 rm -rf build/
 
 if [ -z "$LLVM_BUILD_DIR" ]; then

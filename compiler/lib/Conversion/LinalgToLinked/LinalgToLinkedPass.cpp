@@ -1,4 +1,4 @@
-#include "bishengir/Dialect/Annotation/IR/Annotation.h"
+// #include "bishengir/Dialect/Annotation/IR/Annotation.h"
 #include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
 #include "dicp/Conversion/LinalgToLinked/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
@@ -311,20 +311,20 @@ void addProgramInfo(func::FuncOp func, bool globalKernel) {
   }
 }
 
-class TritonAnnotationConverter
-    : public OpConversionPattern<triton::AnnotationOp> {
-public:
-  using OpConversionPattern<triton::AnnotationOp>::OpConversionPattern;
+// class TritonAnnotationConverter
+//     : public OpConversionPattern<triton::AnnotationOp> {
+// public:
+//   using OpConversionPattern<triton::AnnotationOp>::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(triton::AnnotationOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const {
-    auto markOp = rewriter.create<annotation::MarkOp>(op.getLoc(), op.getSrc());
-    // Forward all annotations.
-    markOp->setAttrs(op->getAttrs());
-    rewriter.eraseOp(op);
-    return success();
-  }
-};
+//   LogicalResult matchAndRewrite(triton::AnnotationOp op, OpAdaptor adaptor,
+//                                 ConversionPatternRewriter &rewriter) const {
+//     auto markOp = rewriter.create<annotation::MarkOp>(op.getLoc(), op.getSrc());
+//     // Forward all annotations.
+//     markOp->setAttrs(op->getAttrs());
+//     rewriter.eraseOp(op);
+//     return success();
+//   }
+// };
 
 class ExternElementwiseClOpConverter
     : public OpConversionPattern<triton::ExternElementwiseOp> {
@@ -334,6 +334,9 @@ public:
   LogicalResult matchAndRewrite(triton::ExternElementwiseOp op,
                                 OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const {
+    // 添加调试日志
+    llvm::errs() << "zmz debug ExternElementwiseClOpConverter: Processing op: " << op.getSymbol() << "\n";
+    llvm::errs() << "zmz debug ExternElementwiseClOpConverter: Op location: " << op.getLoc() << "\n";
     auto loc = op.getLoc();
     if (!op.getPure()) {
       op->emitWarning() << "impure elementwise op!";
@@ -429,14 +432,15 @@ public:
                 linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
                 cf::ControlFlowDialect, tensor::TensorDialect,
                 LLVM::LLVMDialect, bufferization::BufferizationDialect,
-                memref::MemRefDialect, annotation::AnnotationDialect>();
+                memref::MemRefDialect/*,  annotation::AnnotationDialect */>();
   }
 
   void populateLinalgToLinkedConversionPatterns(TypeConverter &typeConverter,
                                                 RewritePatternSet &patterns) {
     populateFunctionOpInterfaceTypeConversionPattern<triton::FuncOp>(
         patterns, typeConverter);
-    patterns.add<TritonAnnotationConverter>(patterns.getContext());
+    // patterns.add<TritonAnnotationConverter>(patterns.getContext());
+    llvm::errs() << "zmz debug LinalgToLinkedPass: Adding ExternElementwiseClOpConverter pattern\n";
     patterns.add<ExternElementwiseClOpConverter>(patterns.getContext());
     if (!this->namedOps) {
       linalg::populateElementwiseToLinalgConversionPatterns(patterns);
@@ -454,8 +458,8 @@ public:
         func::FuncDialect, arith::ArithDialect, math::MathDialect,
         linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
         cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
-        bufferization::BufferizationDialect, memref::MemRefDialect,
-        annotation::AnnotationDialect>();
+        bufferization::BufferizationDialect, memref::MemRefDialect>();  //,
+        // annotation::AnnotationDialect>();
     target.addLegalOp<ModuleOp>();
     // 根据条件判断需要转换的OP
     target.addDynamicallyLegalOp<mlir::UnrealizedConversionCastOp>(
@@ -514,9 +518,12 @@ public:
       MemRefType syncBlockLockArgType =
           MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
                           IntegerType::get(context, 8));
-      func.insertArgument(syncBlockLockArgIdx,      // argIndex
-                          syncBlockLockArgType,     // argType
-                          nullptr, func->getLoc()); // dicAttr
+      if (failed(func.insertArgument(syncBlockLockArgIdx, // argIndex
+                                    syncBlockLockArgType, // argType
+                                    nullptr, func->getLoc()))) {
+        signalPassFailure();
+        return;
+      }
       func->setAttr("SyncBlockLockArgIdx",
                     IntegerAttr::get(IntegerType::get(&getContext(), 64),
                                      0)); // 64: 64位整型
@@ -528,15 +535,19 @@ public:
       NamedAttribute workspaceArgAttr(StringAttr::get(context, "workspace"),
                                       UnitAttr::get(context));
 
-      func.insertArgument(/*argIndex*/ workspaceArgIdx,
-                          /*argType*/ workspaceArgType,
-                          /*dicAttr*/ nullptr, func->getLoc());
+      if (failed(func.insertArgument(/*argIndex*/ workspaceArgIdx,
+                                    /*argType*/ workspaceArgType,
+                                    /*dicAttr*/ nullptr, func->getLoc()))) {
+        signalPassFailure();
+        return;
+      }
       func->setAttr("WorkspaceArgIdx",
                     IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
     }
 
     target.addIllegalOp<triton::ExternElementwiseOp>();
-    target.addIllegalOp<triton::AnnotationOp>();
+    llvm::errs() << "zmz debug LinalgToLinkedPass: Applying conversion patterns\n";
+    // target.addIllegalOp<triton::AnnotationOp>();
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       moduleOp->emitError("failed to apply Convertion Patterns");
       signalPassFailure();

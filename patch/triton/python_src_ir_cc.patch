@@ -1,18 +1,11 @@
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 9945c6188..57d3765df 100644
+index 4c8a4233b..a57d38b6e 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -255,9 +255,14 @@ void init_triton_ir(py::module &&m) {
-       });
- 
-   py::class_<FunctionType>(m, "function_type", py::module_local())
--      .def("param_types", [](FunctionType &self) {
--        return std::vector<Type>(self.getInputs().begin(),
--                                 self.getInputs().end());
-+      .def("param_types",
-+           [](FunctionType &self) {
-+             return std::vector<Type>(self.getInputs().begin(),
-+                                      self.getInputs().end());
+@@ -339,6 +339,10 @@ void init_triton_ir(py::module &&m) {
+       .def("param_types", [](FunctionType &self) {
+         return std::vector<Type>(self.getInputs().begin(),
+                                  self.getInputs().end());
 +           })
 +      .def("result_types", [](FunctionType &self) {
 +        return std::vector<Type>(self.getResults().begin(),
@@ -20,33 +13,18 @@ index 9945c6188..57d3765df 100644
        });
  
    py::class_<Location>(m, "location", py::module_local())
-@@ -373,6 +378,8 @@ void init_triton_ir(py::module &&m) {
-   py::class_<Attribute>(m, "attribute", py::module_local());
+@@ -464,6 +468,7 @@ void init_triton_ir(py::module &&m) {
    py::class_<IntegerAttr, Attribute>(m, "integer_attr", py::module_local());
    py::class_<BoolAttr, Attribute>(m, "bool_attr", py::module_local());
-+  py::class_<UnitAttr, Attribute>(m, "unit_attr", py::module_local());
+   py::class_<UnitAttr, Attribute>(m, "unit_attr", py::module_local());
 +  py::class_<StringAttr, Attribute>(m, "string_attr", py::module_local());
  
    // Ops
    py::class_<OpState>(m, "OpState", py::module_local())
-@@ -625,6 +632,13 @@ void init_triton_ir(py::module &&m) {
-            [](TritonOpBuilder &self, int32_t value) {
-              return self.getBuilder().getI32IntegerAttr(value);
-            })
-+      .def("get_string_attr",
-+           [](TritonOpBuilder &self, const std::string &str) {
-+             return self.getBuilder().getStringAttr(llvm::StringRef(str));
-+           })
-+      .def(
-+          "get_unit_attr",
-+          [](TritonOpBuilder &self) { return self.getBuilder().getUnitAttr(); })
-       // Use arith.ConstantOp to create constants
-       // Constants
-       .def("get_int1",
-@@ -1559,6 +1573,88 @@ void init_triton_ir(py::module &&m) {
-                      IntegerType::get(operand.getContext(), 32)),
-                  operand);
-            })
+@@ -1740,6 +1745,88 @@ void init_triton_ir(py::module &&m) {
+       .def("create_gather",
+            [](TritonOpBuilder &self, Value src, Value indices, int axis)
+                -> Value { return self.create<GatherOp>(src, indices, axis); })
 +      .def("create_extract_slice",
 +           [](TritonOpBuilder &self, Value &ful, std::vector<Value> &offs_vec,
 +              std::vector<int> &sizs_vec, std::vector<int> &strd_vec) -> Value {

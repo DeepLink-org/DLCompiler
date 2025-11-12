@@ -1,0 +1,21 @@
+diff --git a/python/triton/language/semantic.py b/python/triton/language/semantic.py
+index 8341c2c4a..11c702da0 100644
+--- a/python/triton/language/semantic.py
++++ b/python/triton/language/semantic.py
+@@ -115,6 +115,7 @@ class TritonSemantic(Generic[TensorTy]):
+         return self.integer_promote_impl(a_ty, b_ty)
+ 
+     def to_tensor(self, x, check_type: bool = True):
++        from triton.language.extra.deeplink.core import inline_lambda
+         if isinstance(x, bool):
+             return self.tensor(self.builder.get_int1(x), tl.int1)
+         # Note: compile-time const integers are represented by unsigned values
+@@ -147,6 +148,8 @@ class TritonSemantic(Generic[TensorTy]):
+             return self.to_tensor(x.value)
+         elif isinstance(x, self.tensor):
+             return x
++        elif isinstance(x, inline_lambda):
++            return x
+         if check_type:
+             raise TypeError(f"cannot convert {x} of type {type(x)} to tensor")
+         return x

@@ -10,13 +10,13 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/third_party/triton_shared/includ
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_shared/include)
 
-set(ASCENDNPU_IR_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ascendnpu-ir)
-set(ASCENDNPU_IR_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/ascendnpu-ir)
+# set(ASCENDNPU_IR_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ascendnpu-ir)
+# set(ASCENDNPU_IR_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/ascendnpu-ir)
 set(BISHENGIR_BUILD_STANDALONE_IR_ONLY ON)
 
-add_subdirectory(${ASCENDNPU_IR_SRC_DIR} ${ASCENDNPU_IR_BINARY_DIR})
-include_directories(${ASCENDNPU_IR_SRC_DIR}/bishengir/include)
-include_directories(${ASCENDNPU_IR_BINARY_DIR}/bishengir/include) # Tablegen'd files
+# add_subdirectory(${ASCENDNPU_IR_SRC_DIR} ${ASCENDNPU_IR_BINARY_DIR})
+# include_directories(${ASCENDNPU_IR_SRC_DIR}/bishengir/include)
+# include_directories(${ASCENDNPU_IR_BINARY_DIR}/bishengir/include) # Tablegen'd files
 
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton)
     file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_linalg/triton")

@@ -163,7 +163,7 @@ class DICPBackend(BaseBackend):
                 f"backend {self.driver.target} not supported for get_attrs_descriptor."
             )
 
-    def add_stages(self, stages, options):
+    def add_stages(self, stages, options, language):
         if self.driver.target not in ["ascend", "mlu"]:
             stages["ttir"] = lambda src, metadata: self.make_ttir(
                 src, metadata, options
@@ -340,7 +340,7 @@ class DICPBackend(BaseBackend):
             )
             return DICPOptions(**args)
 
-    def get_codegen_implementation(self):
+    def get_codegen_implementation(self, options):
         codegen_fns = dict()
         if self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import min_dot_size

@@ -334,6 +334,9 @@ public:
   LogicalResult matchAndRewrite(triton::ExternElementwiseOp op,
                                 OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const {
+    // 添加调试日志
+    llvm::errs() << "zmz debug ExternElementwiseClOpConverter: Processing op: " << op.getSymbol() << "\n";
+    llvm::errs() << "zmz debug ExternElementwiseClOpConverter: Op location: " << op.getLoc() << "\n";
     auto loc = op.getLoc();
     if (!op.getPure()) {
       op->emitWarning() << "impure elementwise op!";
@@ -437,6 +440,7 @@ public:
     populateFunctionOpInterfaceTypeConversionPattern<triton::FuncOp>(
         patterns, typeConverter);
     // patterns.add<TritonAnnotationConverter>(patterns.getContext());
+    llvm::errs() << "zmz debug LinalgToLinkedPass: Adding ExternElementwiseClOpConverter pattern\n";
     patterns.add<ExternElementwiseClOpConverter>(patterns.getContext());
     if (!this->namedOps) {
       linalg::populateElementwiseToLinalgConversionPatterns(patterns);
@@ -542,11 +546,12 @@ public:
     }
 
     target.addIllegalOp<triton::ExternElementwiseOp>();
+    llvm::errs() << "zmz debug LinalgToLinkedPass: Applying conversion patterns\n";
     // target.addIllegalOp<triton::AnnotationOp>();
-    // if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
-    //   moduleOp->emitError("failed to apply Convertion Patterns");
-    //   signalPassFailure();
-    // }
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+      moduleOp->emitError("failed to apply Convertion Patterns");
+      signalPassFailure();
+    }
   }
 };
 

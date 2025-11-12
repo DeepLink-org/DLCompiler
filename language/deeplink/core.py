@@ -109,7 +109,7 @@ def __getitem__(self, slices, _semantic=None):
     need_extract_slice = False
     for dim, sl in enumerate(slices):
         if sl is None or isinstance(sl, constexpr) and sl.value is None:
-            ret = tl_semantic.expand_dims(ret, dim, _semantic.builder)
+            ret = _semantic.expand_dims(ret, dim)
             offsets.append(_semantic.builder.get_int32(0))
             dst_shape.append(constexpr(1))
             sizes.append(constexpr(1))

@@ -105,6 +105,19 @@ def triton_load_store_sle_mask(
         tl.store(out_ptr0 + x_index, tmp2, xmask)
 
 
+@triton.jit
+def triton_load_store_sge_mask(
+    in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
+    xoffset = tl.program_id(0) * XBLOCK
+    for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
+        x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
+        xmask = xnumel + 2 >= x_index + 1
+        tmp0 = tl.load(in_ptr0 + x_index, xmask)
+        tmp2 = tmp0
+        tl.store(out_ptr0 + x_index, tmp2, xmask)
+
+
 @pytest.mark.parametrize(
     "param_list",
     [
@@ -129,6 +142,7 @@ def test_load_store(param_list):
     test_common.validate_cmp(dtype, y_cal, y_ref)
 
 
+#  因为ascend的arrange op 支持任意的正整数，但是triton只能是2的指数倍，不然会报 ValueError: arange's range must be a power of 2 ，因此调整数字
 @pytest.mark.parametrize(
     "param_list",
     [
@@ -138,12 +152,12 @@ def test_load_store(param_list):
         ["float32", (8, 8, 4, 4)],
         ["float16", (8, 8, 4, 4)],
         ["int8", (8, 8, 4, 4)],
-        ["float32", (3, 8, 2, 16, 16)],
-        ["float16", (3, 8, 2, 16, 16)],
-        ["int8", (9, 8, 8, 16, 16)],
-        ["float32", (11, 8, 8, 4, 4)],
-        ["float16", (11, 8, 8, 4, 4)],
-        ["int8", (11, 8, 8, 4, 4)],
+        ["float32", (4, 8, 2, 16, 16)],
+        ["float16", (4, 8, 2, 16, 16)],
+        ["int8", (8, 8, 8, 16, 16)],
+        ["float32", (16, 8, 8, 4, 4)],
+        ["float16", (16, 8, 8, 4, 4)],
+        ["int8", (16, 8, 8, 4, 4)],
     ],
 )
 def test_load_store_multi_d(param_list):
@@ -184,5 +198,29 @@ def test_load_store_sle_mask(param_list):
     # triton结果
     y_cal = test_common.generate_tensor(shape, dtype).npu()
     triton_load_store_sle_mask[(ncore,)](x0, y_cal, x0.numel() - 1, xblock, xblock_sub)
+    # 比较结果
+    test_common.validate_cmp(dtype, y_cal, y_ref)
+
+
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float16", (2, 4096, 8), 2, 32768, 1024],
+        ["int8", (2, 4096, 8), 2, 32768, 1024],
+        ["float32", (8, 8, 4), 2, 128, 64],
+        ["float16", (8, 8, 4), 2, 128, 64],
+        ["int8", (8, 8, 4), 2, 128, 64],
+    ],
+)
+def test_load_store_sle_mask(param_list):
+    # 生成数据
+    dtype, shape, ncore, xblock, xblock_sub = param_list
+    x0 = test_common.generate_tensor(shape, dtype).npu()
+    # torch结果
+    y_ref = x0
+    # triton结果
+    y_cal = test_common.generate_tensor(shape, dtype).npu()
+    triton_load_store_sge_mask[(ncore,)](x0, y_cal, x0.numel() - 1, xblock, xblock_sub)
     # 比较结果
     test_common.validate_cmp(dtype, y_cal, y_ref)

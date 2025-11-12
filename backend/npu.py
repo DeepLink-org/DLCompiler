@@ -349,6 +349,7 @@ def ttir_post(mod, metadata, opt):
         dicp_cmd_list = [
             dicp_opt_path,
             src_path,
+            "--canonicalize-cmpi",
             "--bool-triton-ptr-promotion",
             "-o",
             dst_path,

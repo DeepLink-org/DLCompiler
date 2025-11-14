@@ -673,6 +673,17 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 bishengir_hivm_opt,
                 "--enable-triton-kernel-compile=true",
             ]
+
+        inject_barrier_all = metadata["inject_barrier_all"]
+        if inject_barrier_all is not None:
+            _compile_option_list += \
+                [f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"]
+            
+        disable_auto_inject_block_sync = metadata["disable_auto_inject_block_sync"]
+        if disable_auto_inject_block_sync is not None:
+            _compile_option_list += \
+                [f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"]
+            
         cmd_list = (
             [npu_compiler_path, ttadapter_path]
             + _compile_option_list
@@ -722,7 +733,8 @@ class NPUOptions:
     enable_npu_compile: bool = True
     max_num_imprecise_acc_default: bool = None
     extern_libs: dict = None
-
+    inject_barrier_all: bool = False
+    disable_auto_inject_block_sync: bool = False
     multibuffer: bool = True
 
     stream: int = None

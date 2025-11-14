@@ -1,5 +1,6 @@
 from triton.backends.dicp_triton.utils import init_dicp_driver
 from . import libdevice
+from .async_task import async_task
 from .core import (
     insert_slice, 
     extract_slice,
@@ -41,6 +42,7 @@ __all__ = [
     "L0B",
     "L0C",
     "SyncFlag",
+    "async_task",
 ]
 
 init_dicp_driver()

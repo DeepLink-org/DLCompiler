@@ -991,6 +991,8 @@ def generate_npu_wrapper_src(
     constants, signature, workspace_size, mix_mode, lock_num, lock_ini_val
 ):
     import os
+    # TODO(zmz)，临时方案signature 的value 中，如果有*u1，换成*i1
+    signature = {k: v.replace("*u1", "*i1") for k, v in signature.items()}
 
     def _ty_to_cpp(ty):
         if ty[0] == "*":
@@ -1003,7 +1005,6 @@ def generate_npu_wrapper_src(
             "i16": "int16_t",
             "i32": "int32_t",
             "i64": "int64_t",
-            "u1": "uint32_t",
             "u32": "uint32_t",
             "u64": "uint64_t",
             "fp16": "float",

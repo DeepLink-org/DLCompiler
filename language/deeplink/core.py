@@ -195,11 +195,11 @@ def extract_slice(ful, offsets, sizes, strides, _builder=None, _generator=None) 
 
 
 @builtin
-def compile_hint(ptr, hint_name, hint_val=None, _builder=None):
+def compile_hint(ptr, hint_name, hint_val=None, _semantic=None):
     hint_name = _constexpr_to_value(hint_name)
     assert isinstance(hint_name, str), f"hint name: {hint_name} is not string"
     hint_val = _unwrap_if_constexpr(hint_val) if hint_val else hint_val
-    dl_semantic.compile_hint(ptr, hint_name, hint_val, _builder)
+    dl_semantic.compile_hint(ptr, hint_name, hint_val, _semantic.builder)
 
 
 @builtin
@@ -223,7 +223,7 @@ def alloc(shape, value, dtype, layout=None, scope=None, _builder=None):
 
 
 @builtin
-def multibuffer(src: tensor, size, _builder=None):
+def multibuffer(src: tensor, size, _semantic=None):
     """
     Set multi_buffer for an existing tensor
     :src: tensor set to bufferize multiple time
@@ -231,7 +231,7 @@ def multibuffer(src: tensor, size, _builder=None):
     """
     buffer_size = _constexpr_to_value(size)
     assert isinstance(buffer_size, int) and buffer_size == 2, f"only support bufferize equals 2"
-    dl_semantic.compile_hint(src, "multi_buffer", buffer_size, _builder)
+    dl_semantic.compile_hint(src, "multi_buffer", buffer_size, _semantic.builder)
 
 
 @builtin
@@ -282,18 +282,18 @@ class SyncFlag:
 
 
 @builtin
-def set_cross_flag(sync_flag_type: SyncFlagType ,event_id: int, _builder=None):
+def set_cross_flag(sync_flag_type: SyncFlagType ,event_id: int, _semantic=None):
     sender = _constexpr_to_value(sync_flag_type.sender())
     event_id = _constexpr_to_value(event_id)
     assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
-    dl_semantic.custom_sync_op(_builder, "sync_block_set", sender=sender, event_id=event_id)
+    dl_semantic.custom_sync_op(_semantic.builder, "sync_block_set", sender=sender, event_id=event_id)
 
 @builtin
-def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _builder=None):
+def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     sender = _constexpr_to_value(sync_flag_type.sender())
     event_id = _constexpr_to_value(event_id)
     assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
-    dl_semantic.custom_sync_op(_builder, "sync_block_wait", sender=sender, event_id=event_id)
+    dl_semantic.custom_sync_op(_semantic.builder, "sync_block_wait", sender=sender, event_id=event_id)
 
 
 class parallel(range):

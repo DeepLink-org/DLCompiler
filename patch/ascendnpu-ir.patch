@@ -1,15 +1,3 @@
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 79054db..fed46e5 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -148,6 +148,7 @@ add_llvm_install_targets(install-bishengir-publish-products
-                          COMPONENT bishengir-publish-products)
- 
- add_subdirectory(bishengir/tools/bishengir-hfusion-ods-gen)
-+message(STATUS "zmz debug BISHENGIR_BUILD_STANDALONE_IR_ONLY: ${BISHENGIR_BUILD_STANDALONE_IR_ONLY}")
- if (BISHENGIR_BUILD_STANDALONE_IR_ONLY)
-   add_subdirectory(bishengir/include/bishengir/Interfaces)
-   set(STANDALONE_IR_BUILD_DIALECT
 diff --git a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h
 index 01814d0..dde227f 100644
 --- a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h
@@ -222,19 +210,6 @@ index d3ad5f2..f190405 100644
            [](auto) -> OpPattern { return OpPattern::kReduceScatter; })
        .Case<hfusion::InterleaveOp, hfusion::DeinterleaveOp>(
            [](auto) -> OpPattern { return OpPattern::kInterleave; })
-diff --git a/bishengir/lib/Dialect/HIVM/IR/CMakeLists.txt b/bishengir/lib/Dialect/HIVM/IR/CMakeLists.txt
-index 40419d9..5462db7 100644
---- a/bishengir/lib/Dialect/HIVM/IR/CMakeLists.txt
-+++ b/bishengir/lib/Dialect/HIVM/IR/CMakeLists.txt
-@@ -9,6 +9,8 @@ file(GLOB HIVM_PIPE ${CMAKE_CURRENT_SOURCE_DIR}/OpPipeInterface/*.cpp)
- file(GLOB HIVM_UNIT_FLAG ${CMAKE_CURRENT_SOURCE_DIR}/HIVMUnitFlagEnabledInterface/*.cpp)
- file(GLOB HIVM_VECTOR_BASE ${CMAKE_CURRENT_SOURCE_DIR}/VectorOpBase/*.cpp)
- 
-+message(STATUS "zmz debug 111 BISHENGIR_BUILD_STANDALONE_IR_ONLY: ${BISHENGIR_BUILD_STANDALONE_IR_ONLY}")
-+
- add_bishengir_dialect_library(BiShengIRHIVMDialect
-   ${HIVM_FLATTEN}
-   ${HIVM_STRUCTURE}
 diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
 index b3d7807..2e8b56c 100644
 --- a/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
@@ -249,14 +224,12 @@ index b3d7807..2e8b56c 100644
    for (int64_t i = 0; i < rank; i++) {
      if (strideAlignElems[i] == 1) {
 diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
-index 8c61377..5c09088 100644
+index 8c61377..0d2d7d8 100644
 --- a/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
 +++ b/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
-@@ -150,8 +150,11 @@ void SyncBlockSetOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-           cast<IntegerAttr>(attr), nullptr, nullptr,
+@@ -151,7 +151,9 @@ void SyncBlockSetOp::build(OpBuilder &odsBuilder, OperationState &odsState,
            /*tsync_instr_mode=*/{});
    } else {
-+    llvm::errs() << "zmz debug flag_id is not an attribute\n";
      build(odsBuilder, odsState, tcore_type, tpipe, pipe, nullptr,
 -          flag_id.get<Value>(), nullptr, /*tsync_instr_mode=*/{});
 +          // flag_id.get<Value>(), nullptr, /*tsync_instr_mode=*/{});
@@ -265,7 +238,7 @@ index 8c61377..5c09088 100644
    }
  }
  
-@@ -165,7 +168,8 @@ void SyncBlockSetOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+@@ -165,7 +167,8 @@ void SyncBlockSetOp::build(OpBuilder &odsBuilder, OperationState &odsState,
            cast<IntegerAttr>(attr), nullptr, ffts_base_addr, tsync_instr_mode);
    } else {
      build(odsBuilder, odsState, tcore_type, tpipe, pipe, nullptr,
@@ -275,7 +248,7 @@ index 8c61377..5c09088 100644
    }
  }
  
-@@ -201,7 +205,8 @@ void SyncBlockWaitOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+@@ -201,7 +204,8 @@ void SyncBlockWaitOp::build(OpBuilder &odsBuilder, OperationState &odsState,
            cast<IntegerAttr>(attr), nullptr);
    } else {
      build(odsBuilder, odsState, tcore_type, tpipe, pipe, nullptr,

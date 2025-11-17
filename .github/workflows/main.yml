@@ -76,6 +76,7 @@ jobs:
           sudo -i
           source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           cd ${{env.CI_PATH }}
           bash test/ascend/run_tests.sh
 

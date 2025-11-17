@@ -51,7 +51,8 @@ jobs:
       - name: Build and install DLCompiler
         run: |
           set -ex
-          sudo -i
+          source /home/dlc_ci/.bashrc
+          source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{ env.CI_PATH }}
           export JSON_PATH=${{ vars.CI_BASE_PATH }}/data/v32/include.zip
@@ -74,12 +75,13 @@ jobs:
       - name: Run tests on ascend
         run: |
           set -ex
-          sudo -i
+          source /home/dlc_ci/.bashrc
+          source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
-          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
+          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           bash test/ascend/run_tests.sh
 
       - name: Clear workfile

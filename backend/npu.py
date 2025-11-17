@@ -694,6 +694,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         if dump_ir:
             print(f"DEBUG dump ir[bishengir-compile] command: {cmd_list}")
         ret = subprocess.run(cmd_list, capture_output=True, check=True)
+        if not Path(bin_path).is_file():
+            print(ret.stderr.decode("utf-8"))
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
             __get_metadata_attr_by_callback(

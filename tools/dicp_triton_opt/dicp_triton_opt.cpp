@@ -1,6 +1,6 @@
 #include "dicp/Conversion/LinalgToLinked/Passes.h"
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
-// #include "dicp/Conversion/LinkedToHIVM/Passes.h"
+#include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "dicp/Dialect/TritonExt/Transforms/Passes.h"

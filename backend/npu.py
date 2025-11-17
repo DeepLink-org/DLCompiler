@@ -435,7 +435,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             dicp_opt_path,
             src_path,
             f"--linalg-to-linked=global-kernel=false named-ops=true",
-            # "--linked-to-hivm",
+            "--linked-to-hivm",
             "-o",
             dst_path,
         ]

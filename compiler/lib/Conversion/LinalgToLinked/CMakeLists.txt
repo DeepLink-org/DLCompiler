@@ -8,7 +8,7 @@ add_triton_library(LinalgToLinked
   LinalgToLinkedConversionPassIncGen
 
   LINK_LIBS PUBLIC
-  # BiShengIRAnnotationDialect
+  BiShengIRAnnotationDialect
   TritonTilingExtIR
   MLIRArithDialect
   MLIRDialectUtils

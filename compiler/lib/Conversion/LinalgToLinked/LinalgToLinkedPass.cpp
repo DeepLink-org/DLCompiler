@@ -1,4 +1,11 @@
+// #include "bishengir/Annotation/Annotation.h"
 // #include "bishengir/Dialect/Annotation/IR/Annotation.h"
+// #include "compiler/include/bishengir/Dialect/Annotation/IR/Annotation.h"
+#include "bishengir/Dialect/Annotation/IR/Annotation.h"
+// #include "bishengir/Dialect/Annotation/IR/AnnotationOps.cpp.inc"
+// #include "bishengir/Dialect/Annotation/IR/AnnotationOpsDialect.h.inc"
+// #include "bishengir/Dialect/Annotation/IR/AnnotationOpsDialect.cpp.inc"
+
 #include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
 #include "dicp/Conversion/LinalgToLinked/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
@@ -311,20 +318,20 @@ void addProgramInfo(func::FuncOp func, bool globalKernel) {
   }
 }
 
-// class TritonAnnotationConverter
-//     : public OpConversionPattern<triton::AnnotationOp> {
-// public:
-//   using OpConversionPattern<triton::AnnotationOp>::OpConversionPattern;
+class TritonAnnotationConverter
+    : public OpConversionPattern<triton::AnnotationOp> {
+public:
+  using OpConversionPattern<triton::AnnotationOp>::OpConversionPattern;
 
-//   LogicalResult matchAndRewrite(triton::AnnotationOp op, OpAdaptor adaptor,
-//                                 ConversionPatternRewriter &rewriter) const {
-//     auto markOp = rewriter.create<annotation::MarkOp>(op.getLoc(), op.getSrc());
-//     // Forward all annotations.
-//     markOp->setAttrs(op->getAttrs());
-//     rewriter.eraseOp(op);
-//     return success();
-//   }
-// };
+  LogicalResult matchAndRewrite(triton::AnnotationOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const {
+    auto markOp = rewriter.create<annotation::MarkOp>(op.getLoc(), op.getSrc());
+    // Forward all annotations.
+    markOp->setAttrs(op->getAttrs());
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
 
 class ExternElementwiseClOpConverter
     : public OpConversionPattern<triton::ExternElementwiseOp> {
@@ -432,14 +439,14 @@ public:
                 linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
                 cf::ControlFlowDialect, tensor::TensorDialect,
                 LLVM::LLVMDialect, bufferization::BufferizationDialect,
-                memref::MemRefDialect/*,  annotation::AnnotationDialect */>();
+                memref::MemRefDialect, annotation::AnnotationDialect>();
   }
 
   void populateLinalgToLinkedConversionPatterns(TypeConverter &typeConverter,
                                                 RewritePatternSet &patterns) {
     populateFunctionOpInterfaceTypeConversionPattern<triton::FuncOp>(
         patterns, typeConverter);
-    // patterns.add<TritonAnnotationConverter>(patterns.getContext());
+    patterns.add<TritonAnnotationConverter>(patterns.getContext());
     llvm::errs() << "zmz debug LinalgToLinkedPass: Adding ExternElementwiseClOpConverter pattern\n";
     patterns.add<ExternElementwiseClOpConverter>(patterns.getContext());
     if (!this->namedOps) {
@@ -458,8 +465,8 @@ public:
         func::FuncDialect, arith::ArithDialect, math::MathDialect,
         linalg::LinalgDialect, affine::AffineDialect, scf::SCFDialect,
         cf::ControlFlowDialect, tensor::TensorDialect, LLVM::LLVMDialect,
-        bufferization::BufferizationDialect, memref::MemRefDialect>();  //,
-        // annotation::AnnotationDialect>();
+        bufferization::BufferizationDialect, memref::MemRefDialect,
+        annotation::AnnotationDialect>();
     target.addLegalOp<ModuleOp>();
     // 根据条件判断需要转换的OP
     target.addDynamicallyLegalOp<mlir::UnrealizedConversionCastOp>(
@@ -547,7 +554,7 @@ public:
 
     target.addIllegalOp<triton::ExternElementwiseOp>();
     llvm::errs() << "zmz debug LinalgToLinkedPass: Applying conversion patterns\n";
-    // target.addIllegalOp<triton::AnnotationOp>();
+    target.addIllegalOp<triton::AnnotationOp>();
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       moduleOp->emitError("failed to apply Convertion Patterns");
       signalPassFailure();

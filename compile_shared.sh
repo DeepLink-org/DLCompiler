@@ -43,6 +43,12 @@ if [[ $compile_triton_shared == true ]]; then
     echo "triton_shared compile success!"
 fi
 
+echo "start apply ascendnpu-ir patch"
+cd $home_path/third_party/ascendnpu-ir
+git checkout .
+git apply ../../patch/ascendnpu-ir.patch
+echo "apply patch/ascendnpu-ir.patch success!"
+
 # SET ENV
 # export JSON_PATH=/path/to/your/json/file
 # export GOOGLETEST_DIR=/path/to/your/googletest/directory

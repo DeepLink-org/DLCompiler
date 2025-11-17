@@ -1,13 +1,12 @@
 diff --git a/python/triton/backends/compiler.py b/python/triton/backends/compiler.py
-index 9bbc5eadb..1ee43dd4e 100644
+index 9bbc5eadb..d21829772 100644
 --- a/python/triton/backends/compiler.py
 +++ b/python/triton/backends/compiler.py
-@@ -5,6 +5,10 @@ from typing import Dict, Union
+@@ -5,6 +5,9 @@ from typing import Dict, Union
  from types import ModuleType
  
  
 +class AttrsDescriptor:
-+    print(f"zmz debug using dummy AttrsDescriptor")
 +    pass
 +
  @dataclass(frozen=True)

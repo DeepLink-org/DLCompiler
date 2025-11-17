@@ -1,5 +1,5 @@
 diff --git a/python/triton/compiler/compiler.py b/python/triton/compiler/compiler.py
-index 81d7b3267..e8d80d1b6 100644
+index 81d7b3267..a838359de 100644
 --- a/python/triton/compiler/compiler.py
 +++ b/python/triton/compiler/compiler.py
 @@ -15,6 +15,7 @@ import re
@@ -10,7 +10,7 @@ index 81d7b3267..e8d80d1b6 100644
  
  # - ^\s*tt\.func\s+ : match the start of the string, any leading whitespace, the keyword func,
  #    and any following whitespace
-@@ -463,9 +464,12 @@ class CompiledKernel:
+@@ -463,8 +464,10 @@ class CompiledKernel:
          if knobs.runtime.kernel_load_start_hook is not None:
              knobs.runtime.kernel_load_start_hook(self.module, self.function, self.name, self.metadata_group, self.hash)
          # TODO: n_regs, n_spills should be metadata generated when calling `ptxas`
@@ -18,9 +18,7 @@ index 81d7b3267..e8d80d1b6 100644
 +        # self.module, self.function, self.n_regs, self.n_spills, self.n_max_threads = driver.active.utils.load_binary(
 +        self.module, self.function, self.n_regs, self.n_spills = driver.active.utils.load_binary(
              self.name, self.kernel, self.metadata.shared, device)
-+        self.n_max_threads = 1 # sys.maxsize
++        self.n_max_threads = sys.maxsize # sys.maxsize
          warp_size = driver.active.get_current_target().warp_size
-+        print(f"zmz debug self.n_max_threads: {self.n_max_threads}, self.metadata.num_warps: {self.metadata.num_warps}, warp_size: {warp_size}")
          if self.metadata.num_warps * warp_size > self.n_max_threads:
              raise_(OutOfResources(self.metadata.num_warps * warp_size, self.n_max_threads, "threads"))
-         if knobs.runtime.kernel_load_end_hook is not None:

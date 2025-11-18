@@ -514,9 +514,9 @@ public:
       MemRefType syncBlockLockArgType =
           MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
                           IntegerType::get(context, 8));
-      if (failed(func.insertArgument(syncBlockLockArgIdx, // argIndex
-                                    syncBlockLockArgType, // argType
-                                    nullptr, func->getLoc()))) {
+      if (failed(func.insertArgument(syncBlockLockArgIdx,  // argIndex
+                                     syncBlockLockArgType, // argType
+                                     nullptr, func->getLoc()))) {
         signalPassFailure();
         return;
       }
@@ -532,8 +532,8 @@ public:
                                       UnitAttr::get(context));
 
       if (failed(func.insertArgument(/*argIndex*/ workspaceArgIdx,
-                                    /*argType*/ workspaceArgType,
-                                    /*dicAttr*/ nullptr, func->getLoc()))) {
+                                     /*argType*/ workspaceArgType,
+                                     /*dicAttr*/ nullptr, func->getLoc()))) {
         signalPassFailure();
         return;
       }

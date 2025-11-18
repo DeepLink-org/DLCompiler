@@ -69,8 +69,8 @@ jobs:
           export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
 
           rm -rf ./third_party/*
-          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/
-          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/json ./third_party/
+          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/ascendnpu-ir
+          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/json ./third_party/json
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton_shared ./third_party/triton_shared
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton ./third_party/triton
           echo "whoami? $(whoami)"

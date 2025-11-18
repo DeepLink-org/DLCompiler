@@ -767,7 +767,6 @@ class CPUOptions:
         return hashlib.md5(key.encode("utf-8")).hexdigest()
 
 
-
 class NPUUtils(object):
     def __new__(cls):
         if not hasattr(cls, "instance"):
@@ -989,6 +988,7 @@ def generate_npu_wrapper_src(
     constants, signature, workspace_size, mix_mode, lock_num, lock_ini_val
 ):
     import os
+
     # TODO(zmz)，临时方案signature 的value 中，如果有*u1，换成*i1
     signature = {k: v.replace("*u1", "*i1") for k, v in signature.items()}
 

@@ -19,6 +19,7 @@ import sys
 import contextlib
 import io
 
+
 @contextlib.contextmanager
 def quiet():
     old_stdout, old_stderr = sys.stdout, sys.stderr
@@ -30,8 +31,8 @@ def quiet():
 
 
 def build_for_backend(name, src, srcdir):
-    suffix = sysconfig.get_config_var('EXT_SUFFIX')
-    so = os.path.join(srcdir, '{name}{suffix}'.format(name=name, suffix=suffix))
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    so = os.path.join(srcdir, "{name}{suffix}".format(name=name, suffix=suffix))
     # try to avoid setuptools if possible
     cc = os.environ.get("CC")
     if cc is None:
@@ -40,19 +41,23 @@ def build_for_backend(name, src, srcdir):
         gcc = shutil.which("gcc")
         cc = gcc if gcc is not None else clang
         if cc is None:
-            raise RuntimeError("Failed to find C compiler. Please specify via CC environment variable.")
+            raise RuntimeError(
+                "Failed to find C compiler. Please specify via CC environment variable."
+            )
     # This function was renamed and made public in Python 3.10
-    if hasattr(sysconfig, 'get_default_scheme'):
+    if hasattr(sysconfig, "get_default_scheme"):
         scheme = sysconfig.get_default_scheme()
     else:
         scheme = sysconfig._get_default_scheme()
     # 'posix_local' is a custom scheme on Debian. However, starting Python 3.10, the default install
     # path changes to include 'local'. This change is required to use triton with system-wide python.
-    if scheme == 'posix_local':
-        scheme = 'posix_prefix'
+    if scheme == "posix_local":
+        scheme = "posix_prefix"
     py_include_dir = sysconfig.get_paths(scheme=scheme)["include"]
 
-    ret = subprocess.check_call([cc, src, f"-I{py_include_dir}", f"-I{srcdir}", "-shared", "-fPIC", "-o", so])
+    ret = subprocess.check_call(
+        [cc, src, f"-I{py_include_dir}", f"-I{srcdir}", "-shared", "-fPIC", "-o", so]
+    )
     if ret == 0:
         return so
     # fallback on setuptools
@@ -65,19 +70,19 @@ def build_for_backend(name, src, srcdir):
     # create extension module
     ext = setuptools.Extension(
         name=name,
-        language='c',
+        language="c",
         sources=[src],
         include_dirs=include_dirs,
-        extra_compile_args=extra_compile_args + ['-O3'],
+        extra_compile_args=extra_compile_args + ["-O3"],
         extra_link_args=extra_link_args,
         library_dirs=library_dirs,
         libraries=libraries,
     )
     # build extension module
-    args = ['build_ext']
-    args.append('--build-temp=' + srcdir)
-    args.append('--build-lib=' + srcdir)
-    args.append('-q')
+    args = ["build_ext"]
+    args.append("--build-temp=" + srcdir)
+    args.append("--build-lib=" + srcdir)
+    args.append("-q")
     args = dict(
         name=name,
         ext_modules=[ext],
@@ -87,11 +92,13 @@ def build_for_backend(name, src, srcdir):
         setuptools.setup(**args)
     return so
 
+
 class DICUtils:
     def __new__(cls):
-        if not hasattr(cls, 'instance'):
+        if not hasattr(cls, "instance"):
             cls.instance = super(DICUtils, cls).__new__(cls)
-        return cls.instance    
+        return cls.instance
+
     def __init__(self):
         dirname = os.path.dirname(os.path.realpath(__file__))
         src = Path(os.path.join(dirname, "extension_backend.c")).read_text()
@@ -108,50 +115,60 @@ class DICUtils:
                 with open(so, "rb") as f:
                     cache_path = cache.put(f.read(), fname, binary=True)
         import importlib.util
+
         spec = importlib.util.spec_from_file_location("ext_utils", cache_path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         self.load_binary = mod.load_binary
         self.get_device_properties = mod.get_device_properties
 
+
 class DICPDriver(DriverBase):
     def __init__(self, target=None):
-        if(self.__initialized): return
+        if self.__initialized:
+            return
         self.__initialized = True
         super().__init__()
         if target == "mlu":
             from triton.backends.dicp_triton.mlu import BangLauncher, BangUtils
+
             self.target = "mlu"
             self.utils = BangUtils()
             self.launcher_cls = BangLauncher
             import torch
             import torch_mlu
+
             self.get_current_device = torch.mlu.current_device
             self.set_current_device = torch.mlu.set_device
-            self.get_current_stream = lambda idx: torch.mlu.current_stream(idx).mlu_stream
+            self.get_current_stream = lambda idx: torch.mlu.current_stream(
+                idx
+            ).mlu_stream
             self.is_linear_pointer = lambda ptr, device: self.utils.is_linear_pointer(
-                ptr, device)
+                ptr, device
+            )
         elif target == "maca":
             from triton.backends.dicp_triton.maca import MacaLauncher, MacaUtils
+
             self.target = "maca"
             self.utils = MacaUtils()
             self.launcher_cls = MacaLauncher
         elif target == "ascend":
             from triton.backends.dicp_triton.npu import NPULauncher, NPUUtils
+
             self.target = "ascend"
             self.utils = NPUUtils()
             self.launcher_cls = NPULauncher
         elif target == "nvidia":
             from triton.backends.nvidia.driver import CudaLauncher, CudaUtils
+
             self.target = "nvidia"
             self.utils = CudaUtils()
             self.launcher_cls = CudaLauncher
         else:
             self.target = "dicp"
-           
-    
+
     def __new__(cls, target=None):
-        if not hasattr(cls, 'instance'):
+        if not hasattr(cls, "instance"):
             cls.instance = super(DICPDriver, cls).__new__(cls)
             cls.instance.__initialized = False
         return cls.instance
@@ -165,15 +182,24 @@ class DICPDriver(DriverBase):
         try:
             current_backend = get_current_backend()
             if current_backend == "ascend":
+
                 def test_npucompiler():
                     from triton.backends.dicp_triton.npu import _get_bisheng_path
+
                     npucompiler = _get_bisheng_path()
-                    targets = subprocess.check_output([npucompiler, "-print-targets"]).decode().strip().split()
+                    targets = (
+                        subprocess.check_output([npucompiler, "-print-targets"])
+                        .decode()
+                        .strip()
+                        .split()
+                    )
                     return "hiipu64" in targets
+
                 try:
                     return test_npucompiler()
                 except Exception as e_npucompiler:
                     import warnings
+
                     red = "\x1b[31;20m"
                     reset = "\x1b[0m"
                     warnings.warn(red + str(e_npucompiler) + reset)
@@ -185,11 +211,15 @@ class DICPDriver(DriverBase):
     def launch_as_union_task(self, device, grid):
         if self.target == "mlu":
             import math
-            cluster_num = self.utils.get_device_properties(device).get('cluster_num')
+
+            cluster_num = self.utils.get_device_properties(device).get("cluster_num")
             core_num_per_cluster = self.utils.get_device_properties(device).get(
-                'core_num_per_cluster')
+                "core_num_per_cluster"
+            )
             total_cores = cluster_num * core_num_per_cluster
-            return grid[0] % core_num_per_cluster == 0 and math.prod(grid) <= total_cores
+            return (
+                grid[0] % core_num_per_cluster == 0 and math.prod(grid) <= total_cores
+            )
 
     def get_device_capability(self):
         if self.target == "mlu":
@@ -205,8 +235,10 @@ class DICPDriver(DriverBase):
 
     def get_current_stream(self, device):
         import torch
+
         if self.target == "mlu":
             import torch_mlu
+
             if device is None:
                 device = self.get_current_device()
             return torch.mlu.current_stream(device).mlu_stream
@@ -226,14 +258,17 @@ class DICPDriver(DriverBase):
 
     def get_current_device(self):
         import torch
+
         # dicp doesn't have a device to return. Return something.
         if self.target == "mlu":
             import torch_mlu
+
             return torch.mlu.current_device()
         elif self.target == "maca":
             return torch.cuda.current_device()
         elif self.target == "ascend":
             import torch_npu
+
             return torch.npu.current_device()
         elif self.target == "nvidia":
             return torch.cuda.current_device()
@@ -241,6 +276,7 @@ class DICPDriver(DriverBase):
 
     def get_benchmarker(self):
         from triton.testing import do_bench
+
         return do_bench
 
     def set_current_device(self, device):
@@ -251,6 +287,7 @@ class DICPDriver(DriverBase):
             return torch.cuda.set_device(device)
         elif self.target == "ascend":
             import torch_npu
+
             return torch.npu.set_device(device)
         elif self.target == "nvidia":
             return torch.cuda.set_device(device)
@@ -259,7 +296,7 @@ class DICPDriver(DriverBase):
     def get_current_target(self):
         if self.target == "mlu":
             device = self.get_current_device()
-            capability = self.utils.get_device_properties(device).get('isa_version')
+            capability = self.utils.get_device_properties(device).get("isa_version")
             # As compile func in compiler.py just support GPUTarget, and this type
             # can also represent MLU information, we will temporarily use GPUTarget here.
             return GPUTarget("mlu", capability, 0)
@@ -280,22 +317,25 @@ class DICPDriver(DriverBase):
 
     def assemble_tensormap_to_arg(self, tensormaps_info, args):
         return args
-    
+
     def get_device_interface(self):
         if self.target == "ascend":
             import torch
+
             return torch.npu
         elif self.target == "mlu":
             import torch
+
             return torch.mlu
         else:
             assert False, f"Not implemented for {self.target}"
-        
+
     def get_empty_cache_for_benchmark(self):
         if self.target == "ascend":
             import torch
+
             cache_size = 192 * 1024 * 1024
-            return torch.empty(cache_size // 4, dtype=torch.int, device='npu')
+            return torch.empty(cache_size // 4, dtype=torch.int, device="npu")
         elif self.target == "mlu":
             import torch
 
@@ -303,13 +343,14 @@ class DICPDriver(DriverBase):
             # before each kernel call to make sure that the L2 cache
             # doesn't contain any input data before the run
             cache_size = 256 * 1024 * 1024
-            return torch.empty(int(cache_size // 4), dtype=torch.int, device='mlu')
+            return torch.empty(int(cache_size // 4), dtype=torch.int, device="mlu")
         else:
             assert False, f"Not implemented for {self.target}"
 
     def get_active_torch_device(self):
         # todo: fix it.
         import torch
+
         return torch.device("cpu")
 
     def map_python_to_cpp_type(self, ty: str) -> str:

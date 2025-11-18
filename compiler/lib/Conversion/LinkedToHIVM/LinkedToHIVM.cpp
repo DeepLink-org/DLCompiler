@@ -1,5 +1,3 @@
-// #include "bishengir/HIVM/HIVMSynchronization.h"
-// #include "bishengir/HIVM/HIVM.h"
 #include "bishengir/Dialect/HIVM/IR/HIVM.h"
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "mlir/IR/Attributes.h"

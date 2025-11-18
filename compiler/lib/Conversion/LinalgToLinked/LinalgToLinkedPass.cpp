@@ -1,11 +1,4 @@
-// #include "bishengir/Annotation/Annotation.h"
-// #include "bishengir/Dialect/Annotation/IR/Annotation.h"
-// #include "compiler/include/bishengir/Dialect/Annotation/IR/Annotation.h"
 #include "bishengir/Dialect/Annotation/IR/Annotation.h"
-// #include "bishengir/Dialect/Annotation/IR/AnnotationOps.cpp.inc"
-// #include "bishengir/Dialect/Annotation/IR/AnnotationOpsDialect.h.inc"
-// #include "bishengir/Dialect/Annotation/IR/AnnotationOpsDialect.cpp.inc"
-
 #include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
 #include "dicp/Conversion/LinalgToLinked/VerifyNoLinalgGenericPass.hpp"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"

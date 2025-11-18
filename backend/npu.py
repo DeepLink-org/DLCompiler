@@ -93,16 +93,14 @@ def _get_triton_adapter_opt_path() -> str:
 
 def _get_dicp_opt_path() -> str:
     base_path = os.path.dirname(__file__)
-    path = os.path.join(base_path, "dicp_opt")
-    path = "/mnt/data01/zmz/workspace/04ttshared/update/Triton/third_party/triton/triton/backends/dicp_triton/dicp_opt"
+    path = os.path.join(base_path, "../../_C", "dicp_opt")
     return path
 
 
 def _get_triton_shared_opt_path() -> str:
     base_path = os.path.dirname(__file__)
-    path = os.path.join(base_path, "triton-shared-opt-v3_2")
-    path34 = os.path.join(base_path, "triton-shared-opt-v3_4")
-    path34 = "/mnt/data01/zmz/workspace/04ttshared/update/Triton/third_party/triton/triton/backends/dicp_triton/triton-shared-opt-v3_4"
+    path = os.path.join(base_path, "../../_C", "triton-shared-opt-v3_2")
+    path34 = os.path.join(base_path, "../../_C", "triton-shared-opt-v3_4")
     if os.path.exists(path34):
         path = path34
     path = os.getenv("TRITON_SHARED_OPT_PATH", path)  # allow user override

@@ -1,5 +1,5 @@
 diff --git a/setup.py b/setup.py
-index dffc45ab1..cf00adb79 100644
+index dffc45ab1..292cc8cba 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -182,6 +182,13 @@ class Package:
@@ -53,7 +53,7 @@ index dffc45ab1..cf00adb79 100644
 +            cmake_build_dir,
 +            "third_party/dicp_triton/tools/dicp_triton_opt/"
 +        )
-+        dicp_triton_dst_dir = os.path.join(os.path.dirname(__file__), "triton", "backends", "dicp_triton")
++        dicp_triton_dst_dir = extdir
 +        os.makedirs(dicp_triton_dst_dir, exist_ok=True)
 +        # triton_shared34_path = os.path.join(
 +        #     cmake_build_dir,

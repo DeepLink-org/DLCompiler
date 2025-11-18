@@ -70,6 +70,8 @@ jobs:
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton ./third_party/triton
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
+          git submodule update
+          echo "git submodule update done."
           bash compile_shared.sh apply_patch=true
 
       - name: Run tests on ascend

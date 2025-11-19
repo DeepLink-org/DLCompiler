@@ -514,9 +514,12 @@ public:
       MemRefType syncBlockLockArgType =
           MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
                           IntegerType::get(context, 8));
-      func.insertArgument(syncBlockLockArgIdx,      // argIndex
-                          syncBlockLockArgType,     // argType
-                          nullptr, func->getLoc()); // dicAttr
+      if (failed(func.insertArgument(syncBlockLockArgIdx,  // argIndex
+                                     syncBlockLockArgType, // argType
+                                     nullptr, func->getLoc()))) {
+        signalPassFailure();
+        return;
+      }
       func->setAttr("SyncBlockLockArgIdx",
                     IntegerAttr::get(IntegerType::get(&getContext(), 64),
                                      0)); // 64: 64位整型
@@ -528,9 +531,12 @@ public:
       NamedAttribute workspaceArgAttr(StringAttr::get(context, "workspace"),
                                       UnitAttr::get(context));
 
-      func.insertArgument(/*argIndex*/ workspaceArgIdx,
-                          /*argType*/ workspaceArgType,
-                          /*dicAttr*/ nullptr, func->getLoc());
+      if (failed(func.insertArgument(/*argIndex*/ workspaceArgIdx,
+                                     /*argType*/ workspaceArgType,
+                                     /*dicAttr*/ nullptr, func->getLoc()))) {
+        signalPassFailure();
+        return;
+      }
       func->setAttr("WorkspaceArgIdx",
                     IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
     }

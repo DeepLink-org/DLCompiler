@@ -1,0 +1,375 @@
+diff --git a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h
+index 01814d0..dde227f 100644
+--- a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h
++++ b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusion.h
+@@ -18,7 +18,7 @@
+ #ifndef BISHENGIR_DIALECT_HFUSION_IR_HFUSION_H
+ #define BISHENGIR_DIALECT_HFUSION_IR_HFUSION_H
+ 
+-#include "mlir/Dialect/Mesh/IR/MeshDialect.h"
++#include "mlir/Dialect/Shard/IR/ShardDialect.h"
+ #include "bishengir/Dialect/Symbol/IR/Symbol.h"
+ #include "bishengir/Interfaces/AggregatedOpInterface.h"
+ #include "mlir/Bytecode/BytecodeOpInterface.h"
+diff --git a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionBase.td b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionBase.td
+index 4257dc2..15f6b2c 100644
+--- a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionBase.td
++++ b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionBase.td
+@@ -39,7 +39,7 @@ def HFusion_Dialect : Dialect {
+ #endif
+     "linalg::LinalgDialect",
+     "mathExt::MathExtDialect",
+-    "mesh::MeshDialect",
++    "shard::ShardDialect",
+     "symbol::SymbolDialect"
+   ];
+   let hasCanonicalizer = 1;
+diff --git a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionStructuredOps.td b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionStructuredOps.td
+index ce55e7f..089f75e 100644
+--- a/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionStructuredOps.td
++++ b/bishengir/include/bishengir/Dialect/HFusion/IR/HFusionStructuredOps.td
+@@ -114,8 +114,11 @@ def ReduceWithIndexOp : HFusionStructuredBase_Op<"reduce_with_index",
+     // Declare functions necessary for LinalgStructuredInterface.
+     SmallVector<utils::IteratorType> getIteratorTypesArray();
+     ArrayAttr getIndexingMaps();
++    // static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
++    //                           mlir::ArrayRef<mlir::NamedAttribute>)>
+     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+-                              mlir::ArrayRef<mlir::NamedAttribute>)>
++                              mlir::ArrayRef<mlir::NamedAttribute>,
++                              function_ref<mlir::InFlightDiagnostic ()>)>
+     getRegionBuilder();
+   }];
+ }
+@@ -154,8 +157,11 @@ def ArangeOp : HFusionStructuredBase_Op<"arange", [AttrSizedOperandSegments,
+     // Declare functions necessary for LinalgStructuredInterface.
+     SmallVector<utils::IteratorType> getIteratorTypesArray();
+     ArrayAttr getIndexingMaps();
++    // static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
++    //                           mlir::ArrayRef<mlir::NamedAttribute>)>
+     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+-                              mlir::ArrayRef<mlir::NamedAttribute>)>
++                              mlir::ArrayRef<mlir::NamedAttribute>,
++                              function_ref<mlir::InFlightDiagnostic ()>)>
+     getRegionBuilder();
+     /// Precondition: `val` must be of type ShapedType
+     static void getStridesFromValue(OpBuilder & builder, Location loc,
+@@ -226,8 +232,11 @@ def GatherOp
+     // Declare functions necessary for LinalgStructuredInterface.
+     SmallVector<utils::IteratorType> getIteratorTypesArray();
+     ArrayAttr getIndexingMaps();
++    // static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
++    //                           mlir::ArrayRef<mlir::NamedAttribute>)>
+     static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
+-                              mlir::ArrayRef<mlir::NamedAttribute>)>
++                              mlir::ArrayRef<mlir::NamedAttribute>,
++                              function_ref<mlir::InFlightDiagnostic ()>)>
+     getRegionBuilder();
+ 
+     // Used for AggregateOpInterface to decompose into legal operations
+diff --git a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h
+index cfd9f28..945c6b8 100644
+--- a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h
++++ b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h
+@@ -58,8 +58,10 @@ std::optional<Operation *> traceDefOp(Value v, bool isSingleChain = false) {
+     return traceDefOp<OpType>(tensorCollapseShape.getSrc(), isSingleChain);
+   } else if (auto subViewOp = v.getDefiningOp<memref::SubViewOp>()) {
+     return traceDefOp<OpType>(subViewOp.getViewSource(), isSingleChain);
+-  } else if (auto toMemrefOp = v.getDefiningOp<bufferization::ToMemrefOp>()) {
+-    return traceDefOp<OpType>(toMemrefOp.getOperand(), isSingleChain);
++  // } else if (auto toMemrefOp = v.getDefiningOp<bufferization::ToMemrefOp>()) {
++  //   return traceDefOp<OpType>(toMemrefOp.getOperand(), isSingleChain);
++} else if (auto toBufferOp = v.getDefiningOp<bufferization::ToBufferOp>()) {
++  return traceDefOp<OpType>(toBufferOp.getOperand(), isSingleChain);
+   } else if (auto toTensorOp = v.getDefiningOp<bufferization::ToTensorOp>()) {
+     return traceDefOp<OpType>(toTensorOp.getOperand(), isSingleChain);
+   } else if (auto viewOp = v.getDefiningOp<memref::ViewOp>()) {
+diff --git a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMInterfaces.td b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMInterfaces.td
+index f039870..5271c3c 100644
+--- a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMInterfaces.td
++++ b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMInterfaces.td
+@@ -522,7 +522,8 @@ def HIVMStructuredOpInterface : OpInterface<"HIVMStructuredOp",
+       /*methodBody=*/"",
+       /*defaultImplementation=*/[{
+         auto maps = $_op.getIndexingMapsArray();
+-        return concatAffineMaps(maps);
++        // return concatAffineMaps(maps);
++        return concatAffineMaps(maps, $_op.getContext());
+       }]
+     >,
+     InterfaceMethod<
+diff --git a/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp b/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp
+index 9309262..cdd81b9 100644
+--- a/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp
++++ b/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp
+@@ -68,9 +68,14 @@ using namespace mlir::hfusion;
+ // Support for named HFusion ops defined in ods-gen.
+ //===----------------------------------------------------------------------===//
+ 
++// using RegionBuilderFn = llvm::function_ref<void(ImplicitLocOpBuilder &, Block &,
++//                                                 ArrayRef<NamedAttribute>)>;
++  // static std::function<void(mlir::ImplicitLocOpBuilder &, mlir::Block &,
++  //                           mlir::ArrayRef<mlir::NamedAttribute>,
++  //                           function_ref<mlir::InFlightDiagnostic ()>)>
+ using RegionBuilderFn = llvm::function_ref<void(ImplicitLocOpBuilder &, Block &,
+-                                                ArrayRef<NamedAttribute>)>;
+-
++                                                ArrayRef<NamedAttribute>,
++                                                function_ref<InFlightDiagnostic ()>)>;
+ /// Fills the region of a structured operation using the provided
+ /// `regionBuilder`. The method is used by both named structured ops created by
+ /// ods-gen and by manually defined C++ ops. It is called by both builders and
+@@ -103,7 +108,10 @@ static void fillStructuredOpRegion(OpBuilder &opBuilder, Region &region,
+ 
+   opBuilder.setInsertionPointToStart(body);
+   ImplicitLocOpBuilder b(opBuilder.getUnknownLoc(), opBuilder);
+-  regionBuilder(b, *body, attrs);
++  // regionBuilder(b, *body, attrs);
++  regionBuilder(b, *body, attrs, []() -> InFlightDiagnostic {
++    llvm_unreachable("diagnostic function should not be called");
++  });
+ 
+   // indexing_maps is an auto-generated method.
+ 
+@@ -996,10 +1004,18 @@ void codeGenWithIndexDispatch(OpBuilder &builder, Block &block, Type elemType,
+   }
+ }
+ 
+-std::function<void(ImplicitLocOpBuilder &, Block &, ArrayRef<NamedAttribute>)>
++// RegionBuilderFn ReduceWithIndexOp::getRegionBuilder() {
++//   return [](ImplicitLocOpBuilder &b, Block &block,
++//             ArrayRef<NamedAttribute> attrs,
++//             llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
++// using RegionBuilderFn = llvm::function_ref<void(ImplicitLocOpBuilder &, Block &,
++//                                                 ArrayRef<NamedAttribute>,
++//                                                 function_ref<InFlightDiagnostic ()>)>;
++std::function<void(ImplicitLocOpBuilder &, Block &, ArrayRef<NamedAttribute>, llvm::function_ref<mlir::InFlightDiagnostic()>)>
+ ReduceWithIndexOp::getRegionBuilder() {
+   return [](ImplicitLocOpBuilder &b, Block &block,
+-            ArrayRef<NamedAttribute> attrs) {
++            ArrayRef<NamedAttribute> attrs,
++            llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
+     // check numArgs
+     constexpr int kNumArgsWithoutIndex = 3;
+     auto numArgs = block.getNumArguments();
+@@ -1833,7 +1849,9 @@ ParseResult ArangeOp::parse(OpAsmParser &parser, OperationState &result) {
+   ImplicitLocOpBuilder builder(unknownLoc, parser.getContext());
+   builder.setInsertionPointToStart(&block);
+   // Build the region
+-  getRegionBuilder()(builder, block, result.attributes.getAttrs());
++  getRegionBuilder()(builder, block, result.attributes.getAttrs(), []() -> InFlightDiagnostic {
++    return InFlightDiagnostic();
++  });
+ 
+   return success();
+ }
+@@ -1858,10 +1876,11 @@ ArrayAttr ArangeOp::getIndexingMaps() {
+   return builder.getAffineMapArrayAttr(maps);
+ }
+ 
+-std::function<void(ImplicitLocOpBuilder &, Block &, ArrayRef<NamedAttribute>)>
++std::function<void(ImplicitLocOpBuilder &, Block &, ArrayRef<NamedAttribute>, llvm::function_ref<mlir::InFlightDiagnostic()>)>
+ ArangeOp::getRegionBuilder() {
+   return [](ImplicitLocOpBuilder &builder, Block &block,
+-            ArrayRef<NamedAttribute> attrs) {
++            ArrayRef<NamedAttribute> attrs,
++            llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
+     OpBuilder::InsertionGuard guard(builder);
+ 
+     auto segmentSizes = cast_or_null<DenseI32ArrayAttr>(
+@@ -2045,10 +2064,11 @@ void GatherOp::build(OpBuilder &odsBuilder, OperationState &odsState, Value src,
+ ///   %cmp = arith.cmpi eq, <indexVal>, %iter
+ ///   %sel = arith.select %cmp, <srcVal>, <outVal>
+ ///   linalg.yield %sel
+-std::function<void(ImplicitLocOpBuilder &, Block &, ArrayRef<NamedAttribute>)>
++std::function<void(ImplicitLocOpBuilder &, Block &, ArrayRef<NamedAttribute>, llvm::function_ref<mlir::InFlightDiagnostic()>)>
+ GatherOp::getRegionBuilder() {
+   return [](ImplicitLocOpBuilder &builder, Block &block,
+-            ArrayRef<NamedAttribute> attrs) {
++            ArrayRef<NamedAttribute> attrs,
++            llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
+     assert(block.getNumArguments() == 3 &&
+            "GatherOp expecting 3 block arguments");
+     Value srcVal = block.getArgument(0);
+diff --git a/bishengir/lib/Dialect/HFusion/Transforms/OpFusion/FusibleHelper.cpp b/bishengir/lib/Dialect/HFusion/Transforms/OpFusion/FusibleHelper.cpp
+index d3ad5f2..f190405 100644
+--- a/bishengir/lib/Dialect/HFusion/Transforms/OpFusion/FusibleHelper.cpp
++++ b/bishengir/lib/Dialect/HFusion/Transforms/OpFusion/FusibleHelper.cpp
+@@ -506,11 +506,11 @@ OpPattern FusibleHelper::getOpPattern(Operation *op) {
+           [](auto) -> OpPattern { return OpPattern::kMidFusionAuxiliary; })
+       .Case<tensor::ConcatOp, tensor::PadOp>(
+           [](auto) -> OpPattern { return OpPattern::kMidFusionImportantAux; })
+-      .Case<mesh::AllReduceOp>(
++      .Case<shard::AllReduceOp>(
+           [](auto) -> OpPattern { return OpPattern::kAllReduce; })
+-      .Case<mesh::AllGatherOp>(
++      .Case<shard::AllGatherOp>(
+           [](auto) -> OpPattern { return OpPattern::kAllGather; })
+-      .Case<mesh::ReduceScatterOp>(
++      .Case<shard::ReduceScatterOp>(
+           [](auto) -> OpPattern { return OpPattern::kReduceScatter; })
+       .Case<hfusion::InterleaveOp, hfusion::DeinterleaveOp>(
+           [](auto) -> OpPattern { return OpPattern::kInterleave; })
+diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
+index b3d7807..2e8b56c 100644
+--- a/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
++++ b/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
+@@ -302,7 +302,7 @@ Type getAnnotationMarkByteAlignment(Value value) {
+   auto memrefType = cast<MemRefType>(shapedType);
+   bool isAlreadyAligned = true;
+ 
+-  auto [strides, offset] = getStridesAndOffset(memrefType);
++  auto [strides, offset] = memrefType.getStridesAndOffset();
+   llvm::SmallVector<int64_t> alignedStrides(rank, 1);
+   for (int64_t i = 0; i < rank; i++) {
+     if (strideAlignElems[i] == 1) {
+diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
+index 8c61377..0d2d7d8 100644
+--- a/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
++++ b/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
+@@ -151,7 +151,9 @@ void SyncBlockSetOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+           /*tsync_instr_mode=*/{});
+   } else {
+     build(odsBuilder, odsState, tcore_type, tpipe, pipe, nullptr,
+-          flag_id.get<Value>(), nullptr, /*tsync_instr_mode=*/{});
++          // flag_id.get<Value>(), nullptr, /*tsync_instr_mode=*/{});
++          // flag_id.cast<Value>(), nullptr, /*tsync_instr_mode=*/{});
++          cast<Value>(flag_id), nullptr, /*tsync_instr_mode=*/{});
+   }
+ }
+ 
+@@ -165,7 +167,8 @@ void SyncBlockSetOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+           cast<IntegerAttr>(attr), nullptr, ffts_base_addr, tsync_instr_mode);
+   } else {
+     build(odsBuilder, odsState, tcore_type, tpipe, pipe, nullptr,
+-          flag_id.get<Value>(), ffts_base_addr, tsync_instr_mode);
++          // flag_id.get<Value>(), ffts_base_addr, tsync_instr_mode);
++          cast<Value>(flag_id), ffts_base_addr, tsync_instr_mode);
+   }
+ }
+ 
+@@ -201,7 +204,8 @@ void SyncBlockWaitOp::build(OpBuilder &odsBuilder, OperationState &odsState,
+           cast<IntegerAttr>(attr), nullptr);
+   } else {
+     build(odsBuilder, odsState, tcore_type, tpipe, pipe, nullptr,
+-          flag_id.get<Value>());
++          // flag_id.get<Value>());
++          cast<Value>(flag_id));
+   }
+ }
+ 
+diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMTraits.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMTraits.cpp
+index 7f9c39f..9775dca 100644
+--- a/bishengir/lib/Dialect/HIVM/IR/HIVMTraits.cpp
++++ b/bishengir/lib/Dialect/HIVM/IR/HIVMTraits.cpp
+@@ -19,6 +19,8 @@
+ 
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/TypeUtilities.h"
++// #include "mlir/Analysis/Strides.h"
++#include "mlir/IR/BuiltinTypes.h"
+ 
+ #include "llvm/ADT/SmallSet.h"
+ #include "llvm/ADT/SmallVector.h"
+@@ -43,7 +45,8 @@ inline int64_t getRank(const Type &type) {
+ 
+ // Returns stride of shaped memref type.
+ inline SmallVector<int64_t> getStride(const Type &type) {
+-  auto [strides, offset] = getStridesAndOffset(cast<MemRefType>(type));
++  // auto [strides, offset] = getStridesAndOffset(cast<MemRefType>(type));
++  auto [strides, offset] = cast<MemRefType>(type).getStridesAndOffset();
+   return strides;
+ }
+ 
+diff --git a/bishengir/lib/Dialect/Utils/Util.cpp b/bishengir/lib/Dialect/Utils/Util.cpp
+index cd4ccbe..2a2f5ac 100644
+--- a/bishengir/lib/Dialect/Utils/Util.cpp
++++ b/bishengir/lib/Dialect/Utils/Util.cpp
+@@ -364,7 +364,9 @@ getTensorOrMemrefDynSizes(OpBuilder &builder, Location loc, Value source,
+ 
+ inline bool isPureStatic(ArrayRef<OpFoldResult> mixedValues) {
+   return llvm::all_of(mixedValues,
+-                      [](OpFoldResult x) { return x.is<Attribute>(); });
++                      // [](OpFoldResult x) { return x.is<Attribute>(); });
++                      [](OpFoldResult x) { return isa<Attribute>(x); });
++
+ }
+ 
+ inline void markDynShapeAlloc(OpBuilder &builder, Value source,
+@@ -957,10 +959,24 @@ bool isElementwiseOp(Operation *op) {
+   return true;
+ }
+ 
++bool isElementwiseLinalgOp(Operation* op) {
++  if (auto linalgOp = dyn_cast<linalg::LinalgOp>(op)) {
++    auto iteratorTypes = linalgOp.getIteratorTypesArray();
++    return llvm::all_of(iteratorTypes, 
++                       [](mlir::utils::IteratorType iterType) {
++                         return iterType == mlir::utils::IteratorType::parallel;
++                       });
++  }
++  return false;
++}
++
++// https://discourse.llvm.org/t/rfc-deprecate-linalg-elemwise-unary-and-elemwise-binary/87144/2
+ bool isMarkedAsElementwiseOp(Operation *op) {
+   // This would handle scalar as well
+-  return isa_and_present<linalg::ElemwiseBinaryOp, linalg::ElemwiseUnaryOp,
+-                         linalg::FillOp>(op);
++  // return isa_and_present<linalg::ElemwiseBinaryOp, linalg::ElemwiseUnaryOp,
++  //                        linalg::FillOp>(op);
++  return (isElementwiseLinalgOp(op) || 
++        isa<linalg::FillOp>(op));
+ }
+ 
+ bool isZeroDimensionOp(Operation *op) {
+@@ -975,7 +991,9 @@ bool isZeroDimensionOp(Operation *op) {
+ 
+ bool isMarkedAsElementwiseUnaryOp(Operation *op) {
+   // This would handle scalar as well
+-  return isa_and_present<linalg::ElemwiseUnaryOp, linalg::FillOp>(op);
++  // return isa_and_present<linalg::ElemwiseUnaryOp, linalg::FillOp>(op);
++  return (isElementwiseLinalgOp(op) || 
++        isa<linalg::FillOp>(op));
+ }
+ 
+ bool isAllParallelOp(Operation *op) {
+@@ -990,8 +1008,8 @@ bool isAllParallelOp(Operation *op) {
+ 
+ // TODO: Need to refactor this.
+ bool isLegalOp(Operation *op) {
+-  if (isa<linalg::MapOp, linalg::FillOp, linalg::GenericOp,
+-          linalg::ElemwiseBinaryOp, linalg::ElemwiseUnaryOp,
++  if (isElementwiseLinalgOp(op) || isa<linalg::MapOp, linalg::FillOp, linalg::GenericOp,
++          // linalg::ElemwiseBinaryOp, linalg::ElemwiseUnaryOp,
+           linalg::BroadcastOp, linalg::ReduceOp, linalg::TransposeOp,
+           linalg::MatmulOp, linalg::MatmulTransposeAOp,
+           linalg::MatmulTransposeBOp, tensor::ExtractOp>(op)) {
+diff --git a/bishengir/tools/bishengir-hfusion-ods-gen/bishengir-hfusion-ods-yaml-gen.cpp b/bishengir/tools/bishengir-hfusion-ods-gen/bishengir-hfusion-ods-yaml-gen.cpp
+index 3907aed..3e5fb17 100644
+--- a/bishengir/tools/bishengir-hfusion-ods-gen/bishengir-hfusion-ods-yaml-gen.cpp
++++ b/bishengir/tools/bishengir-hfusion-ods-gen/bishengir-hfusion-ods-yaml-gen.cpp
+@@ -608,9 +608,11 @@ def {0} : HFusionStructuredBase_Op<"{1}", !listconcat([AttrSizedOperandSegments]
+       SmallVector<utils::IteratorType> getIteratorTypesArray();
+       ArrayAttr getIndexingMaps();
+       static void regionBuilder(ImplicitLocOpBuilder &b,
+-                                Block &block, ArrayRef<NamedAttribute> attrs);
++                                Block &block, ArrayRef<NamedAttribute> attrs,
++                                function_ref<InFlightDiagnostic ()> diag);
+       static std::function<void(ImplicitLocOpBuilder &,
+-                                Block &, ArrayRef<NamedAttribute>)>
++                                Block &, ArrayRef<NamedAttribute>,
++                                function_ref<InFlightDiagnostic ()>)>
+       getRegionBuilder() {{
+         return regionBuilder;
+       }
+@@ -1055,7 +1057,8 @@ LogicalResult {0}::verifyIndexingMapRequiredAttributes() {{
+     // {3}: Statements
+     static const char structuredOpRegionBuilderFormat[] = R"FMT(
+ void {0}::regionBuilder(ImplicitLocOpBuilder &b,
+-                        Block &block, ArrayRef<NamedAttribute> attrs) {{
++                        Block &block, ArrayRef<NamedAttribute> attrs,
++                        function_ref<InFlightDiagnostic ()> diag) {{
+   assert({1} > 0 && block.getNumArguments() == {1} &&
+          "{0} regionBuilder expects {1} (>=0) args");
+   RegionBuilderHelper helper(block.getArgument(0).getContext(), block);

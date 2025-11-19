@@ -47,6 +47,11 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
           mv $GITHUB_WORKSPACE/.github ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/.git ${{ env.CI_PATH }}/
+
+      - name: Setup Git Safe Directory
+        run: |
+          git config --global --add safe.directory '*'
 
       - name: Build and install DLCompiler
         run: |
@@ -64,13 +69,16 @@ jobs:
           export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
 
           rm -rf ./third_party/*
-          cp -r ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/
-          cp -r ${{ env.THIRD_PARTY_PATH }}/json ./third_party/
+          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/ascendnpu-ir
+          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/json ./third_party/json
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton_shared ./third_party/triton_shared
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton ./third_party/triton
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
-          bash compile_shared.sh apply_patch=true compile_triton_shared=true
+          git submodule update --init
+          echo "git submodule update done."
+          pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
+          bash compile_shared.sh apply_patch=true
 
       - name: Run tests on ascend
         run: |

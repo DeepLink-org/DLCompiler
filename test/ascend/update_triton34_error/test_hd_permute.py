@@ -30,14 +30,22 @@ NUMEL = X_SIZE * Y_SIZE * Z_SIZE
 
 
 def torch_permute(x):
-    return x.reshape((X_SIZE, Y_SIZE, Z_SIZE)).permute(1, 0, 2).reshape((X_SIZE * Y_SIZE * Z_SIZE))
+    return (
+        x.reshape((X_SIZE, Y_SIZE, Z_SIZE))
+        .permute(1, 0, 2)
+        .reshape((X_SIZE * Y_SIZE * Z_SIZE))
+    )
 
 
 @triton.jit
 def triton_permute(output_ptr, input_ptr):
     x_index = tl.arange(0, X_SIZE * Y_SIZE * Z_SIZE)
     input_local = tl.load(input_ptr + x_index)
-    output_local = input_local.reshape((X_SIZE, Y_SIZE, Z_SIZE)).permute(1, 0, 2).reshape((X_SIZE * Y_SIZE * Z_SIZE))
+    output_local = (
+        input_local.reshape((X_SIZE, Y_SIZE, Z_SIZE))
+        .permute(1, 0, 2)
+        .reshape((X_SIZE * Y_SIZE * Z_SIZE))
+    )
     tl.store(output_ptr + x_index, output_local)
 
 

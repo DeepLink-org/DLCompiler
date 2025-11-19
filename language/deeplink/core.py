@@ -3,25 +3,31 @@ from triton.language import semantic as tl_semantic
 from triton.language.core import (
     _tensor_member_fn,
     _shape_check_impl,
-    _constexpr_to_value,
     _unwrap_if_constexpr,
     builtin,
     constexpr,
     tensor,
     range,
+    slice,
 )
 import builtins
 from . import semantic as dl_semantic
 
 
+def _constexpr_to_value(v):
+    if isinstance(v, constexpr):
+        return v.value
+    return v
+
+
 class layout:
-    ASCEND = ['ND', 'NZ']
+    ASCEND = ["ND", "NZ"]
 
     def __init__(self, name):
         name = _unwrap_if_constexpr(name)
         self.name = name
         assert name in layout.ASCEND, name
-    
+
     def __str__(self):
         return self.name
 
@@ -35,15 +41,16 @@ class layout:
 
     def __repr__(self):
         """Output of repr needs to be an evaluatable expression"""
-        return f'triton.language.{self.codegen_name()}'
+        return f"triton.language.{self.codegen_name()}"
 
 
-ND = layout('ND')
-NZ = layout('NZ')
+ND = layout("ND")
+NZ = layout("NZ")
+
 
 class scope:
-    GPU = ['fragment']
-    ASCEND = ['UB', 'L1', 'L0A', 'L0B', 'L0C']
+    GPU = ["fragment"]
+    ASCEND = ["UB", "L1", "L0A", "L0B", "L0C"]
 
     def __init__(self, name):
         name = _unwrap_if_constexpr(name)
@@ -63,38 +70,43 @@ class scope:
 
     def __repr__(self):
         """Output of repr needs to be an evaluatable expression"""
-        return f'triton.language.{self.codegen_name()}'
+        return f"triton.language.{self.codegen_name()}"
 
 
-fragment = scope('fragment')
-UB = scope('UB')
-L1 = scope('L1')
-L0A = scope('L0A')
-L0B = scope('L0B')
-L0C = scope('L0C')
+fragment = scope("fragment")
+UB = scope("UB")
+L1 = scope("L1")
+L0A = scope("L0A")
+L0B = scope("L0B")
+L0C = scope("L0C")
 
 
 def _extract_slice(sl: slice, shape: constexpr):
     def constexpr_or_none_to_value(v, default: int):
         if v is None:
             return default
-        assert isinstance(v, (constexpr, int)), f"slice only can be constexpr or int, got: {v}"
+        assert isinstance(
+            v, (constexpr, int)
+        ), f"slice only can be constexpr or int, got: {v}"
         return _constexpr_to_value(v)
 
     start = constexpr_or_none_to_value(sl.start, 0)
-    stop = constexpr_or_none_to_value(
-        sl.stop, _constexpr_to_value(shape))
+    stop = constexpr_or_none_to_value(sl.stop, _constexpr_to_value(shape))
     step = constexpr_or_none_to_value(sl.step, 1)
     size = (stop - start + step - 1) // step
-    assert start >= 0 and stop >= 0 and step >= 0 and size >= 0, f"slice should be greater than 0"
+    assert (
+        start >= 0 and stop >= 0 and step >= 0 and size >= 0
+    ), f"slice should be greater than 0"
     return start, size, step
 
 
 @_tensor_member_fn
 @builtin
-def __getitem__(self, slices, _builder=None):
-    if isinstance(slices, (slice, constexpr, tensor)) or slices is None:
+def __getitem__(self, slices, _semantic=None):
+    if isinstance(slices, (builtins.slice, slice, constexpr, tensor)) or slices is None:
         slices = [slices]
+    if isinstance(slices, tuple):
+        slices = slices.values
     ret = self
     offsets = []
     sizes = []
@@ -103,15 +115,20 @@ def __getitem__(self, slices, _builder=None):
     need_extract_slice = False
     for dim, sl in enumerate(slices):
         if sl is None or isinstance(sl, constexpr) and sl.value is None:
-            ret = tl_semantic.expand_dims(ret, dim, _builder)
-            offsets.append(_builder.get_int32(0))
+            ret = _semantic.expand_dims(ret, dim)
+            offsets.append(_semantic.builder.get_int32(0))
             dst_shape.append(constexpr(1))
             sizes.append(constexpr(1))
             strides.append(constexpr(1))
-        elif isinstance(sl, slice) and sl.start is None and sl.stop is None and sl.step is None:
+        elif (
+            isinstance(sl, slice)
+            and sl.start is None
+            and sl.stop is None
+            and sl.step is None
+        ):
             pass
         elif sl is None or isinstance(sl, (constexpr, int)) and sl.value is not None:
-            offsets.append(_builder.get_int32(_constexpr_to_value(sl)))
+            offsets.append(_semantic.builder.get_int32(_constexpr_to_value(sl)))
             need_extract_slice = True
             sizes.append(constexpr(1))
             strides.append(constexpr(1))
@@ -132,15 +149,23 @@ def __getitem__(self, slices, _builder=None):
 
     if need_extract_slice:
         new_offsets = [
-            tl_semantic.to_tensor(o, _builder) if not isinstance(o, tensor) else o
+            (
+                tl_semantic.to_tensor(o, _semantic.builder)
+                if not isinstance(o, tensor)
+                else o
+            )
             for o in offsets
         ]
-        ret = dl_semantic.extract_slice(self, new_offsets, sizes, strides, _builder)
+        ret = dl_semantic.extract_slice(
+            self, new_offsets, sizes, strides, _semantic.builder
+        )
     return ret
 
 
 @builtin
-def insert_slice(ful, sub, offsets, sizes, strides, _builder=None, _generator=None) -> tensor:
+def insert_slice(
+    ful, sub, offsets, sizes, strides, _builder=None, _generator=None
+) -> tensor:
     """
     Insert a tensor to another tensor as specified by the operation’s offsets, sizes and strides arguments.
 
@@ -166,7 +191,9 @@ def insert_slice(ful, sub, offsets, sizes, strides, _builder=None, _generator=No
 
 
 @builtin
-def extract_slice(ful, offsets, sizes, strides, _builder=None, _generator=None) -> tensor:
+def extract_slice(
+    ful, offsets, sizes, strides, _builder=None, _generator=None
+) -> tensor:
     """
     Extract a tensor from another tensor as specified by the operation’s offsets, sizes and strides arguments.
 
@@ -189,11 +216,11 @@ def extract_slice(ful, offsets, sizes, strides, _builder=None, _generator=None) 
 
 
 @builtin
-def compile_hint(ptr, hint_name, hint_val=None, _builder=None):
+def compile_hint(ptr, hint_name, hint_val=None, _semantic=None):
     hint_name = _constexpr_to_value(hint_name)
     assert isinstance(hint_name, str), f"hint name: {hint_name} is not string"
     hint_val = _unwrap_if_constexpr(hint_val) if hint_val else hint_val
-    dl_semantic.compile_hint(ptr, hint_name, hint_val, _builder)
+    dl_semantic.compile_hint(ptr, hint_name, hint_val, _semantic.builder)
 
 
 @builtin
@@ -217,15 +244,17 @@ def alloc(shape, value, dtype, layout=None, scope=None, _builder=None):
 
 
 @builtin
-def multibuffer(src: tensor, size, _builder=None):
+def multibuffer(src: tensor, size, _semantic=None):
     """
     Set multi_buffer for an existing tensor
     :src: tensor set to bufferize multiple time
     :size: number of copies
     """
     buffer_size = _constexpr_to_value(size)
-    assert isinstance(buffer_size, int) and buffer_size == 2, f"only support bufferize equals 2"
-    dl_semantic.compile_hint(src, "multi_buffer", buffer_size, _builder)
+    assert (
+        isinstance(buffer_size, int) and buffer_size == 2
+    ), f"only support bufferize equals 2"
+    dl_semantic.compile_hint(src, "multi_buffer", buffer_size, _semantic.builder)
 
 
 @builtin
@@ -233,30 +262,34 @@ def sync_block_all(mode, event_id, _builder=None):
     mode = _constexpr_to_value(mode)
     event_id = _constexpr_to_value(event_id)
     assert isinstance(mode, str), f"mode: {mode} is not string"
-    assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
-    assert mode == "all_cube" or mode == "all_vector" or mode == "all", f"ERROR: mode = {mode}, only supports all_cube/all_vector/all"
+    assert (
+        isinstance(event_id, int) and (event_id >= 0) and (event_id < 16)
+    ), f"event_id: {event_id} should be 0 ~ 15"
+    assert (
+        mode == "all_cube" or mode == "all_vector" or mode == "all"
+    ), f"ERROR: mode = {mode}, only supports all_cube/all_vector/all"
     dl_semantic.custom_sync_op(_builder, "sync_block_all", mode=mode, event_id=event_id)
 
 
 class SyncFlagType:
-    ASCEND = ['cube_to_vector', 'vector_to_cube']
+    ASCEND = ["cube_to_vector", "vector_to_cube"]
 
     def __init__(self, name):
         name = _unwrap_if_constexpr(name)
         self.name = name
         assert name in SyncFlagType.ASCEND, name
-    
+
     def __str__(self):
         return self.name
 
     def codegen_name(self):
         return self.name
-    
+
     def sender(self):
-        if self.name == 'cube_to_vector':
-            return 'cube'
-        elif self.name == 'vector_to_cube':
-            return 'vector'
+        if self.name == "cube_to_vector":
+            return "cube"
+        elif self.name == "vector_to_cube":
+            return "vector"
         else:
             assert self.name in SyncFlagType.ASCEND
 
@@ -267,27 +300,36 @@ class SyncFlagType:
 
     def __repr__(self):
         """Output of repr needs to be an evaluatable expression"""
-        return f'triton.language.{self.codegen_name()}'
+        return f"triton.language.{self.codegen_name()}"
 
 
 class SyncFlag:
-    C2V = SyncFlagType('cube_to_vector')
-    V2C = SyncFlagType('vector_to_cube')
+    C2V = SyncFlagType("cube_to_vector")
+    V2C = SyncFlagType("vector_to_cube")
 
 
 @builtin
-def set_cross_flag(sync_flag_type: SyncFlagType ,event_id: int, _builder=None):
+def set_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     sender = _constexpr_to_value(sync_flag_type.sender())
     event_id = _constexpr_to_value(event_id)
-    assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
-    dl_semantic.custom_sync_op(_builder, "sync_block_set", sender=sender, event_id=event_id)
+    assert (
+        isinstance(event_id, int) and (event_id >= 0) and (event_id < 16)
+    ), f"event_id: {event_id} should be 0 ~ 15"
+    dl_semantic.custom_sync_op(
+        _semantic.builder, "sync_block_set", sender=sender, event_id=event_id
+    )
+
 
 @builtin
-def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _builder=None):
+def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     sender = _constexpr_to_value(sync_flag_type.sender())
     event_id = _constexpr_to_value(event_id)
-    assert isinstance(event_id, int) and (event_id >= 0) and (event_id < 16), f"event_id: {event_id} should be 0 ~ 15"
-    dl_semantic.custom_sync_op(_builder, "sync_block_wait", sender=sender, event_id=event_id)
+    assert (
+        isinstance(event_id, int) and (event_id >= 0) and (event_id < 16)
+    ), f"event_id: {event_id} should be 0 ~ 15"
+    dl_semantic.custom_sync_op(
+        _semantic.builder, "sync_block_wait", sender=sender, event_id=event_id
+    )
 
 
 class parallel(range):
@@ -300,15 +342,26 @@ class parallel(range):
         This is used in the mixed cube-vector kernel on 910B. The number of vector cores is determined by the number of
         iteration in this loop. Currently on 910B, max 2 vector cores could be used.
     """
-    def __init__(self, arg1, arg2=None, step=None, num_stages=None, loop_unroll_factor=None, bind_sub_block: bool = False):
+
+    def __init__(
+        self,
+        arg1,
+        arg2=None,
+        step=None,
+        num_stages=None,
+        loop_unroll_factor=None,
+        bind_sub_block: bool = False,
+    ):
         super().__init__(arg1, arg2, step, num_stages, loop_unroll_factor)
         self.bind_sub_block = bind_sub_block
+
 
 class inline_lambda:
     """
     Inline a lambda function into the current block.
     This class is used to inline a lambda function into the current block.
     """
+
     def __init__(self, node, closure_values, closure_names, arg_names):
         self.node = node
         self.closure_values = closure_values

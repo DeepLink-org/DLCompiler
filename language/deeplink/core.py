@@ -149,11 +149,7 @@ def __getitem__(self, slices, _semantic=None):
 
     if need_extract_slice:
         new_offsets = [
-            (
-                _semantic.to_tensor(o)
-                if not isinstance(o, tensor)
-                else o
-            )
+            (_semantic.to_tensor(o) if not isinstance(o, tensor) else o)
             for o in offsets
         ]
         ret = dl_semantic.extract_slice(
@@ -183,13 +179,14 @@ def insert_slice(
     assert len(ful.shape) > 0
     assert len(ful.shape) == len(sub.shape)
     new_offsets = [
-        _semantic.to_tensor(o) if isinstance(o, constexpr) else o
-        for o in offsets
+        _semantic.to_tensor(o) if isinstance(o, constexpr) else o for o in offsets
     ]
-    out = dl_semantic.insert_slice(ful, sub, new_offsets, sizes, strides, _semantic=_semantic)
+    out = dl_semantic.insert_slice(
+        ful, sub, new_offsets, sizes, strides, _semantic=_semantic
+    )
     return out
 
-@_tensor_member_fn
+
 @builtin
 def extract_slice(
     ful, offsets, sizes, strides, _generator=None, _semantic=None
@@ -208,10 +205,11 @@ def extract_slice(
     """
     assert len(ful.shape) > 0
     new_offsets = [
-        _semantic.to_tensor(o) if isinstance(o, constexpr) else o
-        for o in offsets
+        _semantic.to_tensor(o) if isinstance(o, constexpr) else o for o in offsets
     ]
-    sub = dl_semantic.extract_slice(ful, new_offsets, sizes, strides, _semantic=_semantic)
+    sub = dl_semantic.extract_slice(
+        ful, new_offsets, sizes, strides, _semantic=_semantic
+    )
     return sub
 
 

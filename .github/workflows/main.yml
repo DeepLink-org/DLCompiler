@@ -60,9 +60,7 @@ jobs:
           source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{ env.CI_PATH }}
-          export JSON_PATH=${{ vars.CI_BASE_PATH }}/data/v32/include.zip
-          export GOOGLETEST_DIR=${{ vars.CI_BASE_PATH }}/data/v32/googletest
-          export LLVM_TGZ_PATH=${{ vars.CI_BASE_PATH }}/data/v32/llvm-86b69c31-ubuntu-arm64.tar.gz
+          export ASCEND_RT_VISIBLE_DEVICES=7
 
           export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
           export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest

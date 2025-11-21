@@ -26,10 +26,10 @@ import torch
 import torch_npu
 
 NBLOCKS = 1
-XS: tl.constexpr = 128
-YS: tl.constexpr = 4
-ZS: tl.constexpr = 8
-NUMEL: tl.constexpr = XS * ZS
+XS = tl.constexpr(128)
+YS = tl.constexpr(4)
+ZS = tl.constexpr(8)
+NUMEL = tl.constexpr(XS.value * ZS.value)
 
 
 @triton.jit

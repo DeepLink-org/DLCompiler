@@ -18,50 +18,44 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-
-import pytest
-
 import triton
 import triton.language as tl
-
-import time
 import torch
 import torch_npu
-import test_common
 
-NBLOCKS = 1
-X_SIZE: tl.constexpr = 4
-Y_SIZE: tl.constexpr = 64
-Z_SIZE: tl.constexpr = 32
-NUMEL = X_SIZE * Y_SIZE * Z_SIZE
+X_SIZE = tl.constexpr(4)
+Y_SIZE = tl.constexpr(64)
+Z_SIZE = tl.constexpr(32)
+NUMEL = tl.constexpr(X_SIZE.value * Y_SIZE.value * Z_SIZE.value)
 
 
-def fn(input):
-    output = (
-        input.reshape((X_SIZE, Y_SIZE, Z_SIZE))
-        .permute((1, 0, 2))
+def torch_permute(x):
+    return (
+        x.reshape((X_SIZE, Y_SIZE, Z_SIZE))
+        .permute(1, 0, 2)
         .reshape((X_SIZE * Y_SIZE * Z_SIZE))
     )
-    return output
 
 
 @triton.jit
-def fn_kernel(output_ptr, input_ptr):
-    col_offsets = tl.arange(0, X_SIZE * Y_SIZE * Z_SIZE)
-    input_local = tl.load(input_ptr + col_offsets)
-    input_local = (
+def triton_permute(output_ptr, input_ptr):
+    x_index = tl.arange(0, X_SIZE * Y_SIZE * Z_SIZE)
+    input_local = tl.load(input_ptr + x_index)
+    output_local = (
         input_local.reshape((X_SIZE, Y_SIZE, Z_SIZE))
-        .permute((1, 0, 2))
+        .permute(1, 0, 2)
         .reshape((X_SIZE * Y_SIZE * Z_SIZE))
     )
-    tl.store(output_ptr + col_offsets, input_local)
+    tl.store(output_ptr + x_index, output_local)
 
 
-def test_cases():
-    input = torch.randn(NUMEL, dtype=torch.float16).npu()
-    output = torch.randn(NUMEL, dtype=torch.float16).npu()
-    output2 = torch.randn(NUMEL, dtype=torch.float16).npu()
-    fn_kernel[1, 1, 1](output, input)
-    output2 = fn(input)
-    test_common.validate_cmp("float16", output, output2)
-    print("data validation passed")
+def test_hd_permute():
+    # 生成数据
+    x = torch.randn(NUMEL).npu()
+    # torch结果
+    torch_res = torch_permute(x)
+    # triton结果
+    triton_res = torch.randn(torch_res.shape, dtype=torch_res.dtype).npu()
+    triton_permute[1, 1, 1](triton_res, x)
+    # 比较结果
+    torch.testing.assert_close(triton_res, torch_res, rtol=1e-3, atol=1e-3)

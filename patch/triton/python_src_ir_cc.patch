@@ -1,5 +1,5 @@
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 4c8a4233b..a57d38b6e 100644
+index 4c8a4233b..2932bad97 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
 @@ -339,6 +339,10 @@ void init_triton_ir(py::module &&m) {
@@ -21,13 +21,14 @@ index 4c8a4233b..a57d38b6e 100644
  
    // Ops
    py::class_<OpState>(m, "OpState", py::module_local())
-@@ -1740,6 +1745,88 @@ void init_triton_ir(py::module &&m) {
+@@ -1740,6 +1745,90 @@ void init_triton_ir(py::module &&m) {
        .def("create_gather",
             [](TritonOpBuilder &self, Value src, Value indices, int axis)
                 -> Value { return self.create<GatherOp>(src, indices, axis); })
 +      .def("create_extract_slice",
 +           [](TritonOpBuilder &self, Value &ful, std::vector<Value> &offs_vec,
 +              std::vector<int> &sizs_vec, std::vector<int> &strd_vec) -> Value {
++              self.getContext()->getOrLoadDialect<mlir::tensor::TensorDialect>();
 +             llvm::SmallVector<Value> offsets;
 +             for (const auto &o : offs_vec) {
 +               auto oTy = o.getType();
@@ -62,6 +63,7 @@ index 4c8a4233b..a57d38b6e 100644
 +           [](TritonOpBuilder &self, Value &ful, Value &sub,
 +              std::vector<Value> &offs_vec, std::vector<int> &sizs_vec,
 +              std::vector<int> &strd_vec) -> Value {
++              self.getContext()->getOrLoadDialect<mlir::tensor::TensorDialect>();
 +             llvm::SmallVector<Value> offsets;
 +             for (const auto &o : offs_vec) {
 +               auto oTy = o.getType();

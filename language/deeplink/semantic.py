@@ -3,7 +3,7 @@ from triton.language import core as tl
 from triton.language import semantic as tl_semantic
 from triton._C.libtriton import ir
 
-def insert_slice(ful: tl.tensor, sub: tl.tensor, offsets: List[tl.tensor], sizes: List[int], strides: List[int], builder: ir.builder) -> tl.tensor:
+def insert_slice(ful: tl.tensor, sub: tl.tensor, offsets: List[tl.tensor], sizes: List[int], strides: List[int],  _semantic: tl_semantic.TritonSemantic) -> tl.tensor:
     assert(len(ful.shape) == len(offsets))
     assert(len(ful.shape) == len(sizes))
     assert(len(ful.shape) == len(strides))
@@ -11,10 +11,10 @@ def insert_slice(ful: tl.tensor, sub: tl.tensor, offsets: List[tl.tensor], sizes
     assert(all([s>=0 for s in strides]))
     new_offsets = [o.handle for o in offsets]
     ret_type = tl.block_type(ful.type.scalar, ful.shape)
-    out = builder.create_insert_slice(ful.handle, sub.handle, new_offsets, sizes, strides)
+    out = _semantic.builder.create_insert_slice(ful.handle, sub.handle, new_offsets, sizes, strides)
     return tl.tensor(out, ret_type)
 
-def extract_slice(ful: tl.tensor, offsets: List[tl.tensor], sizes: List[int], strides: List[int], builder: ir.builder) -> tl.tensor:
+def extract_slice(ful: tl.tensor, offsets: List[tl.tensor], sizes: List[int], strides: List[int], _semantic: tl_semantic.TritonSemantic) -> tl.tensor:
     assert(len(ful.shape) == len(offsets))
     assert(len(ful.shape) == len(sizes))
     assert(len(ful.shape) == len(strides))
@@ -22,7 +22,7 @@ def extract_slice(ful: tl.tensor, offsets: List[tl.tensor], sizes: List[int], st
     assert(all([s>=0 for s in strides]))
     new_offsets = [o.handle for o in offsets]
     ret_type = tl.block_type(ful.type.scalar, sizes)
-    out = builder.create_extract_slice(ful.handle, new_offsets, sizes, strides)
+    out = _semantic.builder.create_extract_slice(ful.handle, new_offsets, sizes, strides)
     return tl.tensor(out, ret_type)
 
 def compile_hint(ptr: tl.tensor, hint_name: str, hint_val, builder: ir.builder):

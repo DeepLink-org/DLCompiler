@@ -150,21 +150,21 @@ def __getitem__(self, slices, _semantic=None):
     if need_extract_slice:
         new_offsets = [
             (
-                tl_semantic.to_tensor(o, _semantic.builder)
+                _semantic.to_tensor(o)
                 if not isinstance(o, tensor)
                 else o
             )
             for o in offsets
         ]
         ret = dl_semantic.extract_slice(
-            self, new_offsets, sizes, strides, _semantic.builder
+            self, new_offsets, sizes, strides, _semantic=_semantic
         )
     return ret
 
 
 @builtin
 def insert_slice(
-    ful, sub, offsets, sizes, strides, _builder=None, _generator=None
+    ful, sub, offsets, sizes, strides, _builder=None, _generator=None, _semantic=None
 ) -> tensor:
     """
     Insert a tensor to another tensor as specified by the operation’s offsets, sizes and strides arguments.
@@ -183,16 +183,16 @@ def insert_slice(
     assert len(ful.shape) > 0
     assert len(ful.shape) == len(sub.shape)
     new_offsets = [
-        tl_semantic.to_tensor(o, _builder) if isinstance(o, constexpr) else o
+        _semantic.to_tensor(o) if isinstance(o, constexpr) else o
         for o in offsets
     ]
-    out = dl_semantic.insert_slice(ful, sub, new_offsets, sizes, strides, _builder)
+    out = dl_semantic.insert_slice(ful, sub, new_offsets, sizes, strides, _semantic=_semantic)
     return out
 
-
+@_tensor_member_fn
 @builtin
 def extract_slice(
-    ful, offsets, sizes, strides, _builder=None, _generator=None
+    ful, offsets, sizes, strides, _generator=None, _semantic=None
 ) -> tensor:
     """
     Extract a tensor from another tensor as specified by the operation’s offsets, sizes and strides arguments.
@@ -208,10 +208,10 @@ def extract_slice(
     """
     assert len(ful.shape) > 0
     new_offsets = [
-        tl_semantic.to_tensor(o, _builder) if isinstance(o, constexpr) else o
+        _semantic.to_tensor(o) if isinstance(o, constexpr) else o
         for o in offsets
     ]
-    sub = dl_semantic.extract_slice(ful, new_offsets, sizes, strides, _builder)
+    sub = dl_semantic.extract_slice(ful, new_offsets, sizes, strides, _semantic=_semantic)
     return sub
 
 

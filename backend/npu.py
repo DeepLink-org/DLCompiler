@@ -25,6 +25,8 @@ replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
 replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
 if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not None):
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+    if not os.path.exists("./tmp"):
+        os.makedirs("./tmp")
 
 
 def downgrade_llir(llir):
@@ -409,8 +411,6 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             dst_ttshared_path,
         ]
         if dump_ir:
-            if not os.path.exists("./tmp"):
-                os.makedirs("./tmp")
             shutil.copy(src_path, "./tmp/kernel.ttir.mlir")
             print(f"DEBUG dump ir[ttir_to_ttsharedir] command: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)

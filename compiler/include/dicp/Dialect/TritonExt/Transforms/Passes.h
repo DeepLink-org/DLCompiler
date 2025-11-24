@@ -5,8 +5,12 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::dicp::trtion_ext {
+const unsigned INT_BIT_WIDTH = 32;
+const unsigned SET_INIT_SIZE = 16;
 
-std::unique_ptr<OperationPass<ModuleOp>> createBoolTritonPtrPromotionPass();
+enum TensorKind { NONE = -1, INPUT = 0, OUTPUT = 1, INPUT_OUTPUT = 2 };
+
+std::unique_ptr<OperationPass<ModuleOp>> createCanonicalizeTritonIRAscendPass();
 
 std::unique_ptr<OperationPass<ModuleOp>> createCanonicalizeCmpiPass();
 

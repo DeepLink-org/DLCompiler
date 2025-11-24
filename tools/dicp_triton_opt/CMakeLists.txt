@@ -3,7 +3,6 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 
 add_llvm_executable(dicp_opt dicp_triton_opt.cpp PARTIAL_SOURCES_INTENDED)
 
-# TODO: what's this?
 llvm_update_compile_flags(dicp_opt)
 target_link_libraries(dicp_opt PRIVATE
   TritonAnalysis
@@ -11,11 +10,15 @@ target_link_libraries(dicp_opt PRIVATE
   TritonGPUTransforms
   TritonSharedAnalysis
   ${dialect_libs}
+  ${translation_libs}
   ${conversion_libs}
+  ${extension_libs}
+  MLIRRegisterAllPasses
   DICPNPU
   LinalgToNPU
   LinalgToLinked
   TritonExtTransforms
+  LinalgExtTransforms
   LinkedToHIVM
   DICPLinalgExt
 

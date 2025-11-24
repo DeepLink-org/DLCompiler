@@ -2,6 +2,7 @@
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
+#include "dicp/Dialect/LinalgExt/Transforms/Passes.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
 #include "dicp/Dialect/TritonExt/Transforms/Passes.h"
 
@@ -25,6 +26,7 @@
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Conversion/XeVMToLLVM/XeVMToLLVM.h"
 #include "mlir/Dialect/AMX/Transforms.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/TransformOps/AffineTransformOps.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/ArmNeon/TransformOps/ArmNeonVectorTransformOps.h"
@@ -39,7 +41,9 @@
 #include "mlir/Dialect/GPU/TransformOps/GPUTransformOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h"
+#include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/TransformOps/DialectExtension.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
@@ -61,6 +65,7 @@
 #include "mlir/Dialect/Vector/TransformOps/VectorTransformOps.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
+#include "mlir/InitAllPasses.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/ValueBoundsOpInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -70,25 +75,34 @@
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/XeVM/XeVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+
 #include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
 #include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
 using namespace mlir;
 
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
+  mlir::registerAllPasses();
+  mlir::registerLinalgPasses();
+
   dicp::npu::registerLinalgToNPUPass();
   dicp::linked::registerLinalgToLinkedPass();
-  dicp::trtion_ext::registerBoolTritonPtrPromotionPass();
+  dicp::trtion_ext::registerCanonicalizeTritonIRAscendPass();
   dicp::trtion_ext::registerCanonicalizeCmpiPass();
   dicp::linked::registerLinkedToHIVMPass();
-  registry.insert<
-      bufferization::BufferizationDialect, dicp::npu::NPUDialect,
-      mlir::dicp::LinalgExt::LinalgExtDialect, mlir::arith::ArithDialect,
-      cf::ControlFlowDialect, func::FuncDialect, gpu::GPUDialect,
-      linalg::LinalgDialect, index::IndexDialect, LLVM::LLVMDialect,
-      math::MathDialect, memref::MemRefDialect, pdl::PDLDialect,
-      scf::SCFDialect, tensor::TensorDialect, transform::TransformDialect,
-      vector::VectorDialect, ub::UBDialect, triton::TritonDialect>();
+  dicp::LinalgExt::registerLinalgIfToSelectPass();
+  dicp::LinalgExt::registerLinalgGenericToSCFPass();
+  dicp::LinalgExt::registerScalarTo1DTensorPass();
+
+  registry.insert<bufferization::BufferizationDialect, dicp::npu::NPUDialect,
+                  dicp::LinalgExt::LinalgExtDialect, arith::ArithDialect,
+                  cf::ControlFlowDialect, func::FuncDialect, gpu::GPUDialect,
+                  linalg::LinalgDialect, index::IndexDialect, LLVM::LLVMDialect,
+                  math::MathDialect, memref::MemRefDialect, pdl::PDLDialect,
+                  scf::SCFDialect, tensor::TensorDialect,
+                  transform::TransformDialect, vector::VectorDialect,
+                  ub::UBDialect, triton::TritonDialect, affine::AffineDialect,
+                  ttx::TritonTilingExtDialect>();
 }
 
 int main(int argc, char **argv) {

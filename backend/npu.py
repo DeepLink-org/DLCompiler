@@ -346,7 +346,7 @@ def ttir_post(mod, metadata, opt):
             dicp_opt_path,
             src_path,
             "--canonicalize-cmpi",
-            "--bool-triton-ptr-promotion",
+            "--canonicalize-triton-ir-ascend",
             "-o",
             dst_path,
         ]
@@ -393,7 +393,7 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
     # 注释掉gpu.barrier
     ttir_code = re.sub(r"gpu\.barrier", r"// gpu.barrier", ttir_code)
     with tempfile.TemporaryDirectory() as tmpdir:
-        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
+        src_path = os.path.join(tmpdir, "kernel.ttir_post.mlir")
         dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
         Path(src_path).write_text(ttir_code)
         triton_shared_opt_path = _get_triton_shared_opt_path()
@@ -433,6 +433,10 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
         dicp_cmd_list = [
             dicp_opt_path,
             src_path,
+            "--lower-affine",
+            "--linalg-if-to-select",
+            "--linalg-generic-to-scf",
+            "--scalar-to-1d-tensor",
             f"--linalg-to-linked=global-kernel=false named-ops=true",
             "--linked-to-hivm",
             "-o",

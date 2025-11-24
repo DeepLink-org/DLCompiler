@@ -35,7 +35,7 @@ def test_ldst_indirect_00():
         offset1 = tl.load(in_ptr0 + OFFSET0)
         idx_in1 = offset1 + pid * XS + tl.arange(0, XS)
         tmp0 = tl.load(in_ptr1 + idx_in1)
-        tmp1 = tl_math.exp(tmp0)
+        tmp1 = tl.exp(tmp0)
         idx_out0 = pid * XS + tl.arange(0, XS)
         tl.store(out_ptr0 + idx_out0, tmp1)
 
@@ -437,6 +437,60 @@ def test_ldst_indirect_08():
     torch.testing.assert_close(triton_cal, torch_ref)
 
 
+def test_ldst_indirect_09():
+
+    @triton.jit
+    def triton_ldst_indirect_09_kernel(
+        out_ptr0,
+        in_ptr1,
+        in_ptr2,
+        stride_in_r,
+        offset: tl.constexpr,
+        XS: tl.constexpr,
+        RS: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        in_idx0 = tl.arange(0, XS)
+        in_idx1 = tl.arange(0, RS)
+        tmp0 = pid * XS + tl.load(in_ptr1 + in_idx0)
+        tmp1 = tl.arange(0, RS) + offset
+        in_idx2 = tmp0[:, None] * stride_in_r + tmp1[None, :]
+        tmp2 = tl.load(in_ptr2 + in_idx2)
+        tmp2 = tl_math.exp(tmp2)
+        out0_idx = pid * XS * RS + in_idx0[:, None] * RS + in_idx1[None, :]
+        tl.store(out_ptr0 + out0_idx, tmp2)
+
+    def triton_ldst_indirect_09_func(xr, x2, offset, xs, rs):
+        nr = xr.numel()
+        nc = rs
+        stride_in_r = x2.stride()[0]
+        y0 = torch.empty((nr, nc), dtype=x2.dtype, device=x2.device)
+        triton_ldst_indirect_09_kernel[nr // xs, 1, 1](
+            y0, xr, x2, stride_in_r, offset=offset, XS=xs, RS=rs
+        )
+        return y0
+
+    def torch_ldst_indirect_09_func(xr, xc, x2):
+        flatten_idx = (xr[:, None] * x2.stride()[0] + xc[None, :]).flatten()
+        extracted = x2.flatten()[flatten_idx].reshape([xr.numel(), xc.numel()])
+        return torch.exp(extracted)
+
+    DEV = "npu"
+    DTYPE = torch.float32
+    offset = 8
+    N0, N1 = 16, 32
+    blocksize = 8
+    lowdimsize = N0
+    assert N1 >= N0 + offset, "N1 must be >= N0+offset"
+    assert N0 == lowdimsize, "N0 must be == lowdimsize"
+    xc = offset + torch.arange(0, N0, device=DEV)
+    xr = torch.arange(0, blocksize, device=DEV)
+    x2 = torch.randn((blocksize, N1), dtype=DTYPE, device=DEV)
+    torch_ref = torch_ldst_indirect_09_func(xr, xc, x2)
+    triton_cal = triton_ldst_indirect_09_func(xr, x2, offset, blocksize, lowdimsize)
+    torch.testing.assert_close(triton_cal, torch_ref)
+
+
 if __name__ == "__main__":
-    test_ldst_indirect_05()
+    test_ldst_indirect_01()
     print("success: test_ldst_indirect_05")

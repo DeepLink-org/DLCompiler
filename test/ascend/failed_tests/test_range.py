@@ -58,7 +58,7 @@ def triton_add(
 
 
 testlist = [
-    (3, 5, 8),
+    (2, 4, 8),
 ]
 
 

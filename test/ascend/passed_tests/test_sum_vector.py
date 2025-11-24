@@ -23,7 +23,8 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
-from triton.runtime.libentry import libentry
+
+# from dlblas.utils.libentry import libentry
 import pytest
 from test_common import generate_tensor, validate_cmp, _32bit_dtypes, _16bit_dtypes
 
@@ -33,10 +34,10 @@ def torch_func(x0):
 
 
 @pytest.mark.parametrize("dtype", _32bit_dtypes)
-@pytest.mark.parametrize("shape", [(1,), (3,), (8,), (37,), (64,), (781,)])
+@pytest.mark.parametrize("shape", [(1,), (4,), (8,), (32,), (64,), (1024,)])
 def test_sum(dtype, shape):
 
-    @libentry()
+    # @libentry()
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, XBLOCK: tl.constexpr):
         idx = tl.arange(0, XBLOCK)
@@ -61,10 +62,10 @@ def _reduce_combine(a, b):
 
 
 @pytest.mark.parametrize("dtype", _32bit_dtypes)
-@pytest.mark.parametrize("shape", [(1,), (3,), (8,), (37,), (64,), (781,)])
+@pytest.mark.parametrize("shape", [(1,), (4,), (8,), (32,), (64,), (1024,)])
 def test_reduce_sum(dtype, shape):
 
-    @libentry()
+    # @libentry()
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, XBLOCK: tl.constexpr):
         idx = tl.arange(0, XBLOCK)

@@ -59,7 +59,8 @@ def triton_elementwise_binary(
 
 types = [
     (torch.float32, "float32"),
-    (torch.float16, "float16"),
+    # Expected dtype ['fp32', 'fp64']
+    # (torch.float16, "float16"),
     # (torch.bfloat16, 'bfloat16'),
     # (torch.int8, 'int8'),
     # (torch.int16, 'int16'),

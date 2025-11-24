@@ -3,16 +3,26 @@
 
 include "mlir/Pass/PassBase.td"
 
-def BoolTritonPtrPromotion : Pass<"bool-triton-ptr-promotion", "mlir::ModuleOp"> {
-  let summary = "Promote !tt.ptr<i1> function args (with tt.divisibility) to !tt.ptr<i8> and propagate";
+def CanonicalizeTritonIRAscend : Pass<"canonicalize-triton-ir-ascend", "mlir::ModuleOp"> {
+  let summary = "Canonicalize Triton IR for NPU backend";
+
   let description = [{
-    Finds function arguments of type !tt.ptr<i1> that have the 'tt.divisibility'
-    argument attribute, changes the argument type to !tt.ptr<i8> and updates
-    results/uses in the function body (e.g. tt.splat results, tensors carrying
-    that pointer type, etc.) to use the i8 pointer type.
+    Perform canonicalization and Triton-specific pattern rewrites to prepare
+    Triton IR for lowering to the NPU backend. This pass performs actions such
+    as: lowering atomic RMW/CAS to linalg.generic forms, handling masked
+    operations, moving/merging bitcasts, canonicalizing scalar/tensor store
+    patterns, rewrites arith.remf, and other device-specific cleanups required by the backend.
   }];
-  let constructor = "mlir::dicp::trtion_ext::createBoolTritonPtrPromotionPass()";
-  let dependentDialects = ["mlir::triton::TritonDialect"];
+
+  let constructor = "mlir::dicp::trtion_ext::createCanonicalizeTritonIRAscendPass()";
+
+  let dependentDialects = [
+    "mlir::triton::TritonDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::tensor::TensorDialect",
+  ];
 }
 
 

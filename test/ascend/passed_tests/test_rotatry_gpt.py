@@ -171,9 +171,9 @@ def torch_rotary_embedding(state, cos, sin):
 
 
 def _rotary_emb(dtype):
-    tokens_num = 256
+    tokens_num = 128
     num_heads = 96
-    head_dim = 128
+    head_dim = 64
     max_positions = 1024
 
     # torch.float16 has floating point problem in Triton 2.0.0

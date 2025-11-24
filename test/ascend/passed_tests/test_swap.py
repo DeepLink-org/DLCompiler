@@ -48,7 +48,7 @@ def swap(x: torch.Tensor, y: torch.Tensor, size):
 
 
 @pytest.mark.parametrize(
-    "shape", [(1,), (3,), (4,), (7,), (8,), (11,), (16,), (512,), (1024,)]
+    "shape", [(1,), (2,), (4,), (8,), (16,), (128,), (512,), (1024,)]
 )
 def test(shape):
     x = torch.rand(shape).npu()

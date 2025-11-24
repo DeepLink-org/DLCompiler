@@ -22,6 +22,7 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
+import triton.language.extra.deeplink as dl
 import pytest
 import test_common
 
@@ -654,7 +655,7 @@ def test_scalar_tanh_calc(param_list):
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
         tmp0 = tl.load(in_ptr0 + idx)
-        tmp1 = tl.math.tanh(tmp0)
+        tmp1 = dl.libdevice.tanh(tmp0)
         tl.store(out_ptr0 + idx, tmp1)
 
     def torch_func(x0):

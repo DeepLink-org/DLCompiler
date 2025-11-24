@@ -1,12 +1,12 @@
 add_triton_library(TritonExtTransforms
-  BoolTritonPtrPromotionPass.cpp
+  CanonicalizeTritonIRAscend.cpp
   CanonicalizeCmpiPass.cpp
+  CanonicalizerPattern.cpp
 
   DEPENDS
   TritonExtTransformsIncGen
 
   LINK_LIBS PUBLIC
-  TritonTilingExtIR
   MLIRArithDialect
   MLIRDialectUtils
   MLIRIR
@@ -15,12 +15,9 @@ add_triton_library(TritonExtTransforms
   MLIRTensorDialect
   MLIRTransforms
   MLIRSupport
-  TritonAnalysis
-  TritonIR
-  TritonTransforms
-  TritonSharedAnalysis
 
+  TritonIR
+  TritonSharedAnalysis
   TritonArithToLinalg
-  StructuredToMemref
   TritonToStructured
 )

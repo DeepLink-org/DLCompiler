@@ -18,7 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-
 import pytest
 
 import triton
@@ -29,36 +28,46 @@ import torch
 import torch_npu
 
 
-def standard_(x0, dtype):
-    res, index = torch.max(x0, 0, keepdim=True)
+def standard_unary(x0, dtype):
+    res = torch.sqrt(x0)
+    return res
+
+
+def standard_binary(x0, y0, dtype):
+    res = x0 + y0
     return res
 
 
 @triton.jit
-def triton_max_vector(in_ptr0, out_ptr0, N: tl.constexpr, NUMEL: tl.constexpr):
+def triton_elementwise_unary(in_ptr0, out_ptr0, N: tl.constexpr, NUMEL: tl.constexpr):
     idx_block = tl.arange(0, NUMEL)
+    x = tl.load(in_ptr0 + idx_block, mask=idx_block < N)
+    ret = tl.sqrt(x)
+    tl.store(out_ptr0 + idx_block, ret, mask=idx_block < N)
 
-    if in_ptr0.dtype == tl.int8:
-        padding = -128
-    else:
-        padding = -float("inf")
 
-    x = tl.load(in_ptr0 + idx_block, mask=idx_block < N, other=padding)
-    ret = tl.max(x, 0)
-    tl.store(out_ptr0 + idx_block, ret, mask=idx_block < 1)
+@triton.jit
+def triton_elementwise_binary(
+    in_ptr0, in_ptr1, out_ptr0, N: tl.constexpr, NUMEL: tl.constexpr
+):
+    idx_block = tl.arange(0, NUMEL)
+    x = tl.load(in_ptr0 + idx_block, mask=idx_block < N)
+    y = tl.load(in_ptr1 + idx_block, mask=idx_block < N)
+    ret = x + y
+    tl.store(out_ptr0 + idx_block, ret, mask=idx_block < N)
 
 
 types = [
     (torch.float32, "float32"),
-    # (torch.float16,'float16'),  TODO : fix reduceConverter bug
-    # (torch.bfloat16,'bfloat16'),  waiting for supporting or testing
-    # (torch.int8,'int8'),  TODO : fix compiler bug
-    # (torch.int16,'int16'),  waiting for supporting or testing
-    # (torch.int32,'int32'),  waiting for supporting or testing
-    # (torch.int64,'int64'),  waiting for supporting or testing
+    # Expected dtype ['fp32', 'fp64'] but got fp16
+    # (torch.float16, "float16"),
+    # (torch.bfloat16, 'bfloat16'),
+    # (torch.int8, 'int8'),
+    # (torch.int16, 'int16'),
+    # (torch.int32, 'int32'),
+    # (torch.int64, 'int64'),
 ]
 
-# if shape axis = 32/256 , then actual shape = axis/element_size()
 shapes = [
     (3, 32),
     (-32, 32),
@@ -70,21 +79,24 @@ shapes = [
 map_for_64_t = {37: 31}
 
 
-@pytest.mark.skip(reason="randomly failed")
-@pytest.mark.parametrize("dtype, sigtype", types)
-@pytest.mark.parametrize("N, NUMEL", shapes)
-def test_reduce_dim0_common(dtype, sigtype, N, NUMEL):
+@pytest.mark.parametrize("dtype,sigtype", types)
+@pytest.mark.parametrize("N,NUMEL", shapes)
+def test_elementwsie_common(dtype, sigtype, N, NUMEL):
     N = (-N) // torch.tensor(0, dtype=dtype).element_size() if N < 0 else N
 
     if sigtype == "int64":
         N = map_for_64_t[N] if N in map_for_64_t else N
 
+    print(f"elementwise : ({N},) {dtype} {sigtype}")
+
     x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype)
 
-    ans = standard_(x0, dtype)
+    ans = standard_unary(x0, dtype)
     x0 = x0.npu()
+    print(ans)
 
-    output = torch.zeros((1,), dtype=dtype).npu()
-    triton_max_vector[1, 1, 1](x0, output, N=N, NUMEL=NUMEL, debug=True)
+    out = torch.zeros((N,), dtype=dtype).npu()
+    triton_elementwise_unary[1, 1, 1](x0, out, N=N, NUMEL=NUMEL, debug=True)
+    print(out)
 
-    test_common.validate_cmp(sigtype, output, ans)
+    test_common.validate_cmp(sigtype, out, ans)

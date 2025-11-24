@@ -26,7 +26,9 @@ import torch
 import torch_npu
 import pytest
 import test_common
-# from triton.runtime.libentry import libentry
+import triton.language.extra.deeplink.libdevice as dl
+
+# from dlblas.utils.libentry import libentry
 
 
 @pytest.mark.parametrize(
@@ -56,7 +58,7 @@ def test_flip(para_type, data_type, shape):
             + zidx[None, None, :]
         )
         tmp0 = tl.load(in_ptr0 + idx)
-        tmp1 = tl.flip(tmp0, 2)
+        tmp1 = dl.flip(tmp0, 2)
         tl.store(output_ptr0 + idx, tmp1)
 
     def triton_func(x):

@@ -118,7 +118,6 @@ shapes = [
 map_for_64_t = {37: 31}
 
 
-@pytest.mark.skip(reason="randomly failed")
 @pytest.mark.parametrize("dtype, sigtype", types)
 @pytest.mark.parametrize("M, N", shapes)
 def test_softmax(dtype, sigtype, M, N):

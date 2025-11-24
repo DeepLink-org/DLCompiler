@@ -100,3 +100,4 @@ fusion_result.json
 # package
 backend/triton-shared-opt-v3*
 backend/dicp_opt
+third_party/triton-shared-opt

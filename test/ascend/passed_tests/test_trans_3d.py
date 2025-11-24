@@ -57,7 +57,7 @@ def fn_npu_021(output_ptr, x_ptr, YB: tl.constexpr, ZB: tl.constexpr, KB: tl.con
 
     X = tl.load(x_ptr + idx)
 
-    ret = tl.trans(X, (0, 2, 1))
+    ret = tl.trans(X, 0, 2, 1)
 
     oidx = (
         yidx[:, None, None] * ZB * KB + kidx[None, :, None] * ZB + zidx[None, None, :]
@@ -66,7 +66,7 @@ def fn_npu_021(output_ptr, x_ptr, YB: tl.constexpr, ZB: tl.constexpr, KB: tl.con
     tl.store(output_ptr + oidx, ret)
 
 
-@pytest.mark.parametrize("shape", [(23, 5, 31)])
+@pytest.mark.parametrize("shape", [(16, 8, 32)])
 @pytest.mark.parametrize("dtype", ["float32"])
 def test_permute_3d(shape, dtype):
     logging.debug(f"dtype:{dtype} shape:{shape}")

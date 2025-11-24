@@ -29,7 +29,7 @@ import torch_npu
 
 
 def standard_unary(x0, dtype):
-    res = torch.sqrt(x0)
+    res = x0 * (1 / (1 + torch.exp(-x0)))
     return res
 
 
@@ -42,7 +42,7 @@ def standard_binary(x0, y0, dtype):
 def triton_elementwise_unary(in_ptr0, out_ptr0, N: tl.constexpr, NUMEL: tl.constexpr):
     idx_block = tl.arange(0, NUMEL)
     x = tl.load(in_ptr0 + idx_block, mask=idx_block < N)
-    ret = tl.math.sqrt(x)
+    ret = x * (1 / (1 + tl.math.exp(-x)))
     tl.store(out_ptr0 + idx_block, ret, mask=idx_block < N)
 
 
@@ -59,7 +59,8 @@ def triton_elementwise_binary(
 
 types = [
     (torch.float32, "float32"),
-    (torch.float16, "float16"),
+    #  只支持'fp32', 'fp64'  ValueError: Expected dtype ['fp32', 'fp64'] but got fp16
+    # (torch.float16, "float16"),
     # (torch.bfloat16, 'bfloat16'),
     # (torch.int8, 'int8'),
     # (torch.int16, 'int16'),

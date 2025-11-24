@@ -24,7 +24,7 @@ import pytest
 import torch
 import torch_npu
 import triton
-from triton.language.math import tanh
+from triton.language.extra.deeplink.libdevice import tanh
 import triton.language as tl
 
 device = "npu"

@@ -685,7 +685,9 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
             ]
 
-        disable_auto_cv_work_space_manage = metadata["disable_auto_cv_work_space_manage"]
+        disable_auto_cv_work_space_manage = metadata[
+            "disable_auto_cv_work_space_manage"
+        ]
         if disable_auto_cv_work_space_manage is True:
             _compile_option_list += [
                 f"--disable-auto-cv-work-space-manage={disable_auto_cv_work_space_manage}"

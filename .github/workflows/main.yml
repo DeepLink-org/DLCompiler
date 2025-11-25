@@ -97,3 +97,6 @@ jobs:
           rm -rf $workdir
           mkdir $workdir
           chmod -R 777 $workdir  
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}
+          fi

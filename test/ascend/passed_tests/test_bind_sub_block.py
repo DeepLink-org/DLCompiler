@@ -178,6 +178,7 @@ def matmul(a, b, activation=""):
         c.stride(0),
         c.stride(1),  #
         ACTIVATION=activation,  #
+        enable_auto_bind_sub_block=False,
     )
     return c
 

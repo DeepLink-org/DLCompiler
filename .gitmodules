@@ -4,9 +4,6 @@
 [submodule "third_party/triton"]
     path = third_party/triton
     url = git@github.com:triton-lang/triton.git
-[submodule "third_party/json"]
-    path = third_party/json
-    url = git@github.com:nlohmann/json.git
 [submodule "third_party/triton_shared"]
     path = third_party/triton_shared
     url = git@github.com:microsoft/triton-shared.git

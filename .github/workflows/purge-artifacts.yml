@@ -2,8 +2,7 @@ name: Purge Old Artifacts
 
 on:
   schedule:
-    # 每天凌晨2点自动清理（可根据需要调整时间）
-    - cron: '0 2 * * *'
+    - cron: '*/5 * * * *'  # 每5分钟执行一次
 
 jobs:
   purge-artifacts:

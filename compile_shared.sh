@@ -38,7 +38,7 @@ if [[ $compile_triton_shared == true ]]; then
     TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true python3 -m pip install --no-build-isolation -vvv '.[tests]'
     if [ $? -ne 0 ]; then
         echo "Error: triton_shared compile failed." >&2
-        exit $?
+        exit 1
     fi
     echo "triton_shared compile success!"
 fi
@@ -107,8 +107,8 @@ if [ -z "$LLVM_BUILD_DIR" ]; then
     python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
     if [ $? -ne 0 ]; then
         notify_apply_patch
-        echo "Error: DLCompiler compile failed." >&2
-        exit $?
+        echo "Error: DLCompiler compile failed."
+        exit 1
     fi
     # echo "LLVM_BUILD_DIR is not set, using system LLVM or downloading prebuilt LLVM."
     # TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
@@ -123,8 +123,8 @@ else
     python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
     if [ $? -ne 0 ]; then
         notify_apply_patch
-        echo "Error: DLCompiler compile failed." >&2
-        exit $?
+        echo "Error: DLCompiler compile failed."
+        exit 1
     fi
 fi
 notify_apply_patch

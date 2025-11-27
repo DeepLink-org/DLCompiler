@@ -74,6 +74,7 @@ jobs:
           git submodule update --init
           echo "git submodule update done."
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
+          pip uninstall -y triton
           bash compile_shared.sh apply_patch=true
 
       - name: Run tests on ascend

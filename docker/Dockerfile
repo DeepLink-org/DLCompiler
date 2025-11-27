@@ -105,10 +105,10 @@ RUN set -ex && \
 COPY cann cann
 RUN set -ex && \
     cd /root/workspace/cann && \
-    chmod +x Ascend-cann-toolkit_8.3.RC1.alpha003_linux-aarch64.run && \
-    chmod +x Ascend-cann-kernels-910b_8.3.RC1.alpha003_linux-aarch64.run && \
-    ./Ascend-cann-toolkit_8.3.RC1.alpha003_linux-aarch64.run --quiet --install --install-for-all && \
-    ./Ascend-cann-kernels-910b_8.3.RC1.alpha003_linux-aarch64.run --quiet --install --install-for-all && \
+    chmod +x Ascend-cann-toolkit_8.3.RC1_linux-aarch64.run && \
+    chmod +x Ascend-cann-kernels-910b_8.3.RC1_linux-aarch64.run && \
+    ./Ascend-cann-toolkit_8.3.RC1_linux-aarch64.run --quiet --install --install-for-all && \
+    ./Ascend-cann-kernels-910b_8.3.RC1_linux-aarch64.run --quiet --install --install-for-all && \
     echo "alias ll='ls -alh'" >> ~/.bashrc && \
     source ~/.bashrc && \
     echo "source /usr/local/Ascend/ascend-toolkit/set_env.sh" >> ~/.bashrc
@@ -117,7 +117,7 @@ RUN set -ex && \
     source ~/.bashrc && \
     conda activate dlcompiler && \
     pip install ninja cmake wheel pybind11  -i https://mirrors.huaweicloud.com/repository/pypi/simple    && \
-    pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1 psutil==6.0.0 pytest==8.3.2 pytest-xdist==3.6.1 pyyaml torch==2.6.0 torch-npu==2.6.0  -i https://mirrors.huaweicloud.com/repository/pypi/simple
+    pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1 psutil==6.0.0 pytest==8.3.2 pytest-xdist==3.6.1 pyyaml nanobind==2.9.2 torch==2.6.0 torch-npu==2.6.0  -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
 COPY requirements.txt .
 RUN set -ex && \

@@ -1,0 +1,34 @@
+diff --git a/lib/Dialect/Triton/IR/Traits.cpp b/lib/Dialect/Triton/IR/Traits.cpp
+index 7ac5d310a..e06583c86 100644
+--- a/lib/Dialect/Triton/IR/Traits.cpp
++++ b/lib/Dialect/Triton/IR/Traits.cpp
+@@ -96,10 +96,10 @@ LogicalResult OpTrait::impl::verifyTensorSize(Operation *op) {
+         return op->emitError("Maximum allowed number of elements is ")
+                << maxTensorNumElements << ", but " << *op
+                << " has more than that";
+-      if ((numElements & (numElements - 1)) != 0)
+-        return op->emitError("Number of elements must be power-of-two, but ")
+-               << *op << " doesn't follow the rule (" << numElements << ")"
+-               << " elements";
++      // if ((numElements & (numElements - 1)) != 0)
++      //   return op->emitError("Number of elements must be power-of-two, but ")
++      //          << *op << " doesn't follow the rule (" << numElements << ")"
++      //          << " elements";
+     }
+   }
+   for (auto opType : op->getResultTypes()) {
+@@ -111,10 +111,10 @@ LogicalResult OpTrait::impl::verifyTensorSize(Operation *op) {
+         return op->emitError("Maximum allowed number of elements is ")
+                << maxTensorNumElements << ", but " << *op
+                << " has more than that";
+-      if ((numElements & (numElements - 1)) != 0)
+-        return op->emitError("Number of elements must be power-of-two, but ")
+-               << *op << " doesn't follow the rule (" << numElements << ")"
+-               << " elements";
++      // if ((numElements & (numElements - 1)) != 0)
++      //   return op->emitError("Number of elements must be power-of-two, but ")
++      //          << *op << " doesn't follow the rule (" << numElements << ")"
++      //          << " elements";
+     }
+   }
+   return success();

@@ -28,6 +28,20 @@ if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not Non
     if not os.path.exists("./tmp"):
         os.makedirs("./tmp")
 
+local_bishengir_path = os.path.join(os.path.dirname(__file__), "../../_C/bishengir")
+bisheng_install_path = os.environ.get("BISHENG_INSTALL_PATH", None)
+if (
+    bisheng_install_path is None
+    and os.path.exists(local_bishengir_path)
+    and os.path.isdir(local_bishengir_path)
+    and os.path.exists(os.path.join(local_bishengir_path, "bishengir-compile"))
+    and os.path.exists(os.path.join(local_bishengir_path, "bishengir-hivm-compile"))
+    and os.path.exists(os.path.join(local_bishengir_path, "bishengir-opt"))
+    and os.path.exists(os.path.join(local_bishengir_path, "hivmc"))
+):
+    os.environ["BISHENG_INSTALL_PATH"] = local_bishengir_path
+    os.environ["PATH"] = local_bishengir_path + os.pathsep + os.environ["PATH"]
+
 
 def downgrade_llir(llir):
     llir = _downgrade_mem_attrs(llir)
@@ -685,6 +699,20 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
             ]
 
+        disable_auto_cv_work_space_manage = metadata[
+            "disable_auto_cv_work_space_manage"
+        ]
+        if disable_auto_cv_work_space_manage is True:
+            _compile_option_list += [
+                f"--disable-auto-cv-work-space-manage={disable_auto_cv_work_space_manage}"
+            ]
+
+        enable_auto_bind_sub_block = metadata["enable_auto_bind_sub_block"]
+        if enable_auto_bind_sub_block is not None:
+            _compile_option_list += [
+                f"--enable-auto-bind-sub-block={enable_auto_bind_sub_block}"
+            ]
+
         cmd_list = (
             [npu_compiler_path, ttadapter_path]
             + _compile_option_list
@@ -736,9 +764,11 @@ class NPUOptions:
     enable_npu_compile: bool = True
     max_num_imprecise_acc_default: bool = None
     extern_libs: dict = None
+    multibuffer: bool = True
     inject_barrier_all: bool = False
     disable_auto_inject_block_sync: bool = False
-    multibuffer: bool = True
+    disable_auto_cv_work_space_manage: bool = False
+    enable_auto_bind_sub_block: bool = True
 
     stream: int = None
 

@@ -66,7 +66,7 @@ def triton_arange_access(
 @pytest.mark.parametrize(
     "param_list",
     [
-        [0, 128],
+        [0, 103],
         [0, 1024],
     ],
 )
@@ -87,7 +87,7 @@ def test_case(param_list):
 @pytest.mark.parametrize(
     "param_list",
     [
-        [0, 128],
+        [0, 103],
         [0, 1024],
     ],
 )
@@ -109,7 +109,7 @@ def test_case_access(param_list):
     "invalid_param_list",
     [
         [0, 10000000],
-        [8, 128],
+        # [8, 128],
     ],
 )
 @test_common.raises_with_match(

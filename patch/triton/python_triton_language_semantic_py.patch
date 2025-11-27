@@ -1,5 +1,5 @@
 diff --git a/python/triton/language/semantic.py b/python/triton/language/semantic.py
-index 8341c2c4a..11c702da0 100644
+index 8341c2c4a..1fca39d66 100644
 --- a/python/triton/language/semantic.py
 +++ b/python/triton/language/semantic.py
 @@ -115,6 +115,7 @@ class TritonSemantic(Generic[TensorTy]):
@@ -19,3 +19,14 @@ index 8341c2c4a..11c702da0 100644
          if check_type:
              raise TypeError(f"cannot convert {x} of type {type(x)} to tensor")
          return x
+@@ -579,8 +582,8 @@ class TritonSemantic(Generic[TensorTy]):
+         if end <= start:
+             raise ValueError("arange's end argument must be greater than the start argument")
+         range = end - start
+-        if (range & (range - 1)) != 0:
+-            raise ValueError("arange's range must be a power of 2")
++        # if (range & (range - 1)) != 0:
++        #     raise ValueError("arange's range must be a power of 2")
+         shape = [range]
+         if ret_ty is None:
+             ret_ty = tl.block_type(tl.int32, shape)

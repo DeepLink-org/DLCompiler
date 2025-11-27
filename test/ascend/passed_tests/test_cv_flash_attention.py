@@ -610,6 +610,7 @@ class AttentionSplitCV(torch.autograd.Function):
             BLOCK_N=BN,
             NUM_CORES=NUM_CORES,
             disable_auto_inject_block_sync=True,
+            disable_auto_cv_work_space_manage=True,
             **extra_kern_args,
         )
 

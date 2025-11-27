@@ -10,7 +10,7 @@ DLCompiler是上海人工智能实验室（上海 AI 实验室）DeepLink 团队
 
 ## pip安装
 
-```
+```bash
 # 因包过大，超过pypi限制（我们也在申请更大的容量），暂时支持从github安装
 pip install https://github.com/DeepLink-org/DLCompiler/releases/download/v0.0.2/dlcompiler-3.4.0-cp310-cp310-linux_aarch64.whl
 # 也可以先下载，然后再安装
@@ -28,7 +28,7 @@ pip install dlcompiler-3.4.0-cp310-cp310-linux_aarch64.whl
 
 ### 安装依赖
 
-```
+```bash
 pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1 psutil==6.0.0 pytest==8.3.2 pytest-xdist==3.6.1 pyyaml pybind11 nanobind
 ```
 
@@ -36,25 +36,25 @@ pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1 psutil==6
 
 1. 要求torch_npu版本 >= 2.6.0
 
-```
+```bash
 pip install torch_npu==2.6.0
 ```
 
 ### 编译命令
 
-```
+```bash
 bash compile_shared.sh apply_patch=true     # 如果不应用patch，可以直接执行 bash compile_shared.sh
 ```
 
 ## 查看编译过程的mlir文件
 
-```
-export DLC_DUMP_IR=1, 默认在当前目录下
+```bash
+export DLC_DUMP_IR=1 # 默认在当前目录下
 ```
 
 ## 测试
 
-```
+```bash
 python ./test/ascend/passed_tests/test_silu_and_mul.py
 ```
 
@@ -62,13 +62,13 @@ python ./test/ascend/passed_tests/test_silu_and_mul.py
 
 ## 编译
 
-```
+```bash
 bash compile_on_mlu.sh
 ```
 
 ## 测试
 
-```
+```bash
 cd build/triton/tutorials
 python 01-vector-add.py
 ```

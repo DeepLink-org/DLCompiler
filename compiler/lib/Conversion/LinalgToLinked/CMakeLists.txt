@@ -1,6 +1,7 @@
 add_triton_library(LinalgToLinked
   LinalgToLinkedPass.cpp
   VerifyNoLinalgGenericPass.cpp
+  TritonOpConverter.cpp
 
   DEPENDS
   DICPNPUIncGen

@@ -365,6 +365,7 @@ def ttir_post(mod, metadata, opt):
             dst_path,
         ]
         if dump_ir:
+            shutil.copy(src_path, "./tmp/kernel.ttir.mlir")
             print(f"DEBUG dump ir[ttir_post] command: {dicp_cmd_list}")
         ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
         if dump_ir:
@@ -425,7 +426,6 @@ def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
             dst_ttshared_path,
         ]
         if dump_ir:
-            shutil.copy(src_path, "./tmp/kernel.ttir.mlir")
             print(f"DEBUG dump ir[ttir_to_ttsharedir] command: {cmd_shared_list}")
         ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
 

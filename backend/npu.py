@@ -28,6 +28,20 @@ if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not Non
     if not os.path.exists("./tmp"):
         os.makedirs("./tmp")
 
+local_bishengir_path = os.path.join(os.path.dirname(__file__), "../../_C/bishengir")
+bisheng_install_path = os.environ.get("BISHENG_INSTALL_PATH", None)
+if (
+    bisheng_install_path is None
+    and os.path.exists(local_bishengir_path)
+    and os.path.isdir(local_bishengir_path)
+    and os.path.exists(os.path.join(local_bishengir_path, "bishengir-compile"))
+    and os.path.exists(os.path.join(local_bishengir_path, "bishengir-hivm-compile"))
+    and os.path.exists(os.path.join(local_bishengir_path, "bishengir-opt"))
+    and os.path.exists(os.path.join(local_bishengir_path, "hivmc"))
+):
+    os.environ["BISHENG_INSTALL_PATH"] = local_bishengir_path
+    os.environ["PATH"] = local_bishengir_path + os.pathsep + os.environ["PATH"]
+
 
 def downgrade_llir(llir):
     llir = _downgrade_mem_attrs(llir)

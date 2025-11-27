@@ -1,5 +1,5 @@
 diff --git a/setup.py b/setup.py
-index dffc45ab1..292cc8cba 100644
+index dffc45ab1..50417344b 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -182,6 +182,13 @@ class Package:
@@ -30,21 +30,11 @@ index dffc45ab1..292cc8cba 100644
      return Package("llvm", name, url, "LLVM_INCLUDE_DIRS", "LLVM_LIBRARY_DIR", "LLVM_SYSPATH", sym_name=sym_name)
  
  
-@@ -528,6 +542,44 @@ class CMakeBuild(build_ext):
+@@ -528,6 +542,36 @@ class CMakeBuild(build_ext):
          subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=cmake_dir)
          subprocess.check_call(["cmake", "--build", ".", "--target", "mlir-doc"], cwd=cmake_dir)
  
 +        cmake_build_dir = get_cmake_dir()
-+        opt_dir = os.path.join(
-+            cmake_build_dir,
-+            "third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt"
-+        )
-+
-+        shutil.copy(
-+            os.path.join(opt_dir, "triton-shared-opt"),
-+            os.path.join(cmake_build_dir, "../../../")
-+        )
-+
 +        tools_src_dir = os.path.join(
 +            cmake_build_dir,
 +            "third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/"
@@ -53,29 +43,31 @@ index dffc45ab1..292cc8cba 100644
 +            cmake_build_dir,
 +            "third_party/dicp_triton/tools/dicp_triton_opt/"
 +        )
-+        dicp_triton_dst_dir = extdir
-+        os.makedirs(dicp_triton_dst_dir, exist_ok=True)
-+        # triton_shared34_path = os.path.join(
-+        #     cmake_build_dir,
-+        #     "../../../../build/"
-+        # )
-+
-+        # shutil.copy(
-+        #     os.path.join(triton_shared34_path, "triton-shared-opt"),
-+        #     os.path.join(dicp_triton_dst_dir, "triton-shared-opt-v3_4")
-+        # )
 +        shutil.copy(
 +            os.path.join(tools_src_dir, "triton-shared-opt"),
-+            os.path.join(dicp_triton_dst_dir, "triton-shared-opt-v3_4")
++            os.path.join(extdir, "triton-shared-opt-v3_4")
 +        )
 +        shutil.copy(
 +            os.path.join(dicp_opt_src, "dicp_opt"),
-+            dicp_triton_dst_dir
++            extdir
 +        )
++
++        if 'bdist_wheel' in sys.argv:
++            bishengir_path=os.path.join(extdir, "bishengir")
++            os.makedirs(bishengir_path, exist_ok=True)
++            bisheng_install_path = os.environ.get("BISHENG_INSTALL_PATH", "")
++            if bisheng_install_path=="":
++                print(f"bisheng_install_path is empty")
++            else:
++                print(f"bisheng_install_path {bisheng_install_path}")
++                if os.path.isdir(bisheng_install_path):
++                    shutil.copytree(bisheng_install_path, bishengir_path, dirs_exist_ok=True)
++                else:
++                    raise Exception("bisheng_install_path is not a directory")
  
  def download_and_copy_dependencies():
      nvidia_version_path = os.path.join(get_base_dir(), "cmake", "nvidia-toolchain-version.json")
-@@ -649,6 +701,9 @@ def get_packages():
+@@ -649,6 +693,9 @@ def get_packages():
              # Install the contents of each backend's `tools` directory into
              # `triton.tools.extra`.
              for x in os.listdir(backend.tools_dir):
@@ -85,3 +77,31 @@ index dffc45ab1..292cc8cba 100644
                  yield f"triton.tools.extra.{x}"
  
      if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
+@@ -795,15 +842,15 @@ PYTHON_CLASSIFIERS = [
+ CLASSIFIERS = BASE_CLASSIFIERS + PYTHON_CLASSIFIERS
+ 
+ setup(
+-    name=os.environ.get("TRITON_WHEEL_NAME", "triton"),
++    name=os.environ.get("TRITON_WHEEL_NAME", "dlcompiler"),
+     version=TRITON_VERSION,
+-    author="Philippe Tillet",
+-    author_email="phil@openai.com",
++    author="Deeplink",
+     description="A language and compiler for custom Deep Learning operations",
+     long_description="",
+     install_requires=[
+         "setuptools>=40.8.0",
+         "importlib-metadata; python_version < '3.10'",
++        "torch_npu>=2.6.0",
+     ],
+     packages=list(get_packages()),
+     package_dir=dict(get_package_dirs()),
+@@ -824,7 +871,7 @@ setup(
+     zip_safe=False,
+     # for PyPI
+     keywords=["Compiler", "Deep Learning"],
+-    url="https://github.com/triton-lang/triton/",
++    url="https://github.com/DeepLink-org/DLCompiler/",
+     python_requires=PYTHON_REQUIRES,
+     classifiers=CLASSIFIERS,
+     test_suite="tests",

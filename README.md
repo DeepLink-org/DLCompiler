@@ -23,8 +23,8 @@ pip install dlcompiler-3.4.0-cp310-cp310-linux_aarch64.whl
 #### 安装ascend cann
 
 1. 要求CANN 版本 >= 8.3.RC1
-2. 社区下载链接：https://www.hiascend.com/developer/download/community/result?module=cann
-3. 社区安装指引链接：https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1/softwareinst/instg/instg_quick.html?Mode=PmIns&InstallType=local&OS=Ubuntu&Software=cannToolKit
+2. 社区下载链接：[下载链接](https://www.hiascend.com/developer/download/community/result?module=cann)
+3. 社区安装指引链接：[下载链接](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1/softwareinst/instg/instg_quick.html?Mode=PmIns&InstallType=local&OS=Ubuntu&Software=cannToolKit)
 
 #### 安装依赖
 

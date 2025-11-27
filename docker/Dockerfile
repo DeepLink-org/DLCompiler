@@ -105,10 +105,10 @@ RUN set -ex && \
 COPY cann cann
 RUN set -ex && \
     cd /root/workspace/cann && \
-    chmod +x Ascend-cann-toolkit_8.3.RC1.alpha003_linux-aarch64.run && \
-    chmod +x Ascend-cann-kernels-910b_8.3.RC1.alpha003_linux-aarch64.run && \
-    ./Ascend-cann-toolkit_8.3.RC1.alpha003_linux-aarch64.run --quiet --install --install-for-all && \
-    ./Ascend-cann-kernels-910b_8.3.RC1.alpha003_linux-aarch64.run --quiet --install --install-for-all && \
+    chmod +x Ascend-cann-toolkit_8.3.RC1_linux-aarch64.run && \
+    chmod +x Ascend-cann-kernels-910b_8.3.RC1_linux-aarch64.run && \
+    ./Ascend-cann-toolkit_8.3.RC1_linux-aarch64.run --quiet --install --install-for-all && \
+    ./Ascend-cann-kernels-910b_8.3.RC1_linux-aarch64.run --quiet --install --install-for-all && \
     echo "alias ll='ls -alh'" >> ~/.bashrc && \
     source ~/.bashrc && \
     echo "source /usr/local/Ascend/ascend-toolkit/set_env.sh" >> ~/.bashrc

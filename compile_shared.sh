@@ -97,7 +97,7 @@ notify_apply_patch() {
     fi
 }
 
-pip uninstall triton -y
+pip uninstall triton dlcompiler -y
 
 cd $TRITON_PLUGIN_DIRS/third_party/triton/
 rm -rf build/

@@ -41,7 +41,7 @@ def test_scalar_add_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y + 2.0
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -65,7 +65,7 @@ def test_scalar_sub_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y - 2.0
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -89,7 +89,7 @@ def test_scalar_mul_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y * 2.0
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -113,7 +113,7 @@ def test_scalar_div_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y / 2.0
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -137,7 +137,7 @@ def test_scalar_remf_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y % 2.0
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -161,7 +161,7 @@ def test_scalar_negf_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = -y
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -185,7 +185,7 @@ def test_scalar_cmpf_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = (y > 0.5).to(y.dtype)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -209,7 +209,7 @@ def test_scalar_ceil_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.ceil(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -233,7 +233,7 @@ def test_scalar_floor_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.floor(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -260,7 +260,7 @@ def test_scalar_maximum_nanall_calc(param_list):
         y0 = x0[0]
         y1 = x0[1]
         y = torch.maximum(y0, y1)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -287,7 +287,7 @@ def test_scalar_maximum_nannone_calc(param_list):
         y0 = x0[0]
         y1 = x0[1]
         y = torch.fmax(y0, y1)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -314,7 +314,7 @@ def test_scalar_minimum_nanall_calc(param_list):
         y0 = x0[0]
         y1 = x0[1]
         y = torch.minimum(y0, y1)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -341,7 +341,7 @@ def test_scalar_minimum_nannone_calc(param_list):
         y0 = x0[0]
         y1 = x0[1]
         y = torch.fmin(y0, y1)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -365,7 +365,7 @@ def test_scalar_extf_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y.to(torch.float32)
-        return torch.tensor(y)
+        return y
 
     src_dtype, dst_dtype, N = param_list
     x0 = test_common.generate_tensor((N,), src_dtype).npu()
@@ -389,7 +389,7 @@ def test_scalar_truncf_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = y.to(torch.float16)
-        return torch.tensor(y)
+        return y
 
     src_dtype, dst_dtype, N = param_list
     x0 = test_common.generate_tensor((N,), src_dtype).npu()
@@ -413,7 +413,7 @@ def test_scalar_exp_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.exp(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -437,7 +437,7 @@ def test_scalar_exp_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.exp2(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -463,7 +463,7 @@ def test_scalar_log_calc(param_list):
         y = x0[0]
         y = torch.abs(y)
         y = torch.log(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -489,7 +489,7 @@ def test_scalar_log2_calc(param_list):
         y = x0[0]
         y = torch.abs(y)
         y = torch.log2(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -513,7 +513,7 @@ def test_scalar_sin_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.sin(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -537,7 +537,7 @@ def test_scalar_cos_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.cos(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -561,7 +561,7 @@ def test_scalar_abs_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.abs(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -585,7 +585,7 @@ def test_scalar_erf_calc(param_list):
     def torch_func(x0):
         y = x0[0]
         y = torch.erf(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -611,7 +611,7 @@ def test_scalar_sqrt_calc(param_list):
         y = x0[0]
         y = torch.abs(y)
         y = torch.sqrt(y)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()
@@ -683,7 +683,7 @@ def test_scalar_sum_calc(param_list):
 
     def torch_func(x0):
         y = torch.sum(x0, 0)
-        return torch.tensor(y)
+        return y
 
     dtype, N = param_list
     x0 = test_common.generate_tensor((N,), dtype).npu()

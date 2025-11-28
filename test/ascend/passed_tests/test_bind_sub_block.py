@@ -93,12 +93,12 @@ def matmul_kernel(
         b_ptrs = b_ptrs_base + k * BLOCK_SIZE_K * stride_bk
         a = tl.load(
             a_ptrs,
-            mask=msk_m[:, None] and (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+            mask=msk_m[:, None] & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
             other=0.0,
         )
         b = tl.load(
             b_ptrs,
-            mask=msk_n[None, :] and (offs_k[:, None] < K - k * BLOCK_SIZE_K),
+            mask=msk_n[None, :] & (offs_k[:, None] < K - k * BLOCK_SIZE_K),
             other=0.0,
         )
         # We accumulate along the K dimension.

@@ -4,10 +4,12 @@ import triton.language as tl
 import triton.language.extra.deeplink as dl
 import test_common
 
+
 def get_autotune_config():
     return [
         triton.Config({"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 64}),
     ]
+
 
 @triton.autotune(
     configs=get_autotune_config(),
@@ -82,12 +84,12 @@ def c_v_kernel(
         b_ptrs = b_ptrs_base + k * BLOCK_SIZE_K * stride_bk
         a = tl.load(
             a_ptrs,
-            mask=msk_m[:, None] and (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+            mask=msk_m[:, None] & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
             other=0.0,
         )
         b = tl.load(
             b_ptrs,
-            mask=msk_n[None, :] and (offs_k[:, None] < K - k * BLOCK_SIZE_K),
+            mask=msk_n[None, :] & (offs_k[:, None] < K - k * BLOCK_SIZE_K),
             other=0.0,
         )
         # We accumulate along the K dimension.
@@ -108,6 +110,7 @@ def c_v_kernel(
 def torch_func(a, b):
     c = torch.matmul(a, b).abs() * 10
     return c
+
 
 def triton_func(a, b):
     # Check constraints.
@@ -138,10 +141,10 @@ def triton_func(a, b):
 
 def test_sync_block():
     torch.manual_seed(0)
-    a = test_common.generate_tensor((512, 512), 'float16').npu()
-    b = test_common.generate_tensor((512, 512), 'float16').npu()
+    a = test_common.generate_tensor((512, 512), "float16").npu()
+    b = test_common.generate_tensor((512, 512), "float16").npu()
     triton_output = triton_func(a, b)
     torch_output = torch_func(a, b)
     # print(f"triton_output_with_fp16_inputs={triton_output}")
     # print(f"torch_output_with_fp16_inputs={torch_output}")
-    test_common.validate_cmp('float16', triton_output, torch_output)
+    test_common.validate_cmp("float16", triton_output, torch_output)

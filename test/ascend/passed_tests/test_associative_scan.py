@@ -39,7 +39,7 @@ def combine_fn_test_torch(a, b, combine_fn):
     return torch.maximum(a, b)
 
 
-def torch_func_scan(x: torch.Tensor, dim: int, combine_fn='maximum', reverse=False):
+def torch_func_scan(x: torch.Tensor, dim: int, combine_fn="maximum", reverse=False):
     """
     PyTorch implements associative_scan, with semantics fully aligned with Triton.
     """
@@ -74,12 +74,12 @@ def combine_fn_test(a, b):
 
 @triton.jit
 def triton_kernel_1d_scan(
-        out_ptr0,
-        in_ptr0,
-        dim: tl.constexpr,
-        reverse: tl.constexpr,
-        numel_x: tl.constexpr,
-        XBLOCK: tl.constexpr,
+    out_ptr0,
+    in_ptr0,
+    dim: tl.constexpr,
+    reverse: tl.constexpr,
+    numel_x: tl.constexpr,
+    XBLOCK: tl.constexpr,
 ):
     tl.static_assert(
         numel_x == XBLOCK, "numel_x must be equal to XBLOCK in this kernel"
@@ -92,14 +92,14 @@ def triton_kernel_1d_scan(
 
 @triton.jit
 def triton_kernel_2d_scan(
-        out_ptr0,
-        in_ptr0,
-        dim: tl.constexpr,
-        reverse: tl.constexpr,
-        numel_x: tl.constexpr,
-        numel_r: tl.constexpr,
-        XBLOCK: tl.constexpr,
-        RBLOCK: tl.constexpr,
+    out_ptr0,
+    in_ptr0,
+    dim: tl.constexpr,
+    reverse: tl.constexpr,
+    numel_x: tl.constexpr,
+    numel_r: tl.constexpr,
+    XBLOCK: tl.constexpr,
+    RBLOCK: tl.constexpr,
 ):
     tl.static_assert(
         numel_x == XBLOCK, "numel_x must be equal to XBLOCK in this kernel"
@@ -117,16 +117,16 @@ def triton_kernel_2d_scan(
 
 @triton.jit
 def triton_kernel_3d_scan(
-        out_ptr0,
-        in_ptr0,
-        dim: tl.constexpr,
-        reverse: tl.constexpr,
-        numel_x: tl.constexpr,
-        numel_r: tl.constexpr,
-        numel_z: tl.constexpr,
-        XBLOCK: tl.constexpr,
-        RBLOCK: tl.constexpr,
-        ZBLOCK: tl.constexpr,
+    out_ptr0,
+    in_ptr0,
+    dim: tl.constexpr,
+    reverse: tl.constexpr,
+    numel_x: tl.constexpr,
+    numel_r: tl.constexpr,
+    numel_z: tl.constexpr,
+    XBLOCK: tl.constexpr,
+    RBLOCK: tl.constexpr,
+    ZBLOCK: tl.constexpr,
 ):
     tl.static_assert(
         numel_x == XBLOCK, "numel_x must be equal to XBLOCK in this kernel"
@@ -140,7 +140,11 @@ def triton_kernel_3d_scan(
     idx_x = tl.arange(0, XBLOCK)
     idx_r = tl.arange(0, RBLOCK)
     idx_z = tl.arange(0, ZBLOCK)
-    idx = idx_x[:, None, None] * numel_r * numel_z + idx_r[None, :, None] * numel_z + idx_z[None, None, :]
+    idx = (
+        idx_x[:, None, None] * numel_r * numel_z
+        + idx_r[None, :, None] * numel_z
+        + idx_z[None, None, :]
+    )
     x = tl.load(in_ptr0 + idx)
     ret = tl.associative_scan(x, axis=dim, reverse=reverse, combine_fn=combine_fn_test)
     tl.store(out_ptr0 + idx, ret)
@@ -153,9 +157,7 @@ def triton_func_scan(x, dim, reverse):
     if len(shape) == 1:
         if dim >= 1:
             pytest.skip("dim >= 1 for 1D tensor, skipping.")
-        triton_kernel_1d_scan[1, 1, 1](
-            res, x, dim, reverse, x.shape[0], x.shape[0]
-        )
+        triton_kernel_1d_scan[1, 1, 1](res, x, dim, reverse, x.shape[0], x.shape[0])
     elif len(shape) == 2:
         if dim >= 2:
             pytest.skip("dim >= 2 for 2D tensor, skipping.")
@@ -166,7 +168,16 @@ def triton_func_scan(x, dim, reverse):
         if dim >= 3:
             pytest.skip("dim >= 3 for 3D tensor, skipping.")
         triton_kernel_3d_scan[1, 1, 1](
-            res, x, dim, reverse, x.shape[0], x.shape[1], x.shape[2], x.shape[0], x.shape[1], x.shape[2]
+            res,
+            x,
+            dim,
+            reverse,
+            x.shape[0],
+            x.shape[1],
+            x.shape[2],
+            x.shape[0],
+            x.shape[1],
+            x.shape[2],
         )
     else:
         pytest.skip(f"This testcase unsupported tensor dimension: {len(shape)}")
@@ -174,10 +185,15 @@ def triton_func_scan(x, dim, reverse):
     return res
 
 
-@pytest.mark.parametrize("dtype", ['int32', 'float32'])
+@pytest.mark.parametrize("dtype", ["int32", "float32"])
 @pytest.mark.parametrize("shape", [(128,), (8, 4), (128, 4, 16)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("combine_fn", ['maximum', ])
+@pytest.mark.parametrize(
+    "combine_fn",
+    [
+        "maximum",
+    ],
+)
 @pytest.mark.parametrize("reverse", [False])
 def test_scan(dtype, shape, dim, combine_fn, reverse):
     torch.manual_seed(0)

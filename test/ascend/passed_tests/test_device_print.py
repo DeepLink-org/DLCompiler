@@ -31,22 +31,26 @@ os.environ["TRITON_DEVICE_PRINT"] = "1"
 os.environ["TRITON_ENABLE_TASKQUEUE"] = "0"
 shape = (8,)
 XS = 8
-XVALS_INT = [0,
-            torch.iinfo(torch.int8).min,
-            torch.iinfo(torch.int8).max,
-            torch.iinfo(torch.int16).min,
-            torch.iinfo(torch.int16).max,
-            torch.iinfo(torch.int32).min,
-            torch.iinfo(torch.int32).max,
-            torch.iinfo(torch.int32).max+1]
-XVALS_FP = [0,
-            torch.finfo(torch.float32).eps,
-            torch.finfo(torch.float16).eps,
-            torch.finfo(torch.bfloat16).eps,
-            torch.finfo(torch.float32).max,
-            torch.finfo(torch.float16).max,
-            torch.finfo(torch.bfloat16).max,
-            1]
+XVALS_INT = [
+    0,
+    torch.iinfo(torch.int8).min,
+    torch.iinfo(torch.int8).max,
+    torch.iinfo(torch.int16).min,
+    torch.iinfo(torch.int16).max,
+    torch.iinfo(torch.int32).min,
+    torch.iinfo(torch.int32).max,
+    torch.iinfo(torch.int32).max + 1,
+]
+XVALS_FP = [
+    0,
+    torch.finfo(torch.float32).eps,
+    torch.finfo(torch.float16).eps,
+    torch.finfo(torch.bfloat16).eps,
+    torch.finfo(torch.float32).max,
+    torch.finfo(torch.float16).max,
+    torch.finfo(torch.bfloat16).max,
+    1,
+]
 
 
 def torch_func(x0, x1):
@@ -71,11 +75,11 @@ def triton_func(x0, x1, XS):
 
 
 @pytest.mark.skip(reason="waiting for bishengir-compile to support")
-@pytest.mark.parametrize('sigtype', ['int64'])
+@pytest.mark.parametrize("sigtype", ["int64"])
 def test_device_print_int64(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_INT[i]
     torch_ref = torch_func(x0, x1)
@@ -83,11 +87,11 @@ def test_device_print_int64(capsys, sigtype):
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
 
-@pytest.mark.parametrize('sigtype', ['int32'])
+@pytest.mark.parametrize("sigtype", ["int32"])
 def test_device_print_int32(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_INT[i]
     torch_ref = torch_func(x0, x1)
@@ -95,11 +99,11 @@ def test_device_print_int32(capsys, sigtype):
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
 
-@pytest.mark.parametrize('sigtype', ['int16'])
+@pytest.mark.parametrize("sigtype", ["int16"])
 def test_device_print_int16(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_INT[i]
     torch_ref = torch_func(x0, x1)
@@ -107,11 +111,11 @@ def test_device_print_int16(capsys, sigtype):
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
 
-@pytest.mark.parametrize('sigtype', ['int8'])
+@pytest.mark.parametrize("sigtype", ["int8"])
 def test_device_print_int8(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_INT[i]
     torch_ref = torch_func(x0, x1)
@@ -119,11 +123,11 @@ def test_device_print_int8(capsys, sigtype):
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
 
-@pytest.mark.parametrize('sigtype', ['float32'])
+@pytest.mark.parametrize("sigtype", ["float32"])
 def test_device_print_fp32(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_FP[i]
     torch_ref = torch_func(x0, x1)
@@ -131,11 +135,11 @@ def test_device_print_fp32(capsys, sigtype):
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
 
-@pytest.mark.parametrize('sigtype', ['float16'])
+@pytest.mark.parametrize("sigtype", ["float16"])
 def test_device_print_fp16(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_FP[i]
     torch_ref = torch_func(x0, x1)
@@ -144,11 +148,11 @@ def test_device_print_fp16(capsys, sigtype):
 
 
 @pytest.mark.skip(reason="waiting for bishengir-compile to support")
-@pytest.mark.parametrize('sigtype', ['bfloat16'])
+@pytest.mark.parametrize("sigtype", ["bfloat16"])
 def test_device_print_bf16(capsys, sigtype):
     dtype = eval(f"torch.{sigtype}")
-    x0 = torch.zeros(shape, dtype = dtype).npu()
-    x1 = torch.ones(shape, dtype = dtype).npu()
+    x0 = torch.zeros(shape, dtype=dtype).npu()
+    x1 = torch.ones(shape, dtype=dtype).npu()
     for i in range(x1.numel()):
         x1[i] = XVALS_FP[i]
     torch_ref = torch_func(x0, x1)

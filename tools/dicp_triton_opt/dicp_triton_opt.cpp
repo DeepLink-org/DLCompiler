@@ -93,6 +93,7 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::LinalgExt::registerLinalgIfToSelectPass();
   dicp::LinalgExt::registerLinalgGenericToSCFPass();
   dicp::LinalgExt::registerScalarTo1DTensorPass();
+  dicp::LinalgExt::registerNormalizeSliceOpsPass();
 
   registry.insert<bufferization::BufferizationDialect, dicp::npu::NPUDialect,
                   dicp::LinalgExt::LinalgExtDialect, arith::ArithDialect,

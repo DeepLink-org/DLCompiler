@@ -33,9 +33,12 @@ def sum_combine_fn(a_value, a_index, b_value, b_index):
 
 @triton.jit
 def prefix_scan_last_dim_kernel(
-    vals_ptr, idx_ptr,
-    out_vals_ptr, out_idxs_ptr,
-    axis_size, total_slices,
+    vals_ptr,
+    idx_ptr,
+    out_vals_ptr,
+    out_idxs_ptr,
+    axis_size,
+    total_slices,
     BLOCK_SIZE: tl.constexpr,
 ):
     slice_id = tl.program_id(0)
@@ -87,9 +90,12 @@ def multi_input_prefix_sum(values: torch.Tensor, index: torch.Tensor, axis=0):
 
     BLOCK_SIZE = 1 << (axis_size - 1).bit_length()
     prefix_scan_last_dim_kernel[(total_slices,)](
-        vals_p, idxs_p,
-        out_vals_p, out_idxs_p,
-        axis_size, total_slices,
+        vals_p,
+        idxs_p,
+        out_vals_p,
+        out_idxs_p,
+        axis_size,
+        total_slices,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
@@ -99,24 +105,31 @@ def multi_input_prefix_sum(values: torch.Tensor, index: torch.Tensor, axis=0):
     return out_vals, out_idxs
 
 
-@pytest.mark.parametrize("shape, axis", [
-    ((10,), 0),
-    ((4, 4), 0),
-    ((2, 10, 5), 1),
-])
+@pytest.mark.parametrize(
+    "shape, axis",
+    [
+        ((10,), 0),
+        ((4, 4), 0),
+        ((2, 10, 5), 1),
+    ],
+)
 def test_multi_input_prefix_sum(shape, axis):
     torch.manual_seed(0)
     device = "npu"
 
     values = torch.randn(shape, device=device, dtype=torch.float32)
-    index = torch.arange(values.numel(), device=device, dtype=torch.int32).reshape(shape)
+    index = torch.arange(values.numel(), device=device, dtype=torch.int32).reshape(
+        shape
+    )
 
     triton_vals, triton_idxs = multi_input_prefix_sum(values, index, axis=axis)
 
     torch_vals = values.cumsum(dim=axis)
     torch_idxs = index.cumsum(dim=axis)
 
-    assert torch.allclose(triton_vals, torch_vals, rtol=1e-5, atol=1e-8), \
-        f"数值不匹配！shape={shape}, axis={axis}\nTriton: {triton_vals}\nPyTorch: {torch_vals}"
-    assert torch.equal(triton_idxs, torch_idxs), \
-        f"索引不匹配！shape={shape}, axis={axis}\nTriton: {triton_idxs}\nPyTorch: {torch_idxs}"
+    assert torch.allclose(
+        triton_vals, torch_vals, rtol=1e-5, atol=1e-8
+    ), f"数值不匹配！shape={shape}, axis={axis}\nTriton: {triton_vals}\nPyTorch: {torch_vals}"
+    assert torch.equal(
+        triton_idxs, torch_idxs
+    ), f"索引不匹配！shape={shape}, axis={axis}\nTriton: {triton_idxs}\nPyTorch: {torch_idxs}"

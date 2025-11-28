@@ -38,7 +38,8 @@ void populateLinalgLiftSelectPattern(RewritePatternSet &patterns);
 /// where the last-dimension offsets are [0..channelNum-1] and the stride is
 /// `channelNum`, making the interleave structure explicit and ready for further
 /// fusion or replacement by a dedicated Interleave op.
-void populateNormalizeInsertSliceOpInInterleavePattern(RewritePatternSet &patterns);
+void populateNormalizeInsertSliceOpInInterleavePattern(
+    RewritePatternSet &patterns);
 
 } // namespace mlir::dicp::LinalgExt
 

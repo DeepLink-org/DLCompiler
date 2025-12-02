@@ -62,4 +62,10 @@ def ScalarTo1DTensor : Pass<"scalar-to-1d-tensor", "mlir::func::FuncOp"> {
   ];
 }
 
+def NormalizeSliceOps : Pass<"normalize-slice-ops", "func::FuncOp"> {
+  let summary = "Normalize Slice Ops.";
+  let constructor = "mlir::dicp::LinalgExt::createNormalizeSliceOpsPass()";
+  let dependentDialects = ["mlir::tensor::TensorDialect"];
+}
+
 #endif

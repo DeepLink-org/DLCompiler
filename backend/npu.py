@@ -448,6 +448,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             dicp_opt_path,
             src_path,
             "--lower-affine",
+            "--normalize-slice-ops",
             "--linalg-if-to-select",
             "--linalg-generic-to-scf",
             "--scalar-to-1d-tensor",
@@ -939,7 +940,7 @@ def make_npu_launcher_stub(src, debug=False):
 
 
 def extract_device_print_code_from_cann():
-    from triton.backends.ascend.utils import _get_bisheng_path
+    from triton.backends.dicp_triton.npu import _get_bisheng_path
 
     ccec_compiler_bin_folder, _ = os.path.split(os.path.realpath(_get_bisheng_path()))
     ccec_compiler_folder, _ = os.path.split(ccec_compiler_bin_folder)
@@ -1006,7 +1007,7 @@ def extract_device_print_code_from_cann():
         return new_code
 
     # the following headers should be included in this order
-    return "\n".join(
+    headers_combined = "\n".join(
         [
             read_header("common/common_impl.h"),
             read_header("internal/debug_tunnel/payload.h"),
@@ -1015,6 +1016,8 @@ def extract_device_print_code_from_cann():
             read_header("internal/debug_tunnel/tunnel_impl.h"),
         ]
     )
+    # Prepend the needed include so generated code has std::cout / std::endl available
+    return "#include <iostream>\n" + headers_combined
 
 
 # the template is from triton-adapter HEAD. Wrapping the generated kernel binary into a python module

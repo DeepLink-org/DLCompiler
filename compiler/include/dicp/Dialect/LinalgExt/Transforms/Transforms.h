@@ -31,6 +31,16 @@ void populateRemoveSingleIterationLoopPattern(
  */
 void populateLinalgLiftSelectPattern(RewritePatternSet &patterns);
 
+/// This pattern detects a chain of `tensor::InsertSliceOp` that together
+/// implement an interleave write: multiple source tensors are inserted into the
+/// same destination along the last dimension using different static offsets.
+/// Once detected, the pattern normalizes this chain into a canonical form
+/// where the last-dimension offsets are [0..channelNum-1] and the stride is
+/// `channelNum`, making the interleave structure explicit and ready for further
+/// fusion or replacement by a dedicated Interleave op.
+void populateNormalizeInsertSliceOpInInterleavePattern(
+    RewritePatternSet &patterns);
+
 } // namespace mlir::dicp::LinalgExt
 
 #endif

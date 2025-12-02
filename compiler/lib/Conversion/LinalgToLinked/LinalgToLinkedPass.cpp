@@ -1,7 +1,8 @@
 #include "bishengir/Dialect/Annotation/IR/Annotation.h"
+
 #include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
-#include "dicp/Conversion/LinalgToLinked/VerifyNoLinalgGenericPass.hpp"
-#include "dicp/Dialect/NPU/IR/NPUDialect.h"
+#include "dicp/Conversion/LinalgToLinked/TritonOpConverter.h"
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -19,6 +20,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 #define DEBUG_TYPE "linalg-to-linked"
@@ -436,8 +438,12 @@ public:
                                                 RewritePatternSet &patterns) {
     populateFunctionOpInterfaceTypeConversionPattern<triton::FuncOp>(
         patterns, typeConverter);
+
     patterns.add<TritonAnnotationConverter>(patterns.getContext());
     patterns.add<ExternElementwiseClOpConverter>(patterns.getContext());
+    patterns.add<DevicePrintConverter>(patterns.getContext());
+    patterns.add<DeviceAssertConverter>(patterns.getContext());
+    patterns.add<ScanConverter, ReduceConverter>(patterns.getContext());
     if (!this->namedOps) {
       linalg::populateElementwiseToLinalgConversionPatterns(patterns);
     }

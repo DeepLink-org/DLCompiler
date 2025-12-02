@@ -281,9 +281,18 @@ index 62e4508..8af4e1c 100644
        return;
      } else if (useType == UseType::DataUse) {
 diff --git a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
-index 44ecd72..6d05fd8 100644
+index 44ecd72..7e02d4e 100644
 --- a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
 +++ b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
+@@ -80,7 +80,7 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
+   patterns.add<SplatConverter>(patterns.getContext());
+   patterns.add<UnsplatConverter>(patterns.getContext());
+   patterns.add<DenseConstantConverter>(patterns.getContext());
+-  patterns.add<CumSumConverter>(patterns.getContext());
++  // patterns.add<CumSumConverter>(patterns.getContext());
+   patterns.add<ReshapeConverter>(patterns.getContext());
+ 
+   populateExternElementwiseOpToMLIROps(patterns);
 @@ -101,5 +101,5 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
  
    // Note: the ordering here matters!
@@ -306,9 +315,18 @@ index 8c86fe2..6aa07da 100644
  
      if (pidsToFuncArgs) {
 diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
-index 1c8ed9c..f7b09fa 100644
+index 1c8ed9c..ceee83d 100644
 --- a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
 +++ b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
+@@ -66,7 +66,7 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
+   patterns.add<UnsplatConverter>(patterns.getContext());
+   patterns.add<DenseConstantConverter>(patterns.getContext());
+   patterns.add<UnrealizedCastConverter>(patterns.getContext());
+-  patterns.add<CumSumConverter>(patterns.getContext());
++//   patterns.add<CumSumConverter>(patterns.getContext());
+   patterns.add<ReshapeConverter>(patterns.getContext());
+ 
+   populateExternElementwiseOpToMLIROps(patterns);
 @@ -91,5 +91,5 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
    // will be tried last. Incorrect ordering or having MetaOpConverter has lower
    // PatternBenefit will result in element-wise meta ops being converted to

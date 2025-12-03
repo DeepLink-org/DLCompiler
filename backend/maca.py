@@ -22,9 +22,15 @@ def _path_to_binary(binary: str):
 
     for bin in paths:
         if os.path.exists(bin) and os.path.isfile(bin):
-            result = subprocess.check_output([bin, "--version"], stderr=subprocess.STDOUT)
+            result = subprocess.check_output(
+                [bin, "--version"], stderr=subprocess.STDOUT
+            )
             if result is not None:
-                version = re.search(r".*release (\d+\.\d+).*", result.decode("utf-8"), flags=re.MULTILINE)
+                version = re.search(
+                    r".*release (\d+\.\d+).*",
+                    result.decode("utf-8"),
+                    flags=re.MULTILINE,
+                )
                 if version is not None:
                     return bin, version.group(1)
     raise RuntimeError(f"Cannot find {binary}")
@@ -32,17 +38,19 @@ def _path_to_binary(binary: str):
 
 @functools.lru_cache()
 def get_ptxas_version():
-    version = subprocess.check_output([_path_to_binary("ptxas")[0], "--version"]).decode("utf-8")
+    version = subprocess.check_output(
+        [_path_to_binary("ptxas")[0], "--version"]
+    ).decode("utf-8")
     return version
 
 
 @functools.lru_cache()
 def ptx_get_version(cuda_version) -> int:
-    '''
+    """
     Get the highest PTX version supported by the current CUDA driver.
-    '''
+    """
     assert isinstance(cuda_version, str)
-    major, minor = map(int, cuda_version.split('.'))
+    major, minor = map(int, cuda_version.split("."))
     if major == 12:
         return 80 + minor
     if major == 11:
@@ -56,22 +64,24 @@ def ptx_get_version(cuda_version) -> int:
 def file_hash(path):
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
-    
+
 
 def maca_get_kernel_name(src: str) -> str:
-    '''
+    """
     Get kernel name from llvm ir.
     This Kernel name is required when launching the kernel.
-    '''
+    """
     assert src
     import re
-    for line in src.split('\n'):
+
+    for line in src.split("\n"):
         line = line.strip()
-        if line.startswith('define metaxgpu_kernel void @'):
+        if line.startswith("define metaxgpu_kernel void @"):
             return re.match(r"define metaxgpu_kernel void @(.+?)\(", line).groups()[0]
 
+
 def parse_option(string):
-    return [item for item in string.split(';') if item]
+    return [item for item in string.split(";") if item]
 
 
 @dataclass(frozen=True)
@@ -92,7 +102,7 @@ class MACAOptions:
     max_num_imprecise_acc_default: bool = None
     extern_libs: dict = None
     debug: bool = False
-    backend_name: str = 'maca'
+    backend_name: str = "maca"
     # MACA: new args
     pipeline: str = "basic"
     scenario: str = ""
@@ -100,26 +110,43 @@ class MACAOptions:
     pipeline_load_num: int = -1
 
     def __post_init__(self):
-        default_libdir = os.getenv("MACA_PATH") + '/lib'
-        ext_default_libdir = Path(__file__).parent / 'lib'
+        default_libdir = os.getenv("MACA_PATH") + "/lib"
+        ext_default_libdir = Path(__file__).parent / "lib"
         extern_libs = {} if self.extern_libs is None else dict(self.extern_libs)
-        if not extern_libs.get('libdevice', None):
+        if not extern_libs.get("libdevice", None):
             # ext_maca_mathlib.bc
             env_ext_libdevice_path = os.getenv("TRITON_EXT_LIBDEVICE_PATH", None)
-            ext_libdevice_path = env_ext_libdevice_path if env_ext_libdevice_path is not None else str(ext_default_libdir) + '/ext_maca_mathlib.bc'
-            assert os.path.exists(ext_libdevice_path), "ext_maca_mathlib.bc do not exit, please check!"
-            extern_libs['ext_libdevice'] = ext_libdevice_path
+            ext_libdevice_path = (
+                env_ext_libdevice_path
+                if env_ext_libdevice_path is not None
+                else str(ext_default_libdir) + "/ext_maca_mathlib.bc"
+            )
+            assert os.path.exists(
+                ext_libdevice_path
+            ), "ext_maca_mathlib.bc do not exit, please check!"
+            extern_libs["ext_libdevice"] = ext_libdevice_path
             # maca_kernellib.bc
             env_kernel_libdevice_path = os.getenv("TRITON_KERNEL_LIBDEVICE_PATH", None)
-            kernel_libdevice_path = env_kernel_libdevice_path if env_kernel_libdevice_path is not None else default_libdir + '/maca_kernellib.bc'
-            extern_libs['kernel_libdevice'] = kernel_libdevice_path
+            kernel_libdevice_path = (
+                env_kernel_libdevice_path
+                if env_kernel_libdevice_path is not None
+                else default_libdir + "/maca_kernellib.bc"
+            )
+            extern_libs["kernel_libdevice"] = kernel_libdevice_path
             # maca_mathlib.bc
             env_libdevice_path = os.getenv("TRITON_LIBDEVICE_PATH", None)
-            libdevice_path = env_libdevice_path if env_libdevice_path is not None else default_libdir + '/maca_mathlib.bc'
-            extern_libs['libdevice'] = libdevice_path
-        object.__setattr__(self, 'extern_libs', tuple(extern_libs.items()))
-        assert self.num_warps > 0 and self.num_warps <= 16 and (self.num_warps & (self.num_warps - 1)) == 0, \
-                "num_warps must be a power of 2 or greater than 0 and less than or equal to 16"
+            libdevice_path = (
+                env_libdevice_path
+                if env_libdevice_path is not None
+                else default_libdir + "/maca_mathlib.bc"
+            )
+            extern_libs["libdevice"] = libdevice_path
+        object.__setattr__(self, "extern_libs", tuple(extern_libs.items()))
+        assert (
+            self.num_warps > 0
+            and self.num_warps <= 16
+            and (self.num_warps & (self.num_warps - 1)) == 0
+        ), "num_warps must be a power of 2 or greater than 0 and less than or equal to 16"
 
     def hash(self):
         hash_dict = dict(self.__dict__)
@@ -132,7 +159,7 @@ class MACABackend(BaseBackend):
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend == 'maca'
+        return target.backend == "maca"
 
     def __init__(self, target: GPUTarget) -> None:
         super().__init__(target)
@@ -142,7 +169,9 @@ class MACABackend(BaseBackend):
         self.binary_ext = "mcfatbin"
 
     def parse_options(self, opts) -> Any:
-        args = {k: opts[k] for k in MACAOptions.__dataclass_fields__.keys() if k in opts}
+        args = {
+            k: opts[k] for k in MACAOptions.__dataclass_fields__.keys() if k in opts
+        }
         # USE_MACA: support allow_fp8e4nv(i.e. float8_e4m3fn)
         args["allow_fp8e4nv"] = True
         # args["allow_fp8e4nv"] = False
@@ -162,9 +191,13 @@ class MACABackend(BaseBackend):
 
     def get_codegen_implementation(self):
         import triton.language.extra.cuda as cuda
+
         codegen_fns = {
-            "convert_custom_types":
-            cuda.convert_custom_float8_sm80 if self.capability >= 80 else cuda.convert_custom_float8_sm70
+            "convert_custom_types": (
+                cuda.convert_custom_float8_sm80
+                if self.capability >= 80
+                else cuda.convert_custom_float8_sm70
+            )
         }
         return codegen_fns
 
@@ -187,34 +220,43 @@ def make_ttir(mod, metadata, opt):
     pm.run(mod)
     return mod
 
+
 @staticmethod
 def make_ttgir(mod, metadata, opt, capability):
     assert opt.pipeline_load_num >= -1, "invalid pipeline_load_num value!"
     scenarios = parse_option(opt.scenario)
-    disable_prefetch = "unprefetch" in scenarios 
+    disable_prefetch = "unprefetch" in scenarios
     fullstage = "fullstage" in scenarios
     store_coalesce = "storeCoalesce" in scenarios
     mla = "mla" in scenarios
     single_shm = "singleshm" in scenarios
     use_opt_maca_mma = True
-    use_opt_maca_mma = (opt.pipeline != "" and not os.getenv("TRITON_DISABLE_MACA_OPT_MMA"))
+    use_opt_maca_mma = opt.pipeline != "" and not os.getenv(
+        "TRITON_DISABLE_MACA_OPT_MMA"
+    )
     # TTIR -> TTGIR
     pm = ir.pass_manager(mod.context)
     pm.enable_debug()
-    passes.ttir.add_convert_to_ttgpuir(pm, f"cuda:{capability}", opt.num_warps, 64, opt.num_ctas)
+    passes.ttir.add_convert_to_ttgpuir(
+        pm, f"cuda:{capability}", opt.num_warps, 64, opt.num_ctas
+    )
     # optimize TTGIR
     passes.ttgpuir.add_coalesce(pm)
     if capability // 10 >= 8:
         passes.ttgpuir.add_f32_dot_tc(pm)
     passes.ttgpuir.add_remove_layout_conversions(pm)
     passes.ttgpuir.add_optimize_thread_locality(pm)
-    
-    if opt.pipeline == "cpasync" :
+
+    if opt.pipeline == "cpasync":
         disable_prefetch = True
-    metax.passes.ttgpuir.add_accelerate_matmul(pm, opt.num_stages, disable_prefetch, store_coalesce, "c500")
+    metax.passes.ttgpuir.add_accelerate_matmul(
+        pm, opt.num_stages, disable_prefetch, store_coalesce, "c500"
+    )
     passes.ttgpuir.add_remove_layout_conversions(pm)
     if store_coalesce:
-        metax.passes.ttgpuir.add_tritonmetaxgpu_change_layout_from_repn_to_elemn_pass(pm)
+        metax.passes.ttgpuir.add_tritonmetaxgpu_change_layout_from_repn_to_elemn_pass(
+            pm
+        )
         metax.passes.ttgpuir.add_tritonmetaxgpu_optimize_cstore_pass(pm, opt.num_stages)
         passes.ttgpuir.add_remove_layout_conversions(pm)
     passes.ttgpuir.add_optimize_dot_operands(pm, capability >= 80)
@@ -225,17 +267,37 @@ def make_ttgir(mod, metadata, opt, capability):
             if opt.pipeline == "basic":
                 if mla and single_shm:
                     # only mla=True and single_shm=True
-                    metax.passes.ttgpuir.add_pipeline_maca_4(pm, opt.num_stages, opt.pipeline_load_num, fullstage, True)
+                    metax.passes.ttgpuir.add_pipeline_maca_4(
+                        pm, opt.num_stages, opt.pipeline_load_num, fullstage, True
+                    )
                 else:
-                    metax.passes.ttgpuir.add_pipeline_maca_4(pm, opt.num_stages, opt.pipeline_load_num, fullstage, False)
+                    metax.passes.ttgpuir.add_pipeline_maca_4(
+                        pm, opt.num_stages, opt.pipeline_load_num, fullstage, False
+                    )
             elif opt.pipeline == "cpasync" and not mla:
                 metax.passes.ttgpuir.add_pipeline_async_tn(pm, opt.num_stages)
                 metax.passes.ttgpuir.add_pipeline_async_tt(pm, opt.num_stages)
-                metax.passes.ttgpuir.add_pipeline_async_base(pm, opt.num_stages, fullstage)
+                metax.passes.ttgpuir.add_pipeline_async_base(
+                    pm, opt.num_stages, fullstage
+                )
             elif mla and opt.num_stages == 2 and opt.pipeline == "cpasync":
-                metax.passes.ttgpuir.add_pipeline_async_multidot_mla_mixed(pm, opt.num_stages, fullstage, opt.pipeline_load_num, single_shm, True)
+                metax.passes.ttgpuir.add_pipeline_async_multidot_mla_mixed(
+                    pm,
+                    opt.num_stages,
+                    fullstage,
+                    opt.pipeline_load_num,
+                    single_shm,
+                    True,
+                )
             elif mla and opt.num_stages == 2 and opt.pipeline == "mixed":
-                metax.passes.ttgpuir.add_pipeline_async_multidot_mla_mixed(pm, opt.num_stages, fullstage, opt.pipeline_load_num, single_shm, False)
+                metax.passes.ttgpuir.add_pipeline_async_multidot_mla_mixed(
+                    pm,
+                    opt.num_stages,
+                    fullstage,
+                    opt.pipeline_load_num,
+                    single_shm,
+                    False,
+                )
             else:
                 print("no avalilable pipeline for maca")
         else:
@@ -257,6 +319,7 @@ def make_ttgir(mod, metadata, opt, capability):
     passes.common.add_canonicalizer(pm)
     pm.run(mod)
     return mod
+
 
 @staticmethod
 def make_mlir(src, metadata, options, capability):
@@ -287,12 +350,13 @@ def make_mlir(src, metadata, options, capability):
     ret = str(mod)
     return ret
 
+
 @staticmethod
 def make_llir(src, metadata, options, capability):
     mlir_opt_path = os.path.dirname(__file__) + "/bin/mlir-opt"
     opted_mlir = metax.mlir_opt(src, mlir_opt_path)
     mlir_translate_path = os.path.dirname(__file__) + "/bin/mlir-translate"
-    maca_path = os.environ.get('MACA_PATH')
+    maca_path = os.environ.get("MACA_PATH")
     assert maca_path, "Not found MACA_PATH"
     llir = metax.translate_mlir_to_llir(opted_mlir, maca_path)
     if options.extern_libs:
@@ -306,35 +370,45 @@ def make_llir(src, metadata, options, capability):
 def make_mcfatbin(src, metadata, opt, capability):
     scenarios = parse_option(opt.scenario)
     opt_mxcc = os.environ.get("TRITON_COMPILER_OPT_PATH")
-    mxcc_arch = os.environ.get('MACA_PATH') + "/mxgpu_llvm/bin/mxcc"
+    mxcc_arch = os.environ.get("MACA_PATH") + "/mxgpu_llvm/bin/mxcc"
     if opt_mxcc:
         mxcc_arch = opt_mxcc + "/mxgpu_llvm/bin/mxcc"
     if mxcc_arch is None:
-        raise RuntimeError('mxcc_arch is None (not specified)')
+        raise RuntimeError("mxcc_arch is None (not specified)")
     compile_options = ""
-    if (opt.pipeline == "basic" or opt.pipeline == "basic-prefetch") and "mla" not in scenarios:
+    if (
+        opt.pipeline == "basic" or opt.pipeline == "basic-prefetch"
+    ) and "mla" not in scenarios:
         compile_options = " -mllvm -metaxgpu-sched-regpressure=false -mllvm -metaxgpu-PostRA-Scheduler=false -mllvm -metaxgpu-mma-sched=true "
-        if "fullstage" in scenarios: 
-            compile_options += " -mllvm -metaxgpu-vectorize-slp=true -mllvm -metaxgpu-igroup "
+        if "fullstage" in scenarios:
+            compile_options += (
+                " -mllvm -metaxgpu-vectorize-slp=true -mllvm -metaxgpu-igroup "
+            )
         else:
             compile_options += " -mllvm -metaxgpu-vectorize-slp=true -mllvm -metaxgpu-sched-mma-maxnum=3 "
-        if "roll" not in scenarios: 
-            compile_options += " -mllvm -metaxgpu-mma-unroll-count=" + str(opt.num_stages) + " "
+        if "roll" not in scenarios:
+            compile_options += (
+                " -mllvm -metaxgpu-mma-unroll-count=" + str(opt.num_stages) + " "
+            )
     elif opt.pipeline == "cpasync" and "mla" not in scenarios:
         compile_options = " -mllvm -metaxgpu-sched-regpressure=true "
         compile_options += " -mllvm -metaxgpu-sinkload=false -mllvm -metaxgpu-vectorize-slp=true -mllvm -metaxgpu-igroup -mllvm -metaxgpu-aggressive-4g-addr-opt=true \
                             -mllvm -metaxgpu-shl-add-combine=false -mllvm -misched-postra=true -mllvm -enable-post-misched=true "
-        
+
         if os.getenv("TRITON_ENABLE_MACA_COMPILER_INT8_OPT"):
             compile_options += " -mllvm -metaxgpu-slp-vectorize-i8=true"
 
         if "unroll" in scenarios:
-            compile_options += " -mllvm -metaxgpu-mma-unroll-count=" + str(opt.num_stages) + " "
+            compile_options += (
+                " -mllvm -metaxgpu-mma-unroll-count=" + str(opt.num_stages) + " "
+            )
     if "flashattn-fwd" in scenarios:
         compile_options = " -mllvm -metaxgpu-mma-sched=true -mllvm -metaxgpu-sched-select=metaxgpu-minreg -mllvm -map-use-pk-fma=1 "
     elif "flashattn-bwd" in scenarios:
         compile_options = " -mllvm -metaxgpu-sched-regpressure=true "
-        compile_options += " -mllvm -metaxgpu-sinkload=false -mllvm -metaxgpu-vectorize-slp=true "
+        compile_options += (
+            " -mllvm -metaxgpu-sinkload=false -mllvm -metaxgpu-vectorize-slp=true "
+        )
     if "mla" in scenarios:
         # maybe will change the compile options in mla later
         if opt.num_stages == 2:
@@ -343,7 +417,11 @@ def make_mcfatbin(src, metadata, opt, capability):
                 compile_options += " -mllvm -metaxgpu-sinkload=false -mllvm -metaxgpu-vectorize-slp=true -mllvm -metaxgpu-igroup -mllvm -metaxgpu-aggressive-4g-addr-opt=true \
                                     -mllvm -metaxgpu-shl-add-combine=false -mllvm -misched-postra=true -mllvm -enable-post-misched=true "
                 if "unroll" in scenarios:
-                    compile_options += " -mllvm -metaxgpu-mma-unroll-count=" + str(opt.num_stages) + " "
+                    compile_options += (
+                        " -mllvm -metaxgpu-mma-unroll-count="
+                        + str(opt.num_stages)
+                        + " "
+                    )
             elif opt.pipeline == "basic" or opt.pipeline == "mixed":
                 compile_options = " -mllvm -metaxgpu-mma-sched=true -mllvm -map-use-pk-fma=1 -mllvm -metaxgpu-split-regalloc=true -mllvm -metaxgpu-aggressive-fold=true \
                                     -mllvm -metaxgpu-disable-licm=true "
@@ -353,8 +431,9 @@ def make_mcfatbin(src, metadata, opt, capability):
             compile_options = " -mllvm -metaxgpu-mma-sched=true -mllvm -map-use-pk-fma=1 -mllvm -metaxgpu-split-regalloc=true -mllvm -metaxgpu-aggressive-fold=true "
     if opt.extra_options != "":
         compile_options = opt.extra_options
-    return metax.translate_llvmir_to_mcfatbin(src, mxcc_arch, os.environ.get('MACA_PATH'), compile_options)
-    
+    return metax.translate_llvmir_to_mcfatbin(
+        src, mxcc_arch, os.environ.get("MACA_PATH"), compile_options
+    )
 
     # def add_stages(self, stages, options):
     #     stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
@@ -375,7 +454,6 @@ def make_mcfatbin(src, metadata, opt, capability):
 ##################################################################################################
 
 
-
 import functools
 import os
 import hashlib
@@ -393,14 +471,17 @@ libdevice_dir = os.path.join(dirname, "lib")
 # libraries = ['cuda']
 libraries = []
 
+
 @functools.lru_cache()
 def maca_home_dirs():
     return os.getenv("MACA_PATH")
+
 
 @functools.lru_cache()
 def libmaca_dirs():
     maca_path = maca_home_dirs()
     return ["{}/lib/".format(maca_path)]
+
 
 maca_lib_dir = libmaca_dirs()
 maca_include_dir = [os.path.join(maca_home_dirs(), "include")]
@@ -423,10 +504,13 @@ def compile_module_from_src(src, name):
             with open(src_path, "w") as f:
                 f.write(src)
             # TODO(MACA): fix it
-            so = _build(name, src_path, tmpdir, library_dirs(), maca_include_dir, libraries)
+            so = _build(
+                name, src_path, tmpdir, library_dirs(), maca_include_dir, libraries
+            )
             with open(so, "rb") as f:
                 cache_path = cache.put(f.read(), f"{name}.so", binary=True)
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(name, cache_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -446,7 +530,9 @@ class MacaUtils(object):
         return cls.instance
 
     def __init__(self):
-        mod = compile_module_from_src(Path(os.path.join(dirname, "maca.c")).read_text(), "maca_utils")
+        mod = compile_module_from_src(
+            Path(os.path.join(dirname, "maca.c")).read_text(), "maca_utils"
+        )
         self.load_binary = mod.load_binary
         self.get_device_properties = mod.get_device_properties
         # self.cuOccupancyMaxActiveClusters = mod.cuOccupancyMaxActiveClusters
@@ -461,7 +547,7 @@ class MacaUtils(object):
 
 
 def ty_to_cpp(ty):
-    if ty[0] == '*':
+    if ty[0] == "*":
         return "mcDeviceptr_t"
     return {
         "i1": "int32_t",
@@ -485,10 +571,10 @@ def ty_to_cpp(ty):
 def make_launcher(constants, signature, ids):
     # Record the end of regular arguments;
     # subsequent arguments are architecture-specific descriptors, such as tensor descriptors for CUDA.
-    arg_decls = ', '.join(f"{ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())
+    arg_decls = ", ".join(f"{ty_to_cpp(ty)} arg{i}" for i, ty in signature.items())
 
     def _extracted_type(ty):
-        if ty[0] == '*':
+        if ty[0] == "*":
             return "PyObject*"
         return ty_to_cpp(ty)
 
@@ -508,9 +594,13 @@ def make_launcher(constants, signature, ids):
             "uint64_t": "K",
         }[ty]
 
-    args_format = ''.join([format_of(_extracted_type(ty)) for ty in signature.values()])
+    args_format = "".join([format_of(_extracted_type(ty)) for ty in signature.values()])
     format = "iiiKKOOOO" + args_format
-    args_list = ', ' + ', '.join(f"&_arg{i}" for i, ty in signature.items()) if len(signature) > 0 else ''
+    args_list = (
+        ", " + ", ".join(f"&_arg{i}" for i, ty in signature.items())
+        if len(signature) > 0
+        else ""
+    )
 
     # generate glue code
     params = [i for i in signature.keys() if i not in constants]
@@ -674,7 +764,9 @@ PyMODINIT_FUNC PyInit___triton_launcher(void) {{
 class MacaLauncher(object):
 
     def __init__(self, src, metadata):
-        ids = {"ids_of_const_exprs": src.fn.constexprs if hasattr(src, "fn") else tuple()}
+        ids = {
+            "ids_of_const_exprs": src.fn.constexprs if hasattr(src, "fn") else tuple()
+        }
         constants = src.constants if hasattr(src, "constants") else dict()
         cst_key = lambda i: src.fn.arg_names.index(i) if isinstance(i, str) else i
         constants = {cst_key(key): value for key, value in constants.items()}
@@ -704,4 +796,5 @@ class MacaDriver(GPUDriver):
     @staticmethod
     def is_active():
         import torch
+
         return torch.cuda.is_available() and (torch.version.hip is None)

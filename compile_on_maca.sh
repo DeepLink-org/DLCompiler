@@ -9,7 +9,7 @@ rm -rf dist/ build/ triton.egg-info/
 
 python setup_on_maca.py install -v
 
-cd test
+cd test/maca
 python vector_add.py 2>&1 | tee test.log 
 
 

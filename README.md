@@ -79,4 +79,3 @@ python 01-vector-add.py
 ```bash
 bash compile_on_maca.sh
 ```
-

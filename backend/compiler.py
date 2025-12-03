@@ -127,6 +127,7 @@ class DICPBackend(BaseBackend):
             assert isinstance(self.capability, int)
             self.binary_ext = "cnbin"
         elif self.driver.target == "maca":
+            self.capability = 80
             self.binary_ext = "mcfatbin"
         elif self.driver.target == "ascend":
             self.binary_ext = "npubin"
@@ -209,26 +210,12 @@ class DICPBackend(BaseBackend):
             # from triton.backends.dicp_triton.mlu import ttir_to_cnfatbin, get_architecture_descriptor
             # stages["cnbin"] = lambda src, metadata: ttir_to_cnfatbin(src, metadata, get_architecture_descriptor(self.driver, options), False, True)
         elif self.driver.target == "maca":
-            from triton.backends.dicp_triton.maca import (
-                ttir_to_ttgir,
-                optimize_ttgir,
-                ttgir_to_llir,
-                llir_to_mcfatbin,
-                get_architecture_descriptor,
-            )
-
-            arch = get_architecture_descriptor()
-            extern_libs = dict()
-            stages["ttgir"] = lambda src, metadata: optimize_ttgir(
-                ttir_to_ttgir(src, 4), options.num_stages, arch
-            )
-            stages["llir"] = lambda src, metadata: ttgir_to_llir(src, arch)
-            mxcc_arch = os.environ.get("MACA_PATH") + "/mxgpu_llvm/bin/mxcc"
-            if mxcc_arch is None:
-                raise RuntimeError("mxcc_arch is None (not specified)")
-            stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(
-                src, mxcc_arch, os.environ.get("MACA_PATH")
-            )
+            from triton.backends.dicp_triton.maca import make_ttir, make_ttgir, make_mlir, make_llir, make_mcfatbin
+            stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
+            stages["ttgir"] = lambda src, metadata: make_ttgir(src, metadata, options, self.capability)
+            stages["mlir"] = lambda src, metadata: make_mlir(src, metadata, options, self.capability)
+            stages["llir"] = lambda src, metadata: make_llir(src, metadata, options, self.capability)
+            stages["mcfatbin"] = lambda src, metadata: make_mcfatbin(src, metadata, options, self.capability)
         elif self.driver.target == "ascend":
             from triton.backends.dicp_triton.npu import (
                 make_ttir,
@@ -329,6 +316,17 @@ class DICPBackend(BaseBackend):
                     os.getenv("TRITON_ENABLE_MLU_BOUND_CHECK", "0") == "1"
                 )
             return MLUOptions(**args)
+        elif self.target.backend == 'maca':
+            from triton.backends.dicp_triton.maca import MACAOptions
+            # args = {k: options[k] for k in MACAOptions.__dataclass_fields__.keys() if k in options}
+            # return MACAOptions(**args)
+            args = {k: options[k] for k in MACAOptions.__dataclass_fields__.keys() if k in options}
+            # USE_MACA: support allow_fp8e4nv(i.e. float8_e4m3fn)
+            args["allow_fp8e4nv"] = True
+            # args["allow_fp8e4nv"] = False
+            args["allow_fp8e4b15"] = False
+            args["max_num_imprecise_acc_default"] = 2**30 if self.capability == 90 else 0
+            return MACAOptions(**args)
         else:
             args = {"arch": self.target}
             args.update(

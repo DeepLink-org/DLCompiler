@@ -204,8 +204,15 @@ class DICPDriver(DriverBase):
                     reset = "\x1b[0m"
                     warnings.warn(red + str(e_npucompiler) + reset)
                     return False
+            elif self.target == "muxi":
+                import torch
+                return True
         except Exception as e:
-            raise RuntimeError(f"dicp triton exception:{e}")
+            try:
+                import torch
+                return True
+            except Exception as e:
+                raise RuntimeError(f"dicp triton exception:{e}")
         return True
 
     def launch_as_union_task(self, device, grid):

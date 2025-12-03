@@ -206,10 +206,12 @@ class DICPDriver(DriverBase):
                     return False
             elif self.target == "muxi":
                 import torch
+
                 return True
         except Exception as e:
             try:
                 import torch
+
                 return True
             except Exception as e:
                 raise RuntimeError(f"dicp triton exception:{e}")

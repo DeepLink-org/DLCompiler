@@ -493,8 +493,6 @@ def library_dirs():
 
 
 def compile_module_from_src(src, name):
-    # print(f"zmz debug compile_module_from_src: {src}")
-    print(f"zmz debug name, {name}")
     key = hashlib.sha256(src.encode("utf-8")).hexdigest()
     cache = get_cache_manager(key)
     cache_path = cache.get_file(f"{name}.so")

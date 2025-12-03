@@ -73,3 +73,6 @@ bash compile_on_mlu.sh
 cd build/triton/tutorials
 python 01-vector-add.py
 ```
+
+## 基于沐曦芯片
+

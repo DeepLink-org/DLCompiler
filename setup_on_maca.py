@@ -80,10 +80,10 @@ def copy_triton_package():
 def copy_backend_files():
     source_dir = "./backend"
     target_dir = "./triton/backends/metax"
-    print(f"zmz debug source_dir: {os.path.realpath(source_dir)}")
+    print(f"source_dir: {os.path.realpath(source_dir)}")
 
     if not os.path.exists(target_dir):
-        print(f"zmz debug realpath: {os.path.realpath(target_dir)}")
+        print(f"target_dir realpath: {os.path.realpath(target_dir)}")
         # 创建对应目录
         os.makedirs(target_dir)
         # assert False, f"Target directory {target_dir} does not exist, please check the path."

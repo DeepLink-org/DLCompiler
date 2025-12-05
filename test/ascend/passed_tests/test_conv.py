@@ -194,8 +194,7 @@ class ModelNew(torch.nn.Module):
     [
         # your requested single-configuration repeated for two dtypes
         # (2, 4, 4, 3, 8, 8, 2, 1, 1, "float32"),
-        # TODO bisheng-compiler 修复
-        # (2, 4, 4, 3, 8, 8, 2, 1, 1, "float16"),
+        (2, 4, 4, 3, 8, 8, 2, 1, 1, "float16"),
         (2, 32, 32, 3, 32, 32, 5, 1, 2, "float16"),
     ],
 )

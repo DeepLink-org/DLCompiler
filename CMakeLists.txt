@@ -1,5 +1,6 @@
 set(DC_TRITON_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(DC_TRITON_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(TRTION_SHARED_NPU_SPECIFIC_SOURCES  "${DC_TRITON_SOURCE_DIR}/compiler/lib/Conversion/TritonToLinalgNPU")
 
 set(DC_TRITON_INCLUDE_DIR "")
 set(DC_TRITON_LINK_DIR "")
@@ -39,5 +40,24 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/compiler)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/triton_shared)
 
-add_triton_plugin(DICPTriton ${CMAKE_CURRENT_SOURCE_DIR}/dicp_triton.cc LINK_LIBS ${LIBS})
-target_include_directories(DICPTriton PUBLIC "${pybind11_INCLUDE_DIRS}")
+if (TRITON_BUILD_PYTHON_MODULE)
+    add_triton_plugin(tritonDicpTriton ${CMAKE_CURRENT_SOURCE_DIR}/triton_dicp_triton.cc 
+    LINK_LIBS 
+
+    MLIRAffineToStandard
+    MLIRIR
+    MLIRPass
+    MLIRTransforms
+    MLIRSupport
+    MLIRBytecodeWriter
+    
+    TritonToLinalgNPUCoversion
+
+    LinalgExtTransforms
+    TritonExtTransforms
+
+    LinalgToLinked
+    LinkedToHIVM
+    )
+    target_link_libraries(tritonDicpTriton PRIVATE Python3::Module pybind11::headers)
+endif()

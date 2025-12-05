@@ -96,6 +96,7 @@ tags
 kernel_meta/
 fusion_result.json
 *.log
+launcher_cxx11abi*
 
 # package
 backend/triton-shared-opt-v3*

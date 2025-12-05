@@ -9,7 +9,7 @@ import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.driver import DriverBase
 from triton.backends.compiler import GPUTarget
-from triton.backends.dicp_triton.utils import get_current_backend
+from triton.backends.dicp_triton.utils import get_current_backend, _cache_dir
 
 import importlib
 import shutil
@@ -372,3 +372,19 @@ class DICPDriver(DriverBase):
             "f32": "float",
             "fp64": "double",
         }[ty]
+
+    @classmethod
+    def cache_dir_path(self) -> Path:
+        """返回缓存目录 Path（不创建目录）。"""
+        return _cache_dir()
+
+    @classmethod
+    def cache_dir(self) -> Path:
+        """返回并创建缓存目录（如果不存在）。"""
+        p = self.cache_dir_path()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @classmethod
+    def clear_cache(self, cache):
+        cache.zero_()

@@ -1,5 +1,5 @@
 diff --git a/setup.py b/setup.py
-index dffc45ab1..50417344b 100644
+index dffc45ab1..a4fe0b8a8 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -182,6 +182,13 @@ class Package:
@@ -30,27 +30,28 @@ index dffc45ab1..50417344b 100644
      return Package("llvm", name, url, "LLVM_INCLUDE_DIRS", "LLVM_LIBRARY_DIR", "LLVM_SYSPATH", sym_name=sym_name)
  
  
-@@ -528,6 +542,36 @@ class CMakeBuild(build_ext):
+@@ -528,6 +542,37 @@ class CMakeBuild(build_ext):
          subprocess.check_call(["cmake", "--build", "."] + build_args, cwd=cmake_dir)
          subprocess.check_call(["cmake", "--build", ".", "--target", "mlir-doc"], cwd=cmake_dir)
  
-+        cmake_build_dir = get_cmake_dir()
-+        tools_src_dir = os.path.join(
-+            cmake_build_dir,
-+            "third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/"
-+        )
-+        dicp_opt_src = os.path.join(
-+            cmake_build_dir,
-+            "third_party/dicp_triton/tools/dicp_triton_opt/"
-+        )
-+        shutil.copy(
-+            os.path.join(tools_src_dir, "triton-shared-opt"),
-+            os.path.join(extdir, "triton-shared-opt-v3_4")
-+        )
-+        shutil.copy(
-+            os.path.join(dicp_opt_src, "dicp_opt"),
-+            extdir
-+        )
++        if(check_env_flag("IS_NOT_PUBLISH","1")):
++            cmake_build_dir = get_cmake_dir()
++            tools_src_dir = os.path.join(
++                cmake_build_dir,
++                "third_party/dicp_triton/third_party/triton_shared/tools/triton-shared-opt/"
++            )
++            dicp_opt_src = os.path.join(
++                cmake_build_dir,
++                "third_party/dicp_triton/tools/dicp_triton_opt/"
++            )
++            shutil.copy(
++                os.path.join(tools_src_dir, "triton-shared-opt"),
++                os.path.join(extdir, "triton-shared-opt-v3_4")
++            )
++            shutil.copy(
++                os.path.join(dicp_opt_src, "dicp_opt"),
++                extdir
++            )
 +
 +        if 'bdist_wheel' in sys.argv:
 +            bishengir_path=os.path.join(extdir, "bishengir")
@@ -67,7 +68,7 @@ index dffc45ab1..50417344b 100644
  
  def download_and_copy_dependencies():
      nvidia_version_path = os.path.join(get_base_dir(), "cmake", "nvidia-toolchain-version.json")
-@@ -649,6 +693,9 @@ def get_packages():
+@@ -649,6 +694,9 @@ def get_packages():
              # Install the contents of each backend's `tools` directory into
              # `triton.tools.extra`.
              for x in os.listdir(backend.tools_dir):
@@ -77,7 +78,7 @@ index dffc45ab1..50417344b 100644
                  yield f"triton.tools.extra.{x}"
  
      if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
-@@ -795,15 +842,15 @@ PYTHON_CLASSIFIERS = [
+@@ -795,15 +843,15 @@ PYTHON_CLASSIFIERS = [
  CLASSIFIERS = BASE_CLASSIFIERS + PYTHON_CLASSIFIERS
  
  setup(
@@ -96,7 +97,7 @@ index dffc45ab1..50417344b 100644
      ],
      packages=list(get_packages()),
      package_dir=dict(get_package_dirs()),
-@@ -824,7 +871,7 @@ setup(
+@@ -824,7 +872,7 @@ setup(
      zip_safe=False,
      # for PyPI
      keywords=["Compiler", "Deep Learning"],

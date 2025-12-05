@@ -24,6 +24,7 @@ target_link_libraries(dicp_opt PRIVATE
 
   TritonToLinalg
   TritonTilingExtIR
+  TritonToLinalgNPUCoversion
   MLIROptLib
   MLIRPass
   MLIRTransforms

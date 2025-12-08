@@ -5,7 +5,7 @@ include "mlir/Pass/PassBase.td"
 
 def LinalgToLinked : Pass<"linalg-to-linked", "mlir::ModuleOp"> {
   let summary = "Convert Linalg to Linked dialect";
-  let constructor = "linked::createLinalgToLinkedPass()";
+  let constructor = "linked::createLinalgToLinkedPass(true,true)";
   let options = [
       Option<"globalKernel", "global-kernel",
           "bool", /*default*/"true",

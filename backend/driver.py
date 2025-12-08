@@ -372,3 +372,7 @@ class DICPDriver(DriverBase):
             "f32": "float",
             "fp64": "double",
         }[ty]
+
+    @classmethod
+    def clear_cache(self, cache):
+        cache.zero_()

@@ -694,7 +694,14 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         )
         if dump_ir:
             print(f"DEBUG dump ir[bishengir-compile] command: {cmd_list}")
-        ret = subprocess.run(cmd_list, capture_output=True, check=True)
+        try:
+            ret = subprocess.run(cmd_list, capture_output=True, check=True, text=True)
+        except subprocess.CalledProcessError as e:
+            # Print compilation error details
+            print(f"bishengir-compile compilation failed with exit code {e.returncode}")
+            print(f"Stderr:\n{e.stderr}")
+            raise RuntimeError("bishengir-compile compilation failed") from e
+
         if not Path(bin_path).is_file():
             print(ret.stderr.decode("utf-8"))
         if Path(callback_path).is_file():

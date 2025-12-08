@@ -1,260 +1,8 @@
-diff --git a/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp b/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp
-index 1d9244d..32b83dd 100644
---- a/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp
-+++ b/include/triton-shared/Conversion/TritonArithToLinalg/ConversionPatterns.hpp
-@@ -166,6 +166,23 @@ static std::optional<unsigned> getBitWidth(Type a) {
- 
- namespace {
- 
-+enum class InputPrecision : uint32_t {
-+  TF32 = 0,
-+  TF32x3 = 1,
-+  IEEE = 2,
-+  HF32 = 3,
-+};
-+::llvm::StringRef stringifyInputPrecision(InputPrecision val) {
-+  switch (val) {
-+    case InputPrecision::TF32: return "tf32";
-+    case InputPrecision::TF32x3: return "tf32x3";
-+    case InputPrecision::IEEE: return "ieee";
-+    case InputPrecision::HF32: return "hf32";
-+  }
-+  return "";
-+}
-+
-+
- //-----------------------------
- // Begin of monolithic only
- //-----------------------------
-@@ -675,45 +692,116 @@ struct BroadcastConverter : public OpConversionPattern<triton::BroadcastOp> {
- private:
-   using OpConversionPattern<triton::BroadcastOp>::OpConversionPattern;
- 
-+
-+  SmallVector<int64_t> getBroadcastDims(RankedTensorType src,
-+                                        RankedTensorType dst) const {
-+    SmallVector<int64_t> broadcastDims;
-+    auto srcShape = src.getShape();
-+    auto dstShape = dst.getShape();
-+
-+    for (size_t i = 0; i < srcShape.size(); i++) {
-+      if (dstShape[i] != srcShape[i]) {
-+        assert(srcShape[i] == 1);
-+        broadcastDims.push_back(i);
-+      }
-+    }
-+    assert(!broadcastDims.empty() && "cannot identify broadcast dimension");
-+    return broadcastDims;
-+  }
-+
-+  // Broadcasts input tensor based on TosaToLinalg's broadcastToShape
-+  AffineMap getBroadcastAffineMap(MLIRContext *context,
-+                                  ArrayRef<int64_t> inputShape,
-+                                  ArrayRef<int64_t> broadcastToShape) const {
-+
-+    assert(broadcastToShape.size() >= inputShape.size());
-+
-+    // Create affine map and shapes for tensor initialization.
-+    SmallVector<AffineExpr> outExpr;
-+
-+    size_t diff = broadcastToShape.size() - inputShape.size();
-+    for (size_t i = 0; i < broadcastToShape.size(); i++) {
-+      if (i < diff) {
-+        continue;
-+      }
-+      size_t j = i - diff;
-+      if (inputShape[j] == 1) {
-+        // Broadcast singleton dimension
-+        outExpr.push_back(mlir::getAffineConstantExpr(0, context));
-+        continue;
-+      }
-+      // Non-broadcast case
-+      outExpr.push_back(mlir::getAffineDimExpr(i, context));
-+    }
-+    return AffineMap::get(broadcastToShape.size(), 0, outExpr, context);
-+  }
-+
- public:
-+  // Dimensions of collapesd tensor is all unbroadcast dims
-+  SmallVector<int64_t> getUnbroadcastDims(RankedTensorType src,
-+                                          RankedTensorType dst) const {
-+    SmallVector<int64_t> unbroadcastDims;
-+    auto srcShape = src.getShape();
-+    auto dstShape = dst.getShape();
-+
-+    for (size_t i = 0; i < srcShape.size(); ++i) {
-+      if (dstShape[i] == srcShape[i]) {
-+        unbroadcastDims.emplace_back(srcShape[i]);
-+      }
-+    }
-+    return unbroadcastDims;
-+  }
-+  // Here convert tt.broadcast to linalg.broadcast
-+  //
-+  // before
-+  // %out = tt.broadcast %in : tensor<1x4x8xf32> -> tensor<128x4x8xf32>
-+  //
-+  // after
-+  // %collpased = tensor.collapse_shape %in [[0, 1], [2]] :
-+  //                                    tensor<1x4x8xf32> into tensor<4x8xf32>
-+  // %out = linalg.broadcast ins(%collpased : tensor<4x8xf32>)
-+  //                         outs(%empty : tensor<128x4x8xf32>) dimensions = [0]
-   LogicalResult
-   matchAndRewrite(triton::BroadcastOp op, OpAdaptor adaptor,
-                   ConversionPatternRewriter &rewriter) const override {
--    auto loc = op.getLoc();
-+    assert(op->getNumResults() == 1 && "BroadcastOp assumes single result");
- 
--    assert(op->getNumResults() == 1 && "code assumes single result!");
-     RankedTensorType sourceType =
-         cast<RankedTensorType>(adaptor.getSrc().getType());
-     RankedTensorType resultType = cast<RankedTensorType>(op.getType());
-     auto elementType = resultType.getElementType();
-     size_t resultRank = resultType.getRank();
-+    auto loc = op.getLoc();
- 
--    SmallVector<AffineMap> indexingMaps;
--    indexingMaps.reserve(op->getNumOperands() + op->getNumResults());
-+    auto initEmpty =
-+        rewriter.create<tensor::EmptyOp>(loc, resultType.getShape(), elementType);
- 
--    indexingMaps.push_back(getBroadcastAffineMap(
--        op->getContext(), sourceType.getShape(), resultType.getShape()));
--    indexingMaps.append(op->getNumResults(),
--                        rewriter.getMultiDimIdentityMap(resultRank));
-+    SmallVector<int64_t> broadcastDims =
-+        getBroadcastDims(sourceType, resultType);
-+    SmallVector<int64_t> unbroadcastDims =
-+        getUnbroadcastDims(sourceType, resultType);
- 
--    assert(op->getNumResults() == 1 && "code assumes single result!");
--    auto init = rewriter.create<tensor::EmptyOp>(loc, resultType.getShape(),
--                                                 elementType);
-+    SmallVector<ReassociationIndices> collapseReassociationIndices;
-+    auto collapseReassociationIndicesOptional =
-+        getReassociationIndicesForCollapse(sourceType.getShape(),
-+                                          unbroadcastDims);
-+    if (!collapseReassociationIndicesOptional.has_value()) {
-+      return rewriter.notifyMatchFailure(
-+          op, "Failure with getReassociationIndicesForCollapse call");
-+    }
-+    collapseReassociationIndices = collapseReassociationIndicesOptional.value();
- 
--    auto linalgOp = rewriter.create<linalg::GenericOp>(
--        loc, op->getResultTypes(), ValueRange{adaptor.getSrc()},
--        ValueRange{init}, indexingMaps, getNParallelLoopsAttrs(resultRank),
--        [&](OpBuilder &nestedBuilder, Location nestedLoc,
--            ValueRange blockArgs) {
--          Value opResult = blockArgs[0];
--          nestedBuilder.create<linalg::YieldOp>(loc, opResult);
--        });
-+    RankedTensorType collapseResultType =
-+        RankedTensorType::get(unbroadcastDims, sourceType.getElementType());
- 
--    linalgOp->setAttr("broadcastDims",
--                      rewriter.getDenseI64ArrayAttr(
--                          getBroadcastDims(sourceType, resultType)));
-+    auto collpasedOp = rewriter.create<tensor::CollapseShapeOp>(
-+        loc, collapseResultType, adaptor.getSrc(), collapseReassociationIndices);
- 
--    rewriter.replaceOp(op, linalgOp->getResults());
-+    auto broadcastOp = rewriter.create<linalg::BroadcastOp>(
-+        loc, collpasedOp, initEmpty,
-+        rewriter.getDenseI64ArrayAttr(broadcastDims));
-+
-+    rewriter.replaceOp(op, broadcastOp.getResults());
-     return success();
-   }
- };
-@@ -1159,43 +1247,27 @@ struct MatmulConverter : public OpConversionPattern<triton::DotOp> {
-   LogicalResult
-   matchAndRewrite(triton::DotOp op, OpAdaptor adaptor,
-                   ConversionPatternRewriter &rewriter) const override {
--    auto loc = op.getLoc();
--    auto opa = op.getA();
--    auto opb = op.getB();
--    auto opc = op.getC();
--
-+    auto opa = adaptor.getA();
-+    auto opb = adaptor.getB();
-+    auto opc = adaptor.getC();
-     auto dstType = cast<RankedTensorType>(op.getType());
--    auto elementType = dstType.getElementType();
--    bool integers = elementType.isInteger();
--    bool skipC = isZeroTensor(opc, integers);
--    auto init =
--        rewriter.create<tensor::EmptyOp>(loc, dstType.getShape(), elementType);
--    TypedAttr constantAttr =
--        integers
--            ? static_cast<TypedAttr>(rewriter.getIntegerAttr(elementType, 0))
--            : static_cast<TypedAttr>(rewriter.getFloatAttr(elementType, 0));
--
--    auto zero = rewriter.create<mlir::arith::ConstantOp>(
--        op.getLoc(), elementType, constantAttr);
--
--    auto zeroes =
--        rewriter.create<linalg::FillOp>(loc, ValueRange{zero}, ValueRange{init})
--            .result();
--
--    auto res = rewriter
--                   .create<linalg::MatmulOp>(loc, ValueRange{opa, opb},
--                                             ValueRange{zeroes})
--                   .getResult(0);
--
--    if (!skipC) {
--      if (integers) {
--        res = rewriter.create<arith::AddIOp>(loc, opc, res);
--      } else {
--        res = rewriter.create<arith::AddFOp>(loc, opc, res);
--      }
-+    auto inputPrec = op.getInputPrecision();
-+
-+    if (dstType.getRank() == 2) {
-+      auto matmulOp = rewriter.replaceOpWithNewOp<linalg::MatmulOp>(
-+          op, ValueRange{opa, opb}, ValueRange{opc});
-+      matmulOp->setAttr(
-+          "input_precison",
-+          rewriter.getStringAttr(stringifyInputPrecision(inputPrec)));
-+    } else if (dstType.getRank() == 3) {
-+      auto matmulOp = rewriter.replaceOpWithNewOp<linalg::BatchMatmulOp>(
-+          op, ValueRange{opa, opb}, ValueRange{opc});
-+      matmulOp->setAttr(
-+          "input_precison",
-+          rewriter.getStringAttr(stringifyInputPrecision(inputPrec)));
-+    } else {
-+      llvm_unreachable("Datatype of DotOp operands could only be 2D or 3D");
-     }
--
--    rewriter.replaceOp(op, res);
-     return success();
-   }
- };
 diff --git a/lib/Analysis/UseAnalysis.cpp b/lib/Analysis/UseAnalysis.cpp
-index 62e4508..8af4e1c 100644
+index 62e4508..2d81db4 100644
 --- a/lib/Analysis/UseAnalysis.cpp
 +++ b/lib/Analysis/UseAnalysis.cpp
-@@ -88,6 +88,20 @@ triton::UseAnalysis::visitOperation(Operation *op, ArrayRef<UseInfo *> operands,
-   return success();
- }
- 
-+std::string stringifyUseType(UseType useTy) {
-+  std::string ret;
-+  if (useTy == UseType::MetaUse) {
-+    ret = "MetaUse";
-+  } else if (useTy == UseType::DataUse) {
-+    ret = "DataUse";
-+  } else if (useTy == UseType::MixUse) {
-+    ret = "MixUse";
-+  } else if (useTy == UseType::Undefined) {
-+    ret = "Undefined";
-+  }
-+  return ret;
-+}
-+
- LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
-   MLIRContext *context = funcOp.getContext();
-   SymbolTableCollection symbolTable;
-@@ -120,12 +134,19 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
+@@ -120,12 +120,19 @@ LogicalResult triton::runUseAnalysis(triton::FuncOp &funcOp) {
        LLVM_DEBUG({ op->setAttr("Undefined", UnitAttr::get(context)); });
        return;
      } else if (useType == UseType::MetaUse) {
@@ -280,70 +28,74 @@ index 62e4508..8af4e1c 100644
        }
        return;
      } else if (useType == UseType::DataUse) {
-diff --git a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
-index 44ecd72..7e02d4e 100644
---- a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
-+++ b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalg.cpp
-@@ -80,7 +80,7 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
-   patterns.add<SplatConverter>(patterns.getContext());
-   patterns.add<UnsplatConverter>(patterns.getContext());
-   patterns.add<DenseConstantConverter>(patterns.getContext());
--  patterns.add<CumSumConverter>(patterns.getContext());
-+  // patterns.add<CumSumConverter>(patterns.getContext());
-   patterns.add<ReshapeConverter>(patterns.getContext());
+diff --git a/lib/Conversion/TritonArithToLinalg/CMakeLists.txt b/lib/Conversion/TritonArithToLinalg/CMakeLists.txt
+index 432dee7..f357483 100644
+--- a/lib/Conversion/TritonArithToLinalg/CMakeLists.txt
++++ b/lib/Conversion/TritonArithToLinalg/CMakeLists.txt
+@@ -1,6 +1,7 @@
+ add_triton_library(TritonArithToLinalg
+   TritonArithToLinalg.cpp
+   TritonArithToLinalgPass.cpp
++  ${TRTION_SHARED_NPU_SPECIFIC_SOURCES}/TritonArithToLinalg/NPUSpecific.cpp
  
-   populateExternElementwiseOpToMLIROps(patterns);
-@@ -101,5 +101,5 @@ void mlir::triton::populateTritonArithToLinalgConversionPatterns(
- 
-   // Note: the ordering here matters!
-   // These patterns are added last to they will be tried last.
--  linalg::populateElementwiseToLinalgConversionPatterns(patterns);
-+  // linalg::populateElementwiseToLinalgConversionPatterns(patterns);
- }
+   DEPENDS
+   TritonArithToLinalgConversionPassIncGen
+@@ -20,4 +21,6 @@ add_triton_library(TritonArithToLinalg
+   TritonTilingExtIR
+   TritonStructuredIR
+   TritonSharedUtils
++
++  DICPUtils
+ )
 diff --git a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp
-index 8c86fe2..6aa07da 100644
+index 8c86fe2..7a05c59 100644
 --- a/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp
 +++ b/lib/Conversion/TritonArithToLinalg/TritonArithToLinalgPass.cpp
-@@ -146,7 +146,8 @@ public:
-                 return isa<RankedTensorType>(type);
-               });
+@@ -4,6 +4,8 @@
+ // Licensed under the MIT license.
+ //
+ //===----------------------------------------------------------------------===//
++#include "dicp/Conversion/TritonToLinalgNPU/TritonArithToLinalg/NPUSpecific.h"
++#include "dicp/Utils/Utils.h"
  
--          return !operateOnTensors;
-+          // return !operateOnTensors;
-+          return true;
-         });
+ #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+@@ -26,7 +28,7 @@
+ 
+ using namespace mlir;
+ using namespace triton;
+-
++using namespace mlir::dicp;
+ namespace mlir {
+ namespace triton {
+ #define GEN_PASS_DEF_TRITONARITHTOLINALG
+@@ -124,7 +126,10 @@ public:
+     target.addLegalOp<triton::FuncOp, triton::ReturnOp>();
+ 
+     target.addDynamicallyLegalDialect<arith::ArithDialect, math::MathDialect>(
+-        [](Operation *op) {
++        [&](Operation *op) {
++          if (isAscendBackend(moduleOp))
++            return linked::isLegalConstantAndTensorArithmeticOpForNPU(op);
++
+           // Lower dense constant to linalg.fill
+           if (auto constOp = dyn_cast<arith::ConstantOp>(op)) {
+             if (!isa<RankedTensorType>(constOp.getResult().getType())) {
+@@ -185,9 +190,14 @@ public:
+       target.addLegalOp<triton::AssertOp>();
+     }
+ 
+-    triton::populateTritonArithToLinalgConversionPatterns(
+-        pidsToFuncArgs, addptrToLinalg, assertToCf, transposeReduceToRank0,
+-        patterns);
++    DISPATCH_BACKEND_CONVERSION_PATTERNS(
++      mlir::dicp::getBackend(moduleOp),
++      linked::populateTritonArithToLinalgNPUConversionPatterns(
++                          pidsToFuncArgs, addptrToLinalg, assertToCf,
++                          transposeReduceToRank0, patterns),
++      triton::populateTritonArithToLinalgConversionPatterns(
++                    pidsToFuncArgs, addptrToLinalg, assertToCf,
++                    transposeReduceToRank0, patterns));
  
      if (pidsToFuncArgs) {
-diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
-index 1c8ed9c..ceee83d 100644
---- a/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
-+++ b/lib/Conversion/TritonToLinalg/TritonToLinalg.cpp
-@@ -66,7 +66,7 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
-   patterns.add<UnsplatConverter>(patterns.getContext());
-   patterns.add<DenseConstantConverter>(patterns.getContext());
-   patterns.add<UnrealizedCastConverter>(patterns.getContext());
--  patterns.add<CumSumConverter>(patterns.getContext());
-+//   patterns.add<CumSumConverter>(patterns.getContext());
-   patterns.add<ReshapeConverter>(patterns.getContext());
- 
-   populateExternElementwiseOpToMLIROps(patterns);
-@@ -91,5 +91,5 @@ void mlir::triton::populateTritonToLinalgConversionPatterns(
-   // will be tried last. Incorrect ordering or having MetaOpConverter has lower
-   // PatternBenefit will result in element-wise meta ops being converted to
-   // linalg.generic ops.
--  linalg::populateElementwiseToLinalgConversionPatterns(patterns);
-+//   linalg::populateElementwiseToLinalgConversionPatterns(patterns);
- }
-diff --git a/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp b/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
-index 25b7db8..d31b410 100644
---- a/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
-+++ b/lib/Conversion/TritonToLinalg/TritonToLinalgPass.cpp
-@@ -172,7 +172,7 @@ public:
-                 return isa<RankedTensorType>(type);
-               });
- 
--          return !operateOnTensors;
-+          return true;
-         });
- 
-     triton::populateTritonToLinalgConversionPatterns(
+       for (auto func : getOperation().getOps<triton::FuncOp>()) {

@@ -235,10 +235,9 @@ class DICPBackend(BaseBackend):
             from triton.backends.dicp_triton.npu import (
                 make_ttir,
                 ttir_to_linalg,
-                ttir_to_ttsharedir,
+                ttir_to_ttsharedir_ascend,
                 ttsharedir_to_linkedir,
                 linalg_to_bin_enable_npu_compile,
-                ttir_post,
             )
 
             stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
@@ -255,11 +254,10 @@ class DICPBackend(BaseBackend):
                     )
             else:
                 if options.enable_npu_compile:
-                    stages["ttir_post"] = lambda src, metadata: ttir_post(
-                        src, metadata, options
-                    )
-                    stages["ttshared"] = lambda src, metadata: ttir_to_ttsharedir(
-                        src, metadata, options, named_ops=True
+                    stages["ttshared"] = (
+                        lambda src, metadata: ttir_to_ttsharedir_ascend(
+                            src, metadata, options, named_ops=True
+                        )
                     )
                     stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(
                         src, metadata, options, named_ops=True

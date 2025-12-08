@@ -7,8 +7,9 @@ import functools
 import hashlib
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
-from triton._C.libtriton import ir, passes
+from triton._C.libtriton import ir, passes, dicp_triton
 from triton.runtime.cache import get_dump_manager
+import triton.backends.dicp_triton.utils as dicp_utils
 from dataclasses import dataclass
 from typing import Any, Union, Tuple, Dict
 import ctypes
@@ -25,8 +26,11 @@ replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
 replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
 if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not None):
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
-    if not os.path.exists("./tmp"):
-        os.makedirs("./tmp")
+    dump_dir = "./tmp"
+    os.environ["TRITON_DUMP_DIR"] = os.environ.get("TRITON_DUMP_DIR", dump_dir)
+    if os.path.exists(dump_dir):
+        print(f"Directory **{dump_dir}** exists. Deleting the entire directory...")
+        shutil.rmtree(dump_dir)
 
 local_bishengir_path = os.path.join(os.path.dirname(__file__), "../../_C/bishengir")
 bisheng_install_path = os.environ.get("BISHENG_INSTALL_PATH", None)
@@ -47,6 +51,19 @@ def downgrade_llir(llir):
     llir = _downgrade_mem_attrs(llir)
     llir = _downgrade_stacksaverestore_intrinsics(llir)
     return llir
+
+
+def _replace_mod_ir_with_file(mod, filepath: str, stage_name: str):
+    p = Path(filepath)
+    if not p.exists():
+        raise FileNotFoundError(f"Replacement MLIR file not found: {filepath}")
+    print(f"[DEBUG] replacing '{stage_name}' IR with file '{filepath}'")
+    try:
+        new_mod = ir.parse_mlir_module(str(p), mod.context)
+        new_mod.context = mod.context
+        return new_mod
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse replacement MLIR file '{filepath}': {e}")
 
 
 def _downgrade_mem_attrs(llir: str):
@@ -330,6 +347,7 @@ def min_dot_size(target: GPUTarget):
 def make_ttir(mod, metadata, opt):
     if "hash" not in metadata:
         metadata["hash"] = hashlib.md5(f"{mod}-{metadata}".encode()).hexdigest()
+    mod.set_attr("dicp.backend", ir.builder(mod.context).get_string_attr("ascend"))
     # the same optimize pass for triton-ir as all other backends
     pm = ir.pass_manager(mod.context)
     pm.enable_debug()
@@ -341,36 +359,9 @@ def make_ttir(mod, metadata, opt):
     passes.common.add_licm(pm)
     passes.common.add_symbol_dce(pm)
     pm.run(mod)
-    if opt.debug:
-        dump_manager = get_dump_manager(metadata["hash"])
-        print(f"Dumping intermediate results to {dump_manager.cache_dir}")
-        dump_manager.put(str(mod), "kernel.ttir.mlir", binary=False)
-
+    if opt.debug or dump_ir:
+        dicp_utils._dump_stage_ir(str(mod), metadata["hash"], "kernel.ttir.mlir")
     return mod
-
-
-def ttir_post(mod, metadata, opt):
-    ttir_code = str(mod)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
-        dst_path = os.path.join(tmpdir, "kernel.ttir_post.mlir")
-        Path(src_path).write_text(ttir_code)
-        dicp_opt_path = _get_dicp_opt_path()
-        dicp_cmd_list = [
-            dicp_opt_path,
-            src_path,
-            "--canonicalize-cmpi",
-            "--canonicalize-triton-ir-ascend",
-            "-o",
-            dst_path,
-        ]
-        if dump_ir:
-            shutil.copy(src_path, "./tmp/kernel.ttir.mlir")
-            print(f"DEBUG dump ir[ttir_post] command: {dicp_cmd_list}")
-        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
-        if dump_ir:
-            shutil.copy(dst_path, "./tmp/kernel.ttir_post.mlir")
-        return Path(dst_path).read_text()
 
 
 def ttir_to_linalg(mod, metadata, opt, *, named_ops=True):
@@ -378,7 +369,7 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=True):
     # Get Triton-MLIR as string
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
-        src_path = os.path.join(tmpdir, "kernel.ttir_post.mlir")
+        src_path = os.path.join(tmpdir, "kernel.ttir.mlir")
         dst_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
         Path(src_path).write_text(ttir_code)
         triton_adapter_opt_path = _get_triton_adapter_opt_path()
@@ -403,50 +394,56 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=True):
         return Path(dst_path).read_text()
 
 
-def ttir_to_ttsharedir(mod, metadata, opt, *, named_ops=False):
-    ttir_code = str(mod)
-    # 注释掉gpu.barrier
-    ttir_code = re.sub(r"gpu\.barrier", r"// gpu.barrier", ttir_code)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        src_path = os.path.join(tmpdir, "kernel.ttir_post.mlir")
-        dst_ttshared_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
-        Path(src_path).write_text(ttir_code)
-        triton_shared_opt_path = _get_triton_shared_opt_path()
-        ttshared_cmd = (
-            "--triton-to-linalg-experimental"
-            if "v3_2" not in triton_shared_opt_path
-            else "--triton-to-linalg"
-        )
-
-        cmd_shared_list = [
-            triton_shared_opt_path,
-            src_path,
-            ttshared_cmd,
-            "-o",
-            dst_ttshared_path,
+def ttir_to_ttsharedir_ascend(mod, metadata, opt, *, named_ops=False):
+    pm = ir.pass_manager(mod.context)
+    dicp_triton.passes.triton_shared_ascend.add_canonicalize_cmpi(pm)
+    dicp_triton.passes.triton_shared_ascend.add_canonicalize_triton_ir_ascend(pm)
+    dicp_triton.passes.triton_shared_ascend.add_triton_to_linalg_npu(pm)
+    pm.run(mod)
+    if opt.debug or dump_ir:
+        cmd_list = [
+            _get_dicp_opt_path(),
+            "kernel.ttir.mlir",
+            "--canonicalize-cmpi",
+            "--canonicalize-triton-ir-ascend",
+            "--triton-to-linalg-npu-conversion",
         ]
-        if dump_ir:
-            print(f"DEBUG dump ir[ttir_to_ttsharedir] command: {cmd_shared_list}")
-        ret = subprocess.run(cmd_shared_list, capture_output=True, check=True)
-
-        if dump_ir:
-            shutil.copy(dst_ttshared_path, "./tmp/kernel.ttshared.mlir")
-        if replace_ttshared_ir is not None:
-            print(f"[DEBUG] Replace ttsharedir with {replace_ttshared_ir}")
-            return Path(replace_ttshared_ir).read_text()
-        return Path(dst_ttshared_path).read_text()
+        dicp_utils._dump_stage_ir(
+            str(mod), metadata["hash"], "kernel.ttshared.mlir", cmd_list
+        )
+    if replace_ttshared_ir is not None:
+        return _replace_mod_ir_with_file(
+            mod, replace_ttshared_ir, "ttir_to_ttsharedir_ascend"
+        )
+    return mod
 
 
 def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
-    ttsharedir_code = str(mod)
-    with tempfile.TemporaryDirectory() as tmpdir:
-        src_path = os.path.join(tmpdir, "kernel.ttshared.mlir")
-        dst_path = os.path.join(tmpdir, "kernel.linkedir.mlir")
-        Path(src_path).write_text(ttsharedir_code)
-        dicp_opt_path = _get_dicp_opt_path()
-        dicp_cmd_list = [
-            dicp_opt_path,
-            src_path,
+    pm = ir.pass_manager(mod.context)
+    dicp_triton.passes.linked_npu.add_lower_affine(pm)
+    dicp_triton.passes.linked_npu.add_normalize_slice_ops(pm)
+    dicp_triton.passes.linked_npu.add_linalg_if_to_select(pm)
+    dicp_triton.passes.linked_npu.add_linalg_generic_to_scf(pm)
+    dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
+    dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
+    dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
+    pm.run(mod)
+
+    # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
+    content = str(mod)
+    # 将"*xfxxx"替换成"?xfxxx"
+    content = content.replace("*xf", "?xf")
+    content = content.replace("*xi", "?xi")
+    content = content.replace("*xbf", "?xbf")
+    # 匹配形如 "memref<...> to tensor<...>" 的模式
+    pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
+    # 使用正则替换，保留memref和tensor类型，中间插入注释
+    content = re.sub(pattern, r"\1 // to \2", content)
+
+    if opt.debug or dump_ir:
+        cmd_list = [
+            _get_dicp_opt_path(),
+            "kernel.ttshared.mlir",
             "--lower-affine",
             "--normalize-slice-ops",
             "--linalg-if-to-select",
@@ -454,39 +451,15 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             "--scalar-to-1d-tensor",
             f"--linalg-to-linked=global-kernel=false named-ops=true",
             "--linked-to-hivm",
-            "-o",
-            dst_path,
         ]
-        if dump_ir:
-            print(f"DEBUG dump ir[ttsharedir_to_linkedir] command: {dicp_cmd_list}")
-        ret = subprocess.run(dicp_cmd_list, capture_output=True, check=True)
-        # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
-        with open(dst_path, "r") as f:
-            content = f.read()
-            # 将"*xfxxx"替换成"?xfxxx"
-            content = content.replace("*xf", "?xf")
-            content = content.replace("*xi", "?xi")
-            content = content.replace("*xbf", "?xbf")
-            with open(dst_path, "w") as f:
-                f.write(content)
+        dicp_utils._dump_stage_ir(
+            content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
+        )
 
-        # 匹配形如 "memref<...> to tensor<...>" 的模式
-        pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
-        with open(dst_path, "r") as f:
-            lines = f.readlines()
-        modified = []
-        for line in lines:
-            # 使用正则替换，保留memref和tensor类型，中间插入注释
-            new_line = re.sub(pattern, r"\1 // to \2", line)
-            modified.append(new_line)
-        with open(dst_path, "w") as f:
-            f.writelines(modified)
-        if dump_ir:
-            shutil.copy(dst_path, "./tmp/kernel.linkedir.mlir")
-        if replace_linked_ir is not None:
-            print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
-            return Path(replace_linked_ir).read_text()
-        return Path(dst_path).read_text()
+    if replace_linked_ir is not None:
+        print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
+        return Path(replace_linked_ir).read_text()
+    return content
 
 
 def linalg_to_llir(linalg: str, metadata, opt):
@@ -721,7 +694,14 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         )
         if dump_ir:
             print(f"DEBUG dump ir[bishengir-compile] command: {cmd_list}")
-        ret = subprocess.run(cmd_list, capture_output=True, check=True)
+        try:
+            ret = subprocess.run(cmd_list, capture_output=True, check=True, text=True)
+        except subprocess.CalledProcessError as e:
+            # Print compilation error details
+            print(f"bishengir-compile compilation failed with exit code {e.returncode}")
+            print(f"Stderr:\n{e.stderr}")
+            raise RuntimeError("bishengir-compile compilation failed") from e
+
         if not Path(bin_path).is_file():
             print(ret.stderr.decode("utf-8"))
         if Path(callback_path).is_file():

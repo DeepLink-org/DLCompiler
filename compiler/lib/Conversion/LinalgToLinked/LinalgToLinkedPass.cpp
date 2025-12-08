@@ -425,6 +425,11 @@ public:
 
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:
+  explicit LinalgToLinkedPass(bool globalKernel, bool namedOps) {
+    this->globalKernel = globalKernel;
+    this->namedOps = namedOps;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<func::FuncDialect, arith::ArithDialect, math::MathDialect,
@@ -558,6 +563,7 @@ public:
 
 } // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> linked::createLinalgToLinkedPass() {
-  return std::make_unique<LinalgToLinkedPass>();
+std::unique_ptr<OperationPass<ModuleOp>>
+linked::createLinalgToLinkedPass(bool globalKernel, bool namedOps) {
+  return std::make_unique<LinalgToLinkedPass>(globalKernel, namedOps);
 }

@@ -1,6 +1,7 @@
 #include "dicp/Conversion/LinalgToLinked/Passes.h"
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
+#include "dicp/Conversion/TritonToLinalgNPU/TritonToLinalgNPUCoversion/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "dicp/Dialect/LinalgExt/Transforms/Passes.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
@@ -90,6 +91,8 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::trtion_ext::registerCanonicalizeTritonIRAscendPass();
   dicp::trtion_ext::registerCanonicalizeCmpiPass();
   dicp::linked::registerLinkedToHIVMPass();
+  dicp::linked::registerTritonToLinalgNPUCoversionPass();
+
   dicp::LinalgExt::registerLinalgIfToSelectPass();
   dicp::LinalgExt::registerLinalgGenericToSCFPass();
   dicp::LinalgExt::registerScalarTo1DTensorPass();

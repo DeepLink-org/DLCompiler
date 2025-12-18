@@ -246,6 +246,69 @@ struct LinalgGenericToScfForPattern
   }
 };
 
+/// Pattern that matches: tensor.empty -> linalg.fill -> tensor.extract
+/// and optimizes it to directly use the scalar value.
+class SimplifySingleElementFillExtractPattern
+    : public OpRewritePattern<tensor::ExtractOp> {
+public:
+  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp extractOp,
+                                PatternRewriter &rewriter) const override {
+    // 1. Verify all indices are constant zero
+    for (Value index : extractOp.getIndices()) {
+      auto constIndex = index.getDefiningOp<arith::ConstantIndexOp>();
+      if (!constIndex || constIndex.value() != 0) {
+        return failure();
+      }
+    }
+
+    // 2. Get the source tensor and check if it comes from linalg.fill
+    auto fillOp = extractOp.getTensor().getDefiningOp<linalg::FillOp>();
+    if (!fillOp) {
+      return failure();
+    }
+
+    // 3. Verify the filled tensor has exactly one element
+    auto filledTensorType =
+        dyn_cast<RankedTensorType>(fillOp.getOutputs()[0].getType());
+    if (!filledTensorType || filledTensorType.getNumElements() != 1) {
+      return failure();
+    }
+
+    // 4. Verify fill value is a scalar (not a tensor)
+    Value fillValue = fillOp.getInputs()[0];
+    if (isa<ShapedType>(fillValue.getType())) {
+      return failure();
+    }
+
+    // 5. For safety, ensure the filled tensor is only used by this extract
+    //    This prevents breaking other uses of the same tensor
+    if (!fillOp.getResult(0).hasOneUse()) {
+      return failure();
+    }
+
+    // 6. Try to find the tensor.empty operation
+    //    We'll check its uses after we replace the extract operation
+    auto emptyOp =
+        fillOp.getDpsInitOperand(0)->get().getDefiningOp<tensor::EmptyOp>();
+
+    // 7. Replace extract with the scalar fill value
+    rewriter.replaceOp(extractOp, fillValue);
+
+    // 8. Now that extract is replaced, fillOp's result should have no uses
+    //    We can safely erase it
+    rewriter.eraseOp(fillOp);
+
+    // 9. After fillOp is erased, check if emptyOp still exists and has no uses
+    if (emptyOp && emptyOp->use_empty()) {
+      rewriter.eraseOp(emptyOp);
+    }
+
+    return success();
+  }
+};
+
 struct LinalgGenericToSCFPass
     : mlir::dicp::LinalgExt::impl::LinalgGenericToSCFBase<
           LinalgGenericToSCFPass> {
@@ -256,6 +319,7 @@ struct LinalgGenericToSCFPass
     {
       RewritePatternSet patterns(context);
       patterns.add<LinalgGenericToScfForPattern>(context);
+      patterns.add<SimplifySingleElementFillExtractPattern>(context);
       populateRemoveSingleIterationLoopPattern(patterns);
       if (failed(applyPatternsGreedily(moduleOp, std::move(patterns)))) {
         signalPassFailure();

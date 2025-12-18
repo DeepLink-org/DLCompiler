@@ -21,6 +21,7 @@ target_link_libraries(dicp_opt PRIVATE
   LinalgExtTransforms
   LinkedToHIVM
   DICPLinalgExt
+  DiscreteMaskAccessConversion
 
   TritonToLinalg
   TritonTilingExtIR

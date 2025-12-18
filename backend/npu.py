@@ -396,6 +396,11 @@ def ttir_to_linalg(mod, metadata, opt, *, named_ops=True):
 
 def ttir_to_ttsharedir_ascend(mod, metadata, opt, *, named_ops=False):
     pm = ir.pass_manager(mod.context)
+    dicp_triton.passes.triton_shared_ascend.add_discrete_mask_access_conversion(
+        pm, False, False
+    )
+    dicp_triton.passes.triton_shared_ascend.add_triton_to_unstructure(pm)
+    dicp_triton.passes.triton_shared_ascend.add_bubble_up_operation(pm)
     dicp_triton.passes.triton_shared_ascend.add_canonicalize_cmpi(pm)
     dicp_triton.passes.triton_shared_ascend.add_canonicalize_triton_ir_ascend(pm)
     dicp_triton.passes.triton_shared_ascend.add_triton_to_linalg_npu(pm)
@@ -404,6 +409,9 @@ def ttir_to_ttsharedir_ascend(mod, metadata, opt, *, named_ops=False):
         cmd_list = [
             _get_dicp_opt_path(),
             "kernel.ttir.mlir",
+            "--discrete-mask-access-conversion",
+            "--triton-to-unstructure",
+            "--bubble-up-operation",
             "--canonicalize-cmpi",
             "--canonicalize-triton-ir-ascend",
             "--triton-to-linalg-npu-conversion",

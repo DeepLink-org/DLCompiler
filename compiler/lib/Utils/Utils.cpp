@@ -34,6 +34,7 @@
 #include <map>
 #include <optional>
 #include <unordered_set>
+#include <variant>
 
 #define DEBUG_TYPE "Dicp-Utils"
 using namespace mlir;
@@ -241,4 +242,266 @@ scf::ForOp createNestedLoops(
 
   return loop;
 }
+
+FailureOr<TypedAttr> specializeTypelessValueToAttr(TypelessValue value,
+                                                   Type type, OpBuilder &b) {
+  // Common float and integer MLIR types used as map keys.
+  mlir::Type f16Ty = Float16Type::get(b.getContext());
+  mlir::Type f32Ty = Float32Type::get(b.getContext());
+  mlir::Type bf16Ty = BFloat16Type::get(b.getContext());
+
+  mlir::Type i8TySL = IntegerType::get(
+      b.getContext(), 8, IntegerType::SignednessSemantics::Signless);
+  mlir::Type i8TyS = IntegerType::get(b.getContext(), 8,
+                                      IntegerType::SignednessSemantics::Signed);
+  mlir::Type i8TyU = IntegerType::get(
+      b.getContext(), 8, IntegerType::SignednessSemantics::Unsigned);
+
+  mlir::Type i16TySL = IntegerType::get(
+      b.getContext(), 16, IntegerType::SignednessSemantics::Signless);
+  mlir::Type i16TyS = IntegerType::get(
+      b.getContext(), 16, IntegerType::SignednessSemantics::Signed);
+  mlir::Type i16TyU = IntegerType::get(
+      b.getContext(), 16, IntegerType::SignednessSemantics::Unsigned);
+
+  mlir::Type i32TySL = IntegerType::get(
+      b.getContext(), 32, IntegerType::SignednessSemantics::Signless);
+  mlir::Type i32TyS = IntegerType::get(
+      b.getContext(), 32, IntegerType::SignednessSemantics::Signed);
+  mlir::Type i32TyU = IntegerType::get(
+      b.getContext(), 32, IntegerType::SignednessSemantics::Unsigned);
+
+  mlir::Type i64TySL = IntegerType::get(
+      b.getContext(), 64, IntegerType::SignednessSemantics::Signless);
+  mlir::Type i64TyS = IntegerType::get(
+      b.getContext(), 64, IntegerType::SignednessSemantics::Signed);
+  mlir::Type i64TyU = IntegerType::get(
+      b.getContext(), 64, IntegerType::SignednessSemantics::Unsigned);
+
+  // Create APFloat values for float semantics (half, single, bfloat).
+  llvm::APFloat halfZero = llvm::APFloat::getZero(llvm::APFloat::IEEEhalf());
+  llvm::APFloat halfOne(llvm::APFloat::IEEEhalf(), 1);
+  llvm::APFloat halfMax = llvm::APFloat::getInf(llvm::APFloat::IEEEhalf());
+  llvm::APFloat halfMin =
+      llvm::APFloat::getInf(llvm::APFloat::IEEEhalf(), /*Negative=*/true);
+
+  llvm::APFloat floatZero = llvm::APFloat::getZero(llvm::APFloat::IEEEsingle());
+  llvm::APFloat floatOne(llvm::APFloat::IEEEsingle(), 1);
+  llvm::APFloat floatMax = llvm::APFloat::getInf(llvm::APFloat::IEEEsingle());
+  llvm::APFloat floatMin =
+      llvm::APFloat::getInf(llvm::APFloat::IEEEsingle(), /*Negative=*/true);
+
+  // BF16 (bfloat16) semantics via APFloat.
+  llvm::APFloat bfloatZero = llvm::APFloat::getZero(llvm::APFloat::BFloat());
+  llvm::APFloat bfloatOne(llvm::APFloat::BFloat(), 1);
+  llvm::APFloat bfloatMax = llvm::APFloat::getInf(llvm::APFloat::BFloat());
+  llvm::APFloat bfloatMin =
+      llvm::APFloat::getInf(llvm::APFloat::BFloat(), /*Negative=*/true);
+
+  // Helper to use the opaque pointer of a Type as a stable key.
+  auto toPtr = [](mlir::Type ty) { return ty.getAsOpaquePointer(); };
+
+  // Store initialization values. Use signed and unsigned integer variants to
+  // avoid narrowing/overflow problems.
+  using InitValVariant =
+      std::variant<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t,
+                   int64_t, uint64_t, llvm::APFloat>;
+
+  std::map<std::pair<TypelessValue, const void *>, InitValVariant> initMap = {
+      // Zero values (floats and integers).
+      {{TypelessValue::Zero, toPtr(f16Ty)}, halfZero},
+      {{TypelessValue::Zero, toPtr(f32Ty)}, floatZero},
+      {{TypelessValue::Zero, toPtr(bf16Ty)}, bfloatZero},
+
+      {{TypelessValue::Zero, toPtr(i8TySL)}, (int8_t)0},
+      {{TypelessValue::Zero, toPtr(i8TyS)}, (int8_t)0},
+      {{TypelessValue::Zero, toPtr(i8TyU)}, (uint8_t)0},
+
+      {{TypelessValue::Zero, toPtr(i16TySL)}, (int16_t)0},
+      {{TypelessValue::Zero, toPtr(i16TyS)}, (int16_t)0},
+      {{TypelessValue::Zero, toPtr(i16TyU)}, (uint16_t)0},
+
+      {{TypelessValue::Zero, toPtr(i32TySL)}, (int32_t)0},
+      {{TypelessValue::Zero, toPtr(i32TyS)}, (int32_t)0},
+      {{TypelessValue::Zero, toPtr(i32TyU)}, (uint32_t)0},
+
+      {{TypelessValue::Zero, toPtr(i64TySL)}, (int64_t)0},
+      {{TypelessValue::Zero, toPtr(i64TyS)}, (int64_t)0},
+      {{TypelessValue::Zero, toPtr(i64TyU)}, (uint64_t)0},
+
+      // Min values (floats and integers).
+      {{TypelessValue::Min, toPtr(f16Ty)}, halfMin},
+      {{TypelessValue::Min, toPtr(f32Ty)}, floatMin},
+      {{TypelessValue::Min, toPtr(bf16Ty)}, bfloatMin},
+
+      {{TypelessValue::Min, toPtr(i8TySL)}, std::numeric_limits<int8_t>::min()},
+      {{TypelessValue::Min, toPtr(i8TyS)}, std::numeric_limits<int8_t>::min()},
+      {{TypelessValue::Min, toPtr(i8TyU)}, std::numeric_limits<uint8_t>::min()},
+
+      {{TypelessValue::Min, toPtr(i16TySL)},
+       std::numeric_limits<int16_t>::min()},
+      {{TypelessValue::Min, toPtr(i16TyS)},
+       std::numeric_limits<int16_t>::min()},
+      {{TypelessValue::Min, toPtr(i16TyU)},
+       std::numeric_limits<uint16_t>::min()},
+
+      {{TypelessValue::Min, toPtr(i32TySL)},
+       std::numeric_limits<int32_t>::min()},
+      {{TypelessValue::Min, toPtr(i32TyS)},
+       std::numeric_limits<int32_t>::min()},
+      {{TypelessValue::Min, toPtr(i32TyU)},
+       std::numeric_limits<uint32_t>::min()},
+
+      {{TypelessValue::Min, toPtr(i64TySL)},
+       std::numeric_limits<int64_t>::min()},
+      {{TypelessValue::Min, toPtr(i64TyS)},
+       std::numeric_limits<int64_t>::min()},
+      {{TypelessValue::Min, toPtr(i64TyU)},
+       std::numeric_limits<uint64_t>::min()}, // 0
+
+      // Max values (floats and integers).
+      {{TypelessValue::Max, toPtr(f16Ty)}, halfMax},
+      {{TypelessValue::Max, toPtr(f32Ty)}, floatMax},
+      {{TypelessValue::Max, toPtr(bf16Ty)}, bfloatMax},
+
+      {{TypelessValue::Max, toPtr(i8TySL)}, std::numeric_limits<int8_t>::max()},
+      {{TypelessValue::Max, toPtr(i8TyS)}, std::numeric_limits<int8_t>::max()},
+      {{TypelessValue::Max, toPtr(i8TyU)}, std::numeric_limits<uint8_t>::max()},
+
+      {{TypelessValue::Max, toPtr(i16TySL)},
+       std::numeric_limits<int16_t>::max()},
+      {{TypelessValue::Max, toPtr(i16TyS)},
+       std::numeric_limits<int16_t>::max()},
+      {{TypelessValue::Max, toPtr(i16TyU)},
+       std::numeric_limits<uint16_t>::max()},
+
+      {{TypelessValue::Max, toPtr(i32TySL)},
+       std::numeric_limits<int32_t>::max()},
+      {{TypelessValue::Max, toPtr(i32TyS)},
+       std::numeric_limits<int32_t>::max()},
+      {{TypelessValue::Max, toPtr(i32TyU)},
+       std::numeric_limits<uint32_t>::max()},
+
+      {{TypelessValue::Max, toPtr(i64TySL)},
+       std::numeric_limits<int64_t>::max()},
+      {{TypelessValue::Max, toPtr(i64TyS)},
+       std::numeric_limits<int64_t>::max()},
+      {{TypelessValue::Max, toPtr(i64TyU)},
+       std::numeric_limits<uint64_t>::max()},
+  };
+
+  // Lookup key for the requested typeless value + concrete type.
+  std::pair<TypelessValue, const void *> key =
+      std::make_pair(value, toPtr(type));
+  auto it = initMap.find(key);
+  if (it == initMap.end())
+    return failure();
+
+  // Integer handling: prefer using the provided 'type' for IntegerAttr so
+  // signedness/width are preserved.
+  if (type.isInteger(8) || type.isInteger(16) || type.isInteger(32) ||
+      type.isInteger(64)) {
+    unsigned bitWidth = type.getIntOrFloatBitWidth();
+
+    // Signed integers: extract signed variant and create IntegerAttr directly.
+    if (type.isSignedInteger(bitWidth)) {
+      switch (bitWidth) {
+      case 8:
+        return success(IntegerAttr::get(type, std::get<int8_t>(it->second)));
+      case 16:
+        return success(IntegerAttr::get(type, std::get<int16_t>(it->second)));
+      case 32:
+        return success(IntegerAttr::get(type, std::get<int32_t>(it->second)));
+      case 64:
+        return success(IntegerAttr::get(type, std::get<int64_t>(it->second)));
+      default:
+        return failure();
+      }
+    }
+
+    // Unsigned integers: extract unsigned variant. For 64-bit unsigned use
+    // APInt to avoid overflow of signed int64_t.
+    if (type.isUnsignedInteger(bitWidth)) {
+      switch (bitWidth) {
+      case 8:
+        return success(IntegerAttr::get(
+            type, static_cast<int64_t>(std::get<uint8_t>(it->second))));
+      case 16:
+        return success(IntegerAttr::get(
+            type, static_cast<int64_t>(std::get<uint16_t>(it->second))));
+      case 32:
+        return success(IntegerAttr::get(
+            type, static_cast<int64_t>(std::get<uint32_t>(it->second))));
+      case 64: {
+        uint64_t uval = std::get<uint64_t>(it->second);
+        llvm::APInt apv(/*numBits=*/64, uval, /*isSigned=*/false);
+        return success(IntegerAttr::get(type, apv));
+      }
+      default:
+        return failure();
+      }
+    }
+
+    // Signless integers: treat as signless using the signed variants (original
+    // code used signless integers everywhere for constants).
+    switch (bitWidth) {
+    case 8:
+      return success(IntegerAttr::get(type, std::get<int8_t>(it->second)));
+    case 16:
+      return success(IntegerAttr::get(type, std::get<int16_t>(it->second)));
+    case 32:
+      return success(IntegerAttr::get(type, std::get<int32_t>(it->second)));
+    case 64:
+      return success(IntegerAttr::get(type, std::get<int64_t>(it->second)));
+    default:
+      return failure();
+    }
+  }
+
+  // Floating-point handling (half, bf16, single).
+  if (isa<Float16Type>(type))
+    return success(FloatAttr::get(f16Ty, std::get<llvm::APFloat>(it->second)));
+  if (isa<Float32Type>(type))
+    return success(FloatAttr::get(f32Ty, std::get<llvm::APFloat>(it->second)));
+  if (isa<BFloat16Type>(type))
+    return success(FloatAttr::get(bf16Ty, std::get<llvm::APFloat>(it->second)));
+
+  return failure();
+}
+
+// Specialize the Typeless Value (Zero, Min, Max) into a mlir constant value
+FailureOr<Value> specializeTypelessValueToConstant(TypelessValue value,
+                                                   Type type, Location loc,
+                                                   OpBuilder &b) {
+  std::function<mlir::Type(mlir::Type)> getElemType = [&](mlir::Type ty) {
+    if (auto ptrType = dyn_cast<triton::PointerType>(getElementTypeOrSelf(ty)))
+      return getElemType(ptrType.getPointeeType());
+    if (auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(ty))
+      return getElemType(tensorType.getElementType());
+    return ty;
+  };
+
+  if (value == TypelessValue::Undefined)
+    return failure();
+  if (auto tensorType = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
+    auto elemType = getElemType(tensorType);
+    FailureOr<TypedAttr> typedAttr =
+        specializeTypelessValueToAttr(value, elemType, b);
+    if (failed(typedAttr))
+      return failure();
+    auto otherTensorType =
+        RankedTensorType::get(tensorType.getShape(), elemType);
+    auto denseAttr = DenseElementsAttr::get(otherTensorType, *typedAttr);
+    return b.create<mlir::arith::ConstantOp>(loc, denseAttr).getResult();
+  }
+  if (mlir::isa<mlir::FloatType>(type) || mlir::isa<mlir::IntegerType>(type)) {
+    FailureOr<TypedAttr> typedAttr =
+        specializeTypelessValueToAttr(value, type, b);
+    if (failed(typedAttr))
+      return failure();
+    return b.create<mlir::arith::ConstantOp>(loc, *typedAttr).getResult();
+  }
+  return failure();
+}
+
 } // namespace mlir::dicp

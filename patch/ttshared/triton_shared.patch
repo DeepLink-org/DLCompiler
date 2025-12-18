@@ -1,3 +1,18 @@
+diff --git a/include/triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.td b/include/triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.td
+index 17c3ce9..30b88eb 100644
+--- a/include/triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.td
++++ b/include/triton-shared/Dialect/TritonStructured/IR/TritonStructuredDialect.td
+@@ -233,8 +233,8 @@ def TTS_GetStructuredStateOp : TTS_Op<"get_structured_state", [AttrSizedResultSe
+   let summary = "Placeholder for the structured pointer states computed during PtrAnalysis.";
+   let description = "Used to pass the offsets and strides to scf.for op to simplify IR rewrites.";
+ 
+-  let arguments = (ins AnyTypeOf<[TT_PtrLike, I32Tensor]>:$input);
+-  let results = (outs AnyTypeOf<[TT_PtrLike, I32Tensor]>:$structured, Variadic<Index>:$offsets, Variadic<Index>:$strides);
++  let arguments = (ins AnyTypeOf<[TT_PtrLike, TT_IndexTensorLike]>:$input);
++  let results = (outs AnyTypeOf<[TT_PtrLike, TT_IndexTensorLike]>:$structured, Variadic<Index>:$offsets, Variadic<Index>:$strides);
+ 
+   let builders = [
+     OpBuilder<(ins "Value":$input)>,
 diff --git a/lib/Analysis/UseAnalysis.cpp b/lib/Analysis/UseAnalysis.cpp
 index 62e4508..2d81db4 100644
 --- a/lib/Analysis/UseAnalysis.cpp

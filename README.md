@@ -8,6 +8,10 @@ DLCompiler是上海人工智能实验室（上海 AI 实验室）DeepLink 团队
 
 ## 基于华为昇腾芯片
 
+### 支持芯片
+
+910B2
+
 ### pip安装
 
 ```bash
@@ -38,7 +42,7 @@ pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1  \
 1. 要求torch_npu版本 >= 2.6.0
 
 ```bash
-pip install torch_npu==2.6.0
+pip install torch_npu==2.6.0 -i https://mirrors.huaweicloud.com/repository/pypi/simple
 ```
 
 #### 编译命令
@@ -61,6 +65,10 @@ python ./test/ascend/passed_tests/test_silu_and_mul.py
 
 ## 基于寒武纪芯片
 
+### 支持芯片
+
+MLU590
+
 ### 编译
 
 ```bash
@@ -75,6 +83,12 @@ python 01-vector-add.py
 ```
 
 ## 基于沐曦芯片
+
+### 支持芯片
+
+C500
+
+### 编译
 
 ```bash
 bash compile_on_maca.sh

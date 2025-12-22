@@ -35,6 +35,8 @@ namespace mlir::dicp {
 const std::string GeneratedByMakeTensorPtrTAG = "GeneratedByMakeTensorPtr";
 const std::string MayImplicitTransposeWithLastAxisTAG =
     "MayImplicitTransposeWithLastAxis";
+const std::string discreteMaskAttrName = "DiscreteMask";
+const std::string discreteAttrName = "DiscreteMemAccess";
 
 // Gets the string attribute "dicp.backend" from the module if it exists.
 llvm::StringRef getBackend(ModuleOp module);
@@ -117,6 +119,11 @@ scf::ForOp createNestedLoops(
     ValueRange initArgs,
     function_ref<void(OpBuilder &, Location, SmallVector<Value> &, ValueRange)>
         bodyBuilder);
+
+enum class TypelessValue { Undefined = 0, Zero = 1, Min = 2, Max = 3 };
+
+FailureOr<Value> specializeTypelessValueToConstant(TypelessValue, Type,
+                                                   Location, OpBuilder &);
 
 } // namespace mlir::dicp
 

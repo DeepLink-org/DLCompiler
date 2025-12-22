@@ -1,7 +1,10 @@
+#include "dicp/Conversion/DiscreteMaskAccessConversion/Passes.h"
 #include "dicp/Conversion/LinalgToLinked/Passes.h"
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
+#include "dicp/Conversion/TritonToLinalgNPU/MemRefCopyGatherToTensorInsert/Passes.h"
 #include "dicp/Conversion/TritonToLinalgNPU/TritonToLinalgNPUCoversion/Passes.h"
+#include "dicp/Conversion/TritonToUnstructure/Passes.h"
 #include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
 #include "dicp/Dialect/LinalgExt/Transforms/Passes.h"
 #include "dicp/Dialect/NPU/IR/NPUDialect.h"
@@ -86,12 +89,17 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllPasses();
   mlir::registerLinalgPasses();
 
+  mlir::triton::registerDiscreteMaskAccessConversionPass();
+  mlir::triton::registerTritonToUnstructurePass();
+  mlir::triton::registerBubbleUpOperationPass();
+
   dicp::npu::registerLinalgToNPUPass();
   dicp::linked::registerLinalgToLinkedPass();
   dicp::trtion_ext::registerCanonicalizeTritonIRAscendPass();
   dicp::trtion_ext::registerCanonicalizeCmpiPass();
   dicp::linked::registerLinkedToHIVMPass();
   dicp::linked::registerTritonToLinalgNPUCoversionPass();
+  dicp::linked::registerMemRefCopyGatherToTensorInsertPass();
 
   dicp::LinalgExt::registerLinalgIfToSelectPass();
   dicp::LinalgExt::registerLinalgGenericToSCFPass();

@@ -58,6 +58,8 @@ if (TRITON_BUILD_PYTHON_MODULE)
 
     LinalgToLinked
     LinkedToHIVM
+    DiscreteMaskAccessConversion
+    TritonToUnstructure
     )
     target_link_libraries(tritonDicpTriton PRIVATE Python3::Module pybind11::headers)
 endif()

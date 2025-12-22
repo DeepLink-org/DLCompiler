@@ -1,8 +1,11 @@
+#include "dicp/Conversion/DiscreteMaskAccessConversion/Passes.h"
 #include "dicp/Conversion/LinalgToLinked/LinalgToLinked.h"
 #include "dicp/Conversion/LinalgToLinked/Passes.h"
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "dicp/Conversion/TritonToLinalgNPU/TritonToLinalgNPUCoversion/Passes.h"
+#include "dicp/Conversion/TritonToUnstructure/BubbleUpOperation.h"
+#include "dicp/Conversion/TritonToUnstructure/UnstructureConversionPass.h"
 #include "dicp/Dialect/LinalgExt/Transforms/Passes.h"
 #include "dicp/Dialect/TritonExt/Transforms/Passes.h"
 
@@ -44,6 +47,13 @@ void init_triton_dicp_triton_pass_triton_shared_ascend(py::module &&m) {
                      dicp::trtion_ext::createCanonicalizeTritonIRAscendPass);
   ADD_PASS_WRAPPER_0("add_triton_to_linalg_npu",
                      dicp::linked::createTritonToLinalgNPUCoversionPass);
+  ADD_PASS_OPTION_WRAPPER_2("add_discrete_mask_access_conversion",
+                            triton::createDiscreteMaskAccessConversionPass,
+                            bool, bool);
+  ADD_PASS_WRAPPER_0("add_triton_to_unstructure",
+                     triton::createTritonToUnstructurePass);
+  ADD_PASS_WRAPPER_0("add_bubble_up_operation",
+                     triton::createBubbleUpOperationPass);
 }
 
 void init_triton_dicp_triton_pass_linked_npu(py::module &&m) {

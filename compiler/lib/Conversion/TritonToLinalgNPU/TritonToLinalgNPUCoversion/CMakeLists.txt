@@ -28,4 +28,6 @@ add_triton_library(TritonToLinalgNPUCoversion
   TritonToUnstructured
   TritonPtrToMemref
   UnstructuredToMemref
+  MemRefCopyGatherToTensorInsert
+  TritonToUnstructure
 )

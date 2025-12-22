@@ -1,4 +1,6 @@
+#include "dicp/Conversion/TritonToLinalgNPU/MemRefCopyGatherToTensorInsert/Passes.h"
 #include "dicp/Conversion/TritonToLinalgNPU/TritonToLinalgNPUCoversion/TritonToLinalgNPUCoversion.h"
+#include "dicp/Conversion/TritonToUnstructure/BubbleUpOperation.h"
 
 #include "triton-shared/Conversion/StructuredToMemref/StructuredToMemref.h"
 #include "triton-shared/Conversion/TritonArithToLinalg/TritonArithToLinalg.h"
@@ -58,6 +60,8 @@ public:
     pm.addPass(createTritonArithToLinalgPass(true, false));
 
     pm.addPass(createStructuredToMemrefPass());
+    pm.addPass(createMemRefCopyGatherToTensorInsertPass());
+
     pm.addPass(createUnstructuredToMemrefPass());
     pm.addPass(createTritonPtrToMemrefPass());
     pm.addPass(createTritonToPtrPass());
@@ -76,7 +80,6 @@ public:
       // collapseShape pass
       pm.addPass(createCollapseShapePass());
     }
-
     if (failed(runPipeline(pm, getOperation()))) {
       signalPassFailure();
     }

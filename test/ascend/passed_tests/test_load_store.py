@@ -213,7 +213,7 @@ def test_load_store_sle_mask(param_list):
         ["int8", (8, 8, 4), 2, 128, 64],
     ],
 )
-def test_load_store_sle_mask(param_list):
+def test_load_store_sge_mask(param_list):
     # 生成数据
     dtype, shape, ncore, xblock, xblock_sub = param_list
     x0 = test_common.generate_tensor(shape, dtype).npu()

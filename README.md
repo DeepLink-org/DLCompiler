@@ -65,11 +65,11 @@ python ./test/ascend/passed_tests/test_silu_and_mul.py
 
 ## 基于寒武纪芯片
 
-### 支持芯片
+### 支持寒武纪芯片
 
 MLU590
 
-### 编译
+### 寒武纪上编译
 
 ```bash
 bash compile_on_mlu.sh
@@ -84,11 +84,11 @@ python 01-vector-add.py
 
 ## 基于沐曦芯片
 
-### 支持芯片
+### 支持沐曦芯片
 
 C500
 
-### 编译
+### 沐曦上编译
 
 ```bash
 bash compile_on_maca.sh

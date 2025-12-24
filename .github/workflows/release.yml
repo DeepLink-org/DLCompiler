@@ -1,0 +1,39 @@
+name: Release on Tag
+
+on:
+  push:
+    tags:
+      - "v*.*.*"  # 只对形如 v1.2.3 的 tag 触发
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整 git 历史，便于 setuptools_scm 等工具
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build dependencies
+        run: |
+          pip install build twine
+
+      # 可选：如果使用 setuptools_scm 动态管理版本，需安装
+      # - name: Install setuptools_scm
+      #   run: pip install setuptools_scm
+
+      - name: Build package
+        run: python -m build
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

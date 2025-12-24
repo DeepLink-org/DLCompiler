@@ -54,7 +54,7 @@ jobs:
           pip install build twine -i https://mirrors.huaweicloud.com/repository/pypi/simple
           pip install pybind11 -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
-      - name: Build DLCompiler
+      - name: Build DLCompiler Package
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
@@ -77,6 +77,25 @@ jobs:
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             bash compile_shared.sh apply_patch=true build_package=true
+          find ${{ env.RELEASE_PATH }} -name "*.whl"
+
+      - name: Check build output files
+        run: |
+          set -ex
+          echo "=== 当前工作目录 ==="
+          pwd
+          
+          echo -e "\n=== RELEASE_PATH 目录结构 ==="
+          ls -la ${{ env.RELEASE_PATH }}
+          
+          echo -e "\n=== 编译输出目录 (triton/dist) 内容 ==="
+          TRITON_DIST_DIR="${{ env.RELEASE_PATH }}/third_party/triton/dist"
+          if [ -d "$TRITON_DIST_DIR" ]; then
+            ls -la "$TRITON_DIST_DIR"
+            echo -e "\n=== 生成的 .whl 文件列表 ==="
+            ls -la "$TRITON_DIST_DIR"/*.whl || echo "未找到 .whl 文件"
+          else
+            echo "错误：编译输出目录 $TRITON_DIST_DIR 不存在"
           fi
 
       - name: Create Release and Upload Assets

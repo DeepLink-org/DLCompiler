@@ -1,12 +1,16 @@
-name: Release on Tag01
+name: DLCompiler main test ci
 
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - "v*.*.*"  # 只对形如 v1.2.3 的 tag 触发
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 env:
-  RELEASE_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/Release/${{ github.repository }}/${GITHUB_RUN_NUMBER}"
+  CI_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}"
   THIRD_PARTY_PATH: "${{ vars.CI_BASE_PATH }}/data/DLCompiler/third_party"
 
 concurrency:
@@ -14,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release:
+  AscendTests:
     if: github.repository == 'DeepLink-org/DLCompiler'
     runs-on: DLC-60
 
@@ -27,40 +31,35 @@ jobs:
       - name: Create custom directory
         run: |
           set -ex
-          echo ${{ env.RELEASE_PATH }}
-          mkdir -p ${{ env.RELEASE_PATH }}
+          echo ${{ env.CI_PATH }}
+          mkdir -p ${{ env.CI_PATH }}
 
       - name: Clean custom directory
         run: |
           set -ex
-          if [ -d "${{ env.RELEASE_PATH }}" ]; then
-            rm -rf ${{ env.RELEASE_PATH }}/*
-            rm -rf ${{ env.RELEASE_PATH }}/.github
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}/*
+            rm -rf ${{ env.CI_PATH }}/.github
           fi
 
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE/* ${{ env.RELEASE_PATH }}/
-          mv $GITHUB_WORKSPACE/.github ${{ env.RELEASE_PATH }}/
-          mv $GITHUB_WORKSPACE/.git ${{ env.RELEASE_PATH }}/
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/.github ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/.git ${{ env.CI_PATH }}/
 
       - name: Setup Git Safe Directory
         run: |
           git config --global --add safe.directory '*'
 
-      - name: Install build dependencies
-        run: |
-          pip install build twine -i https://mirrors.huaweicloud.com/repository/pypi/simple
-          pip install pybind11 -i https://mirrors.huaweicloud.com/repository/pypi/simple
-
-      - name: Build DLCompiler Package
+      - name: Build and install DLCompiler
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
           source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
-          cd ${{ env.RELEASE_PATH }}
+          cd ${{ env.CI_PATH }}
           export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
           export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
           export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
@@ -75,37 +74,20 @@ jobs:
           git submodule update --init
           echo "git submodule update done."
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            bash compile_shared.sh apply_patch=true build_package=true
-          fi
-          find ${{ env.RELEASE_PATH }} -name "*.whl"
+          bash compile_shared.sh apply_patch=true
 
-      - name: Check build output files
+      - name: Run tests on ascend
         run: |
           set -ex
-          echo "=== 当前工作目录 ==="
-          pwd
-          
-          echo -e "\n=== RELEASE_PATH 目录结构 ==="
-          ls -la ${{ env.RELEASE_PATH }}
-          
-          echo -e "\n=== 编译输出目录 (triton/dist) 内容 ==="
-          TRITON_DIST_DIR="${{ env.RELEASE_PATH }}/third_party/triton/dist"
-          if [ -d "$TRITON_DIST_DIR" ]; then
-            ls -la "$TRITON_DIST_DIR"
-            echo -e "\n=== 生成的 .whl 文件列表 ==="
-            ls -la "$TRITON_DIST_DIR"/*.whl || echo "未找到 .whl 文件"
-          else
-            echo "错误：编译输出目录 $TRITON_DIST_DIR 不存在"
-          fi
-
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ${{ env.RELEASE_PATH }}/third_party/triton/dist/*.whl
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          source /home/dlc_ci/.bashrc
+          source activate dlcompiler
+          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          cd ${{env.CI_PATH }}
+          echo "whoami? $(whoami)"
+          echo "which python? $(which python)"
+          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+          export ASCEND_RT_VISIBLE_DEVICES=7
+          bash test/ascend/run_tests.sh
 
       - name: Clear workfile
         if: always()
@@ -115,6 +97,6 @@ jobs:
           rm -rf $workdir
           mkdir $workdir
           chmod -R 777 $workdir  
-          if [ -d "${{ env.RELEASE_PATH }}" ]; then
-            rm -rf ${{ env.RELEASE_PATH }}
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}
           fi

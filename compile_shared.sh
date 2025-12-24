@@ -4,44 +4,24 @@ export LC_ALL="zh_CN.UTF-8"
 
 home_path=$(pwd)
 # compile triton shared library with patch
-compile_triton_shared=false
 apply_patch=false
+build_package=false
 
 # 遍历所有参数
 for arg in "$@"; do
-    if [ "$arg" = "compile_triton_shared=true" ]; then
-        echo "检测到 compile_triton_shared=true"
-        compile_triton_shared=true
-    elif [ "$arg" = "apply_patch=true" ]; then
+    if [ "$arg" = "apply_patch=true" ]; then
         echo "检测到 apply_patch=true"
         apply_patch=true
+    elif [ "$arg" = "build_package=true" ]; then
+        echo "检测到 build_package=true"
+        build_package=true
     fi
 done
 
 
 echo "start compile ========================================"
-echo compile_triton_shared: $compile_triton_shared
 echo apply_patch: $apply_patch
 echo "======================================================"
-
-if [[ $compile_triton_shared == true ]]; then
-    echo "start compile triton_shared"
-    cd third_party
-    mkdir -p build && rm -rf build/*
-    git clone --no-hardlinks triton_shared build/triton_shared
-    git clone --no-hardlinks triton build/triton
-    cd build
-    export TRITON_PLUGIN_DIRS=$(pwd)/triton_shared
-    cd triton_shared && git clean -xdf && git checkout . && git checkout 2b728ad97bc02af821a0805b09075838911d4c19 && ls ../../../patch/v3_4/triton_shared.patch | xargs -n1 git apply && cd ../
-    cd triton && git clean -xdf && git checkout . && cd ../
-    cd triton && git checkout $(cat ../triton_shared/triton-hash.txt) && ls ../../../patch/v3_4/triton.patch | xargs -n1 git apply
-    TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true python3 -m pip install --no-build-isolation -vvv '.[tests]'
-    if [ $? -ne 0 ]; then
-        echo "Error: triton_shared compile failed." >&2
-        exit 1
-    fi
-    echo "triton_shared compile success!"
-fi
 
 echo "start apply ascendnpu-ir patch"
 cd $home_path/third_party/ascendnpu-ir
@@ -97,22 +77,31 @@ notify_apply_patch() {
     fi
 }
 
-pip uninstall triton dlcompiler -y
+if [[ $build_package == true ]]; then
+    echo "build_package is true, skip uninstall triton dlcompiler"
+    cd $TRITON_PLUGIN_DIRS/third_party/triton/
+else
+    pip uninstall triton dlcompiler -y
 
-cd $TRITON_PLUGIN_DIRS/third_party/triton/
-rm -rf build/
+    cd $TRITON_PLUGIN_DIRS/third_party/triton/
+    rm -rf build/
+fi
 
 if [ -z "$LLVM_BUILD_DIR" ]; then
-    TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
-    python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
-    if [ $? -ne 0 ]; then
-        notify_apply_patch
-        echo "Error: DLCompiler compile failed."
-        exit 1
+    # 使用build_package参数，控制是否进行编译
+    if [[ $build_package == true ]]; then
+        echo "LLVM_BUILD_DIR is not set, using system LLVM or downloading prebuilt LLVM build package."
+        TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
+        python3 -m pip wheel --no-deps --no-build-isolation -w dist/ .
+    else
+        TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
+        python3 -m pip install --no-build-isolation -vvv .[tests] -i https://mirrors.huaweicloud.com/repository/pypi/simple
+        if [ $? -ne 0 ]; then
+            notify_apply_patch
+            echo "Error: DLCompiler compile failed."
+            exit 1
+        fi
     fi
-    # echo "LLVM_BUILD_DIR is not set, using system LLVM or downloading prebuilt LLVM."
-    # TRITON_BUILD_WITH_CLANG_LLD=true TRITON_BUILD_WITH_CCACHE=true \
-    # python3 -m pip wheel --no-deps --no-build-isolation -w dist/ .
 else
     echo "LLVM_BUILD_DIR is set to $LLVM_BUILD_DIR"
     LLVM_INCLUDE_DIRS=$LLVM_BUILD_DIR/include \

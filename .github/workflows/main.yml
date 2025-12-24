@@ -82,10 +82,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            third_party/triton/dist/*.whl
+            ${{ env.RELEASE_PATH }}/third_party/triton/dist/*.whl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        working-directory: ${{ env.RELEASE_PATH }}
 
       - name: Clear workfile
         if: always()

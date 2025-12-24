@@ -1,16 +1,46 @@
-name: DLCompiler main test ci
+name: Release on Tag
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    tags:
+      - "v*.*.*"  # 只对形如 v1.2.3 的 tag 触发
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整 git 历史，便于 setuptools_scm 等工具
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build dependencies
+        run: |
+          pip install build twine
+
+      # 可选：如果使用 setuptools_scm 动态管理版本，需安装
+      # - name: Install setuptools_scm
+      #   run: pip install setuptools_scm
+
+      - name: Build package
+        run: python -m build
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 env:
-  CI_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}"
+  RELEASE_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/Release/${{ github.repository }}/${GITHUB_RUN_NUMBER}"
   THIRD_PARTY_PATH: "${{ vars.CI_BASE_PATH }}/data/DLCompiler/third_party"
 
 concurrency:
@@ -18,7 +48,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  AscendTests:
+  release:
     if: github.repository == 'DeepLink-org/DLCompiler'
     runs-on: DLC-60
 
@@ -31,27 +61,31 @@ jobs:
       - name: Create custom directory
         run: |
           set -ex
-          echo ${{ env.CI_PATH }}
-          mkdir -p ${{ env.CI_PATH }}
+          echo ${{ env.RELEASE_PATH }}
+          mkdir -p ${{ env.RELEASE_PATH }}
 
       - name: Clean custom directory
         run: |
           set -ex
-          if [ -d "${{ env.CI_PATH }}" ]; then
-            rm -rf ${{ env.CI_PATH }}/*
-            rm -rf ${{ env.CI_PATH }}/.github
+          if [ -d "${{ env.RELEASE_PATH }}" ]; then
+            rm -rf ${{ env.RELEASE_PATH }}/*
+            rm -rf ${{ env.RELEASE_PATH }}/.github
           fi
 
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
-          mv $GITHUB_WORKSPACE/.github ${{ env.CI_PATH }}/
-          mv $GITHUB_WORKSPACE/.git ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/* ${{ env.RELEASE_PATH }}/
+          mv $GITHUB_WORKSPACE/.github ${{ env.RELEASE_PATH }}/
+          mv $GITHUB_WORKSPACE/.git ${{ env.RELEASE_PATH }}/
 
       - name: Setup Git Safe Directory
         run: |
           git config --global --add safe.directory '*'
+
+      - name: Install build dependencies
+        run: |
+          pip install build twine -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
       - name: Build and install DLCompiler
         run: |
@@ -59,7 +93,7 @@ jobs:
           source /home/dlc_ci/.bashrc
           source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
-          cd ${{ env.CI_PATH }}
+          cd ${{ env.RELEASE_PATH }}
           export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
           export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
           export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
@@ -74,20 +108,17 @@ jobs:
           git submodule update --init
           echo "git submodule update done."
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
-          bash compile_shared.sh apply_patch=true
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            bash compile_shared.sh apply_patch=true build_package=true
+          fi
 
-      - name: Run tests on ascend
-        run: |
-          set -ex
-          source /home/dlc_ci/.bashrc
-          source activate dlcompiler
-          source /usr/local/Ascend/ascend-toolkit/set_env.sh
-          cd ${{env.CI_PATH }}
-          echo "whoami? $(whoami)"
-          echo "which python? $(which python)"
-          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
-          export ASCEND_RT_VISIBLE_DEVICES=7
-          bash test/ascend/run_tests.sh
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            third_party/triton/dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clear workfile
         if: always()
@@ -97,6 +128,6 @@ jobs:
           rm -rf $workdir
           mkdir $workdir
           chmod -R 777 $workdir  
-          if [ -d "${{ env.CI_PATH }}" ]; then
-            rm -rf ${{ env.CI_PATH }}
+          if [ -d "${{ env.RELEASE_PATH }}" ]; then
+            rm -rf ${{ env.RELEASE_PATH }}
           fi

@@ -99,13 +99,39 @@ jobs:
             echo "错误：编译输出目录 $TRITON_DIST_DIR 不存在"
           fi
 
+      - name: Copy WHL to workspace
+        run: |
+          set -ex
+          WHL_SRC="${{ env.RELEASE_PATH }}/third_party/triton/dist/*.whl"
+          WHL_DST="./dist"
+          mkdir -p "$WHL_DST"
+          cp $WHL_SRC "$WHL_DST/"
+          echo "Copied wheel(s) to $WHL_DST"
+          ls -la "$WHL_DST"
+
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ env.RELEASE_PATH }}/third_party/triton/dist/*.whl
+            ./dist/*.whl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug failed release assets
+        if: failure()
+        run: |
+          set -ex
+          TRITON_DIST_DIR="${{ env.RELEASE_PATH }}/third_party/triton/dist"
+          echo "=== 发布失败 - 检查资产目录 ==="
+          echo "目标目录: $TRITON_DIST_DIR"
+          if [ -d "$TRITON_DIST_DIR" ]; then
+            echo "目录存在，内容如下:"
+            ls -la "$TRITON_DIST_DIR"
+            echo -e "\nWHL文件列表:"
+            ls -la "$TRITON_DIST_DIR"/*.whl || echo "未找到WHL文件"
+          else
+            echo "错误: 目标目录不存在"
+          fi
 
       - name: Clear workfile
         if: always()

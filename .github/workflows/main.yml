@@ -51,7 +51,8 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pip install build twine pybind11 -i https://mirrors.huaweicloud.com/repository/pypi/simple
+          pip install build twine -i https://mirrors.huaweicloud.com/repository/pypi/simple
+          pip install pybind11 -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
       - name: Build DLCompiler
         run: |

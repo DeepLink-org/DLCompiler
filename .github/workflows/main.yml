@@ -53,7 +53,7 @@ jobs:
         run: |
           pip install build twine -i https://mirrors.huaweicloud.com/repository/pypi/simple
 
-      - name: Build and install DLCompiler
+      - name: Build DLCompiler
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
@@ -85,6 +85,7 @@ jobs:
             third_party/triton/dist/*.whl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: ${{ env.RELEASE_PATH }}
 
       - name: Clear workfile
         if: always()

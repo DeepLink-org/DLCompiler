@@ -108,6 +108,7 @@ jobs:
           cp $WHL_SRC "$WHL_DST/"
           echo "Copied wheel(s) to $WHL_DST"
           ls -la "$WHL_DST"
+          realpath "$WHL_DST"
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2

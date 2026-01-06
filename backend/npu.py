@@ -644,6 +644,9 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         callback_path = os.path.join(tmpdir, "libkernel.so")
         multibuffer = metadata["multibuffer"]
         _compile_option_list = []
+        if dump_ir:
+            _compile_option_list += [f"--mlir-print-ir-before-all"]
+            _compile_option_list += [f"--mlir-print-ir-after-all"]
         _compile_option_list += [
             f"--enable-auto-multi-buffer={multibuffer}",
         ]
@@ -681,6 +684,10 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
             ]
 
+        unit_flag = metadata["unit_flag"]
+        if unit_flag is not None:
+            _compile_option_list += [f"--enable-hivm-unit-flag-sync={unit_flag}"]
+
         disable_auto_cv_work_space_manage = metadata[
             "disable_auto_cv_work_space_manage"
         ]
@@ -704,6 +711,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             print(f"DEBUG dump ir[bishengir-compile] command: {cmd_list}")
         try:
             ret = subprocess.run(cmd_list, capture_output=True, check=True, text=True)
+            if dump_ir:
+                dicp_utils._dump_stage_ir(ret.stderr, metadata["hash"], "bisheng.mlir")
         except subprocess.CalledProcessError as e:
             # Print compilation error details
             print(f"bishengir-compile compilation failed with exit code {e.returncode}")
@@ -711,7 +720,7 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             raise RuntimeError("bishengir-compile compilation failed") from e
 
         if not Path(bin_path).is_file():
-            print(ret.stderr.decode("utf-8"))
+            print(ret.stderr)
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
             __get_metadata_attr_by_callback(
@@ -756,6 +765,7 @@ class NPUOptions:
     multibuffer: bool = True
     inject_barrier_all: bool = False
     disable_auto_inject_block_sync: bool = False
+    unit_flag: bool = False
     disable_auto_cv_work_space_manage: bool = False
     enable_auto_bind_sub_block: bool = True
 

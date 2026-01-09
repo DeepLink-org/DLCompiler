@@ -155,7 +155,7 @@ def _attn_fwd(
     task_m_idx = 0
     task_hz_idx = 0
 
-    for block_idx in range(pid, NUM_BLOCKS, 20):
+    for block_idx in range(pid, NUM_BLOCKS, 24):
         task_hz_idx = block_idx // NUM_BLOCKS_M
         task_m_idx = block_idx % NUM_BLOCKS_M
         off_z = task_hz_idx // H
@@ -284,7 +284,7 @@ class _attention(torch.autograd.Function):
         # if is_hip():
         #     waves_per_eu = 3 if HEAD_DIM_K <= 64 else 2
         #     extra_kern_args = {"waves_per_eu": waves_per_eu, "allow_flush_denorm": True}
-        num_cores = 20
+        num_cores = 24
         NUM_BLOCKS_M = triton.cdiv(q.shape[2], BM)
         NUM_BLOCKS = NUM_BLOCKS_M * q.shape[0] * q.shape[1]
         NUM_BLOCKS_PER_CORE = triton.cdiv(NUM_BLOCKS, num_cores)
@@ -396,7 +396,6 @@ def test_op(Z, H, N_CTX, HEAD_DIM, causal, dtype, BM, BN):
         l2_cache=False,
         data_simplification=False,
     )
-
     torch_path = "./FA_FWD_PROF/" + shape_str + "/" + str(causal) + "/torch/"
     LOOP = 20
     with torch_npu.profiler.profile(

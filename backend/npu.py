@@ -702,6 +702,28 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
                 f"--enable-auto-bind-sub-block={enable_auto_bind_sub_block}"
             ]
 
+        limit_auto_multi_buffer_only_for_local_buffer = metadata[
+            "limit_auto_multi_buffer_only_for_local_buffer"
+        ]
+        if limit_auto_multi_buffer_only_for_local_buffer is not None:
+            _compile_option_list += [
+                f"--limit-auto-multi-buffer-only-for-local-buffer={limit_auto_multi_buffer_only_for_local_buffer}"
+            ]
+
+        set_workspace_multibuffer = metadata["set_workspace_multibuffer"]
+        if set_workspace_multibuffer is not None:
+            _compile_option_list += [
+                f"--set-workspace-multibuffer={set_workspace_multibuffer}"
+            ]
+
+        tile_mix_vector_loop = metadata["tile_mix_vector_loop"]
+        if tile_mix_vector_loop is not None:
+            _compile_option_list += [f"--tile-mix-vector-loop={tile_mix_vector_loop}"]
+
+        tile_mix_cube_loop = metadata["tile_mix_cube_loop"]
+        if tile_mix_cube_loop is not None:
+            _compile_option_list += [f"--tile-mix-cube-loop={tile_mix_cube_loop}"]
+
         cmd_list = (
             [npu_compiler_path, ttadapter_path]
             + _compile_option_list
@@ -768,6 +790,10 @@ class NPUOptions:
     unit_flag: bool = False
     disable_auto_cv_work_space_manage: bool = False
     enable_auto_bind_sub_block: bool = True
+    tile_mix_vector_loop: int = None
+    tile_mix_cube_loop: int = None
+    limit_auto_multi_buffer_only_for_local_buffer: bool = None
+    set_workspace_multibuffer: int = None
 
     stream: int = None
 

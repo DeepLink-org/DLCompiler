@@ -88,6 +88,7 @@ jobs:
           export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           export ASCEND_RT_VISIBLE_DEVICES=7
           bash test/ascend/run_tests.sh
+          bash test/dsl/run_tests.sh
 
       - name: Clear workfile
         if: always()

@@ -17,7 +17,6 @@ import re
 import pybind11
 import shutil
 
-
 ###################### utils.py start ######################
 
 TRITON_PROFILER_REGISTERED = False

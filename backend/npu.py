@@ -426,6 +426,63 @@ def ttir_to_ttsharedir_ascend(mod, metadata, opt, *, named_ops=False):
     return mod
 
 
+def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
+    assert isinstance(commonir, str)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.commonir.mlir")
+        dst_path = os.path.join(tmpdir, "kernel.linked.mlir")
+        Path(src_path).write_text(commonir)
+        cmd_list = [
+            _get_dicp_opt_path(),
+            src_path,
+            "--lower-affine",
+            "--normalize-slice-ops",
+            "--linalg-if-to-select",
+            "--linalg-generic-to-scf",
+            "--scalar-to-1d-tensor",
+            f"--linalg-to-linked=global-kernel=false named-ops=true",
+            "--linked-to-hivm",
+            "-o",
+            dst_path,
+        ]
+        try:
+            ret = subprocess.run(cmd_list, capture_output=True, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: code={e.returncode}, stdout:{e.stdout},stderr: {e.stderr}")
+        content = Path(dst_path).read_text()
+
+    # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
+    # 将"*xfxxx"替换成"?xfxxx"
+    content = content.replace("*xf", "?xf")
+    content = content.replace("*xi", "?xi")
+    content = content.replace("*xbf", "?xbf")
+    # 匹配形如 "memref<...> to tensor<...>" 的模式
+    pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
+    # 使用正则替换，保留memref和tensor类型，中间插入注释
+    content = re.sub(pattern, r"\1 // to \2", content)
+
+    if opt.debug or dump_ir:
+        cmd_list = [
+            _get_dicp_opt_path(),
+            "kernel.ttshared.mlir",
+            "--lower-affine",
+            "--normalize-slice-ops",
+            "--linalg-if-to-select",
+            "--linalg-generic-to-scf",
+            "--scalar-to-1d-tensor",
+            f"--linalg-to-linked=global-kernel=false named-ops=true",
+            "--linked-to-hivm",
+        ]
+        dicp_utils._dump_stage_ir(
+            content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
+        )
+
+    if replace_linked_ir is not None:
+        print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
+        return Path(replace_linked_ir).read_text()
+    return content
+
+
 def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     pm = ir.pass_manager(mod.context)
     dicp_triton.passes.linked_npu.add_lower_affine(pm)

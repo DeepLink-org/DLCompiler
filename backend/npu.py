@@ -434,6 +434,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     dicp_triton.passes.linked_npu.add_linalg_generic_to_scf(pm)
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
     dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
+    dicp_triton.passes.linked_npu.add_annotate_transpose(pm)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
     pm.run(mod)
 

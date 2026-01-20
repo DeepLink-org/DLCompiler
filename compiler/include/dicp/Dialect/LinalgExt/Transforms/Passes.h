@@ -20,6 +20,8 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>> createLinalgGenericToSCFPass();
 
 std::unique_ptr<OperationPass<mlir::func::FuncOp>> createScalarTo1DTensorPass();
 
+std::unique_ptr<OperationPass<mlir::func::FuncOp>> createAnnotateTransposePass();
+
 std::unique_ptr<OperationPass<mlir::func::FuncOp>>
 createNormalizeSliceOpsPass();
 

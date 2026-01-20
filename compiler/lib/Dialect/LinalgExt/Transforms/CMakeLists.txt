@@ -4,6 +4,7 @@ add_triton_library(LinalgExtTransforms
   ScalarTo1DTensorPass.cpp
   RemoveSingleIterationLoop.cpp
   TensorTransform.cpp
+  AnnotateTransposePass.cpp
 
   DEPENDS
   LinalgExtTransformsIncGen

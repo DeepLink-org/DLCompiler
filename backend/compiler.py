@@ -131,6 +131,7 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "mcfatbin"
         elif self.driver.target == "ascend":
             self.binary_ext = "npubin"
+            self.capability = target.arch
         else:
             raise RuntimeError(f"Target '{self.target_type}' is not supported.")
 
@@ -249,7 +250,7 @@ class DICPBackend(BaseBackend):
                     )
                     stages["npubin"] = (
                         lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                            src, metadata, options
+                            src, metadata, options, self.capability
                         )
                     )
             else:
@@ -264,7 +265,7 @@ class DICPBackend(BaseBackend):
                     )
                     stages["npubin"] = (
                         lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                            src, metadata, options
+                            src, metadata, options, self.capability
                         )
                     )
         else:

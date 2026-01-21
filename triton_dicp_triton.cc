@@ -70,6 +70,11 @@ void init_triton_dicp_triton_pass_linked_npu(py::module &&m) {
     pm.addNestedPass<mlir::func::FuncOp>(
         dicp::LinalgExt::createScalarTo1DTensorPass());
   });
+  m.def("add_npu_unroll_pipeline", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        dicp::LinalgExt::createNPUUnroolPipelinePass());
+  });
+
   m.def("add_linalg_to_linked",
         [](mlir::PassManager &pm, bool globalKernel, bool namedOps) {
           pm.addPass(mlir::dicp::linked::createLinalgToLinkedPass(globalKernel,
@@ -107,6 +112,7 @@ void init_triton_dicp_triton(py::module &&m) {
     dicp::LinalgExt::registerLinalgGenericToSCFPass();
     dicp::LinalgExt::registerScalarTo1DTensorPass();
     dicp::LinalgExt::registerNormalizeSliceOpsPass();
+    dicp::LinalgExt::registerNPUUnroolPipelinePass();
 
     context.appendDialectRegistry(registry);
     context.loadAllAvailableDialects();

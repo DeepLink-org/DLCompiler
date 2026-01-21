@@ -68,4 +68,16 @@ def NormalizeSliceOps : Pass<"normalize-slice-ops", "func::FuncOp"> {
   let dependentDialects = ["mlir::tensor::TensorDialect"];
 }
 
+def NPUUnroolPipeline : Pass<"npu-unrool-pipeline", "func::FuncOp"> {
+  let summary = "DLC Pipelines.";
+  let constructor = "mlir::dicp::LinalgExt::createNPUUnroolPipelinePass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::tensor::TensorDialect",
+    "mlir::bufferization::BufferizationDialect",
+    "mlir::func::FuncDialect"
+    ];
+}
+
 #endif

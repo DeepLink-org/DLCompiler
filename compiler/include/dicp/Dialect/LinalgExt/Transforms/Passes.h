@@ -23,6 +23,9 @@ std::unique_ptr<OperationPass<mlir::func::FuncOp>> createScalarTo1DTensorPass();
 std::unique_ptr<OperationPass<mlir::func::FuncOp>>
 createNormalizeSliceOpsPass();
 
+std::unique_ptr<OperationPass<mlir::func::FuncOp>>
+createNPUUnroolPipelinePass();
+
 #define GEN_PASS_REGISTRATION
 #include "dicp/Dialect/LinalgExt/Transforms/Passes.h.inc"
 

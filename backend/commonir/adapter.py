@@ -1,0 +1,2 @@
+class Adapter(object):
+    pass

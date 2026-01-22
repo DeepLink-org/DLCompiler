@@ -330,6 +330,11 @@ def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None)
     )
 
 
+@builtin
+def barrier_cross_sync(_semantic=None):
+    pass
+
+
 class parallel(range):
     """
     Iterator that counts upward forever, with parallel execution semantics.

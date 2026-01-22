@@ -7,6 +7,7 @@ from .core import (
     sync_block_all,
     set_cross_flag,
     wait_cross_flag,
+    barrier_cross_sync,
     parallel,
     inline_lambda,
     alloc,

@@ -55,6 +55,7 @@ if (TRITON_BUILD_PYTHON_MODULE)
 
     LinalgExtTransforms
     TritonExtTransforms
+    LinalgExtAnalysis
 
     LinalgToLinked
     LinkedToHIVM

@@ -1,6 +1,8 @@
 #include "dicp/Conversion/TritonToUnstructure/UnstructureConversionPass.h"
 #include "dicp/Utils/Utils.h"
+
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 
 #include "bishengir/Dialect/Annotation/IR/Annotation.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -680,7 +682,7 @@ void replacePtrLoopArguments(Operation *rootOp,
                     op.getLoc(), rewriter.getI32Type(), ValueRange({}))
                 ->getResult(0);
         if (auto forOp = dyn_cast<scf::ForOp>(op.getOperation())) {
-          newOp = rewriter.create<scf::ForOp>(
+          auto createdFor = rewriter.create<scf::ForOp>(
               forOp.getLoc(), forOp.getLowerBound(), forOp.getUpperBound(),
               forOp.getStep(),
               constructOperands(forOp.getInitArgs(), tempVar, mapping),
@@ -701,6 +703,13 @@ void replacePtrLoopArguments(Operation *rootOp,
                     yieldOp.getLoc(),
                     constructOperands(yieldOp.getOperands(), tempVar, mapping));
               });
+
+          // propagate Triton-specific loop attribute if present on the old for
+          if (forOp->hasAttr(triton::kNumStagesAttrName))
+            createdFor->setAttr(triton::kNumStagesAttrName,
+                                forOp->getAttr(triton::kNumStagesAttrName));
+
+          newOp = createdFor;
         } else if (auto whileOp = dyn_cast<scf::WhileOp>(op.getOperation())) {
           newOp = rewriter.create<scf::WhileOp>(
               whileOp.getLoc(), constructTypes(whileOp->getResultTypes()),

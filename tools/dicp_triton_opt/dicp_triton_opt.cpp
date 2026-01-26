@@ -83,6 +83,8 @@
 #include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
 #include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 
+#include "bishengir/Dialect/HIVM/IR/HIVM.h"
+
 using namespace mlir;
 
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
@@ -105,6 +107,7 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::LinalgExt::registerLinalgGenericToSCFPass();
   dicp::LinalgExt::registerScalarTo1DTensorPass();
   dicp::LinalgExt::registerNormalizeSliceOpsPass();
+  dicp::LinalgExt::registerNPUUnroolPipelinePass();
 
   registry.insert<bufferization::BufferizationDialect, dicp::npu::NPUDialect,
                   dicp::LinalgExt::LinalgExtDialect, arith::ArithDialect,
@@ -114,7 +117,7 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
                   scf::SCFDialect, tensor::TensorDialect,
                   transform::TransformDialect, vector::VectorDialect,
                   ub::UBDialect, triton::TritonDialect, affine::AffineDialect,
-                  ttx::TritonTilingExtDialect>();
+                  ttx::TritonTilingExtDialect, mlir::hivm::HIVMDialect>();
 }
 
 int main(int argc, char **argv) {

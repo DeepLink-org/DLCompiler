@@ -961,12 +961,12 @@ class NPULauncher(object):
         wrapper_src = generate_npu_wrapper_src(
             constants, signature, workspace_size, mix_mode, lock_num, lock_init_value
         )
-        so_launcher_path = make_npu_launcher_stub(wrapper_src, debug_mode)
+        self.so_launcher_path = make_npu_launcher_stub(wrapper_src, debug_mode)
         # initialize launcher
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
-            "__triton_launcher", so_launcher_path
+            "__triton_launcher", self.so_launcher_path
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)

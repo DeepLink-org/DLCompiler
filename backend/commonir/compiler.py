@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, List
 from triton._C.libtriton import get_cache_invalidating_env_vars
-
+from collections import namedtuple
 from triton.runtime.cache import triton_key
 from .backend import commonir_backend
 from triton.backends.compiler import GPUTarget
@@ -22,8 +22,6 @@ class CommonIRSource:
 
 class CompiledKernel:
     def __init__(self, src: CommonIRSource, metadata_group, hash):
-        from collections import namedtuple
-
         metadata_path = next(
             (Path(p) for c, p in metadata_group.items() if c.endswith(".json"))
         )
@@ -58,20 +56,12 @@ class CompiledKernel:
         )
         self.metadata_group = metadata_group
         self.kernel = self.asm[binary_ext]
-        # binaries are lazily initialized
-        # because it involves doing runtime things
-        # (e.g., checking amount of shared memory on current device)
         self.module = None
-        self.function = None
-        self._run = None
+        self._init_handles()
 
     def _init_handles(self):
         if self.module is not None:
             return
-
-        def raise_(err):
-            self._run = functools.partial(_raise_error, err)
-            raise err
 
         device = commonir_backend.get_driver().get_current_device()
         # create launcher

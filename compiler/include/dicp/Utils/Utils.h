@@ -3,18 +3,15 @@
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h" 
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
-
+#include "mlir/Transforms/DialectConversion.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -129,11 +126,13 @@ inline bool isaPermutedMemRefType(MemRefType memRefType) {
   // });
 
   switch (ptrStrides.size()) {
-    case 0: return false;
-    case 1: return false;
-    default: {
-      return ptrStrides[ptrStrides.size()-1] != 1;
-    }
+  case 0:
+    return false;
+  case 1:
+    return false;
+  default: {
+    return ptrStrides[ptrStrides.size() - 1] != 1;
+  }
   }
 }
 

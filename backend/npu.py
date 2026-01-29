@@ -434,7 +434,10 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     dicp_triton.passes.linked_npu.add_linalg_generic_to_scf(pm)
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
     dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
-    dicp_triton.passes.linked_npu.add_annotate_transpose(pm)
+    # 当metadata 中有add_annotate_transpose 开关，再开启
+    open_add_annotate_transpose = metadata["add_annotate_transpose"]
+    if open_add_annotate_transpose is not None and open_add_annotate_transpose is True:
+        dicp_triton.passes.linked_npu.add_annotate_transpose(pm)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
     pm.run(mod)
 

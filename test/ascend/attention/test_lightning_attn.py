@@ -246,6 +246,9 @@ def lightning_attention_prefill_forward_triton_loop(
     else:
         kv = torch.zeros(b, h, d, e).to(torch.float32).to(q.device)
 
+    import os
+    bishengir_path = os.environ.get("BISHENG_INSTALL_PATH", None)
+    print(f"zmz debug BISHENG_INSTALL_PATH: {bishengir_path}")
     _fwd_loop_kernel[grid](
         q,
         k,

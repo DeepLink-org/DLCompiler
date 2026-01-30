@@ -490,6 +490,9 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     dicp_triton.passes.linked_npu.add_linalg_generic_to_scf(pm)
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
     dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
+    open_add_annotate_transpose = metadata["add_annotate_transpose"]
+    if open_add_annotate_transpose is not None and open_add_annotate_transpose is True:
+        dicp_triton.passes.linked_npu.add_annotate_transpose(pm)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
     pm.run(mod)
 
@@ -850,6 +853,7 @@ class NPUOptions:
     tile_mix_cube_loop: int = None
     limit_auto_multi_buffer_only_for_local_buffer: bool = None
     set_workspace_multibuffer: int = None
+    add_annotate_transpose: bool = None
 
     stream: int = None
 

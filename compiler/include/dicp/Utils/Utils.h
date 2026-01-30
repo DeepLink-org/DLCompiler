@@ -1,19 +1,42 @@
 #ifndef TRITON_UTILS_H
 #define TRITON_UTILS_H
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 
+#include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Types.h"
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 
 // Dispatch conversion pattern handlers based on backend string. Executes
@@ -43,7 +66,19 @@ llvm::StringRef getBackend(ModuleOp module);
 
 bool isAscendBackend(ModuleOp module);
 
-bool isaPermutedMemRefType(MemRefType);
+inline bool isaPermutedMemRefType(MemRefType memRefType) {
+  auto [ptrStrides, ptrOffsets] = memRefType.getStridesAndOffset();
+
+  switch (ptrStrides.size()) {
+  case 0:
+    return false;
+  case 1:
+    return false;
+  default: {
+    return ptrStrides[ptrStrides.size() - 1] != 1;
+  }
+  }
+}
 
 // Retrieves the last (innermost) stride of a memref::ReinterpretCastOp if it is
 // a constant.

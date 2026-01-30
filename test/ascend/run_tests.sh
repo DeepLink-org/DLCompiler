@@ -26,4 +26,6 @@ for test_dir in "${pytestcase_dir[@]}"; do
 done
 
 
-
+export BISHENG_INSTALL_PATH=/mnt/data01/CI/DLCompiler/data/bishengir_20251215/bin/
+export PATH=$BISHENG_INSTALL_PATH:$PATH
+run_pytestcases "attention"

@@ -68,7 +68,7 @@ def NormalizeSliceOps : Pass<"normalize-slice-ops", "func::FuncOp"> {
   let dependentDialects = ["mlir::tensor::TensorDialect"];
 }
 
-def AnnotateTransposePass : Pass<"annotate-transpose", "func::FuncOp"> {
+def AnnotateTranspose : Pass<"annotate-transpose", "func::FuncOp"> {
   let summary = "Annotate operations with permuted memref type";
   let description = [{
     Adds MayImplicitTransposeWithLastAxis annotations to operations with permuted memref type.

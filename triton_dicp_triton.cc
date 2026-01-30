@@ -111,6 +111,7 @@ void init_triton_dicp_triton(py::module &&m) {
     dicp::LinalgExt::registerLinalgGenericToSCFPass();
     dicp::LinalgExt::registerScalarTo1DTensorPass();
     dicp::LinalgExt::registerNormalizeSliceOpsPass();
+    dicp::LinalgExt::registerAnnotateTransposePass();
 
     context.appendDialectRegistry(registry);
     context.loadAllAvailableDialects();

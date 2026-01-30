@@ -96,8 +96,9 @@ struct AnnotateTransposePass
   void runOnOperation() override {
     auto funcOp = getOperation();
 
-    LLVM_DEBUG(llvm::dbgs() << "[INFO] Starting AnnotateTransposePass on function: "
-                 << funcOp.getName() << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[INFO] Starting AnnotateTransposePass on function: "
+               << funcOp.getName() << "\n");
 
     // 待处理列表
     SmallVector<bufferization::ToTensorOp> toTensorOpsToMark;
@@ -142,12 +143,13 @@ struct AnnotateTransposePass
           if (isBaseSourcePermuted && isBaseTargetContiguous &&
               baseSourceType.getShape() == baseTargetType.getShape()) {
 
-            LLVM_DEBUG(llvm::dbgs() << "  [REWRITE_MATCH] Found Dynamic Subview Copy "
-                            "candidate for Static Rewrite.\n");
-            LLVM_DEBUG(llvm::dbgs() << "    Base Source (Permuted): " << baseSourceType
-                         << "\n");
-            LLVM_DEBUG(llvm::dbgs() << "    Base Target (Contiguous): " << baseTargetType
-                         << "\n");
+            LLVM_DEBUG(llvm::dbgs()
+                       << "  [REWRITE_MATCH] Found Dynamic Subview Copy "
+                          "candidate for Static Rewrite.\n");
+            LLVM_DEBUG(llvm::dbgs() << "    Base Source (Permuted): "
+                                    << baseSourceType << "\n");
+            LLVM_DEBUG(llvm::dbgs() << "    Base Target (Contiguous): "
+                                    << baseTargetType << "\n");
 
             // 执行重写
             OpBuilder builder(copyOp->getContext());
@@ -156,8 +158,8 @@ struct AnnotateTransposePass
             // 1. 创建新的静态 Copy (Base -> Base)
             auto newCopyOp = builder.create<memref::CopyOp>(
                 copyOp.getLoc(), baseSource, baseTarget);
-            LLVM_DEBUG(llvm::dbgs() << "    -> Replaced with Static Copy: " << newCopyOp
-                         << "\n");
+            LLVM_DEBUG(llvm::dbgs() << "    -> Replaced with Static Copy: "
+                                    << newCopyOp << "\n");
 
             // 2. 关键：在 Base Target (MemRef) 上添加 Annotation
             // 这指导 Ascend 编译器生成隐式转置指令
@@ -166,8 +168,9 @@ struct AnnotateTransposePass
                 builder.create<annotation::MarkOp>(copyOp.getLoc(), baseTarget);
             markOp->setAttr("MayImplicitTransposeWithLastAxis",
                             UnitAttr::get(builder.getContext()));
-            LLVM_DEBUG(llvm::dbgs() << "    -> Added Annotation to Base Target MemRef: "
-                         << markOp << "\n");
+            LLVM_DEBUG(llvm::dbgs()
+                       << "    -> Added Annotation to Base Target MemRef: "
+                       << markOp << "\n");
 
             // 3. 追踪 Base Target 的 Tensor 使用者
             // 我们需要标记 bufferization.to_tensor(BaseTarget)，这样后续的
@@ -182,9 +185,10 @@ struct AnnotateTransposePass
 
                 if (!exists) {
                   toTensorOpsToMark.push_back(toTensorOp);
-                  LLVM_DEBUG(llvm::dbgs() << "    -> Scheduled Base Target's ToTensorOp "
-                                  "for annotation: "
-                               << toTensorOp << "\n");
+                  LLVM_DEBUG(llvm::dbgs()
+                             << "    -> Scheduled Base Target's ToTensorOp "
+                                "for annotation: "
+                             << toTensorOp << "\n");
                 }
               }
             }
@@ -218,7 +222,8 @@ struct AnnotateTransposePass
                     exists = true;
                 if (!exists) {
                   toTensorOpsToMark.push_back(toTensorOp);
-                  LLVM_DEBUG(llvm::dbgs()
+                  LLVM_DEBUG(
+                      llvm::dbgs()
                       << "  [PROPAGATE] Marked bufferization.to_tensor (Source "
                          "was permuted)\n");
                 }
@@ -238,7 +243,8 @@ struct AnnotateTransposePass
                         exists = true;
                     if (!exists) {
                       toTensorOpsToMark.push_back(toTensorOp);
-                      LLVM_DEBUG(llvm::dbgs()
+                      LLVM_DEBUG(
+                          llvm::dbgs()
                           << "  [PROPAGATE_PARENT] Marked "
                              "bufferization.to_tensor of Parent MemRef\n");
                     }
@@ -256,7 +262,8 @@ struct AnnotateTransposePass
                     exists = true;
                 if (!exists) {
                   toTensorOpsToMark.push_back(toTensorOp);
-                  LLVM_DEBUG(llvm::dbgs()
+                  LLVM_DEBUG(
+                      llvm::dbgs()
                       << "  [PROPAGATE_TARGET] Marked bufferization.to_tensor "
                          "(Target is permuted)\n");
                 }
@@ -295,8 +302,9 @@ struct AnnotateTransposePass
 
       if (shouldMark || hasNonStandardStride) {
         toTensorOpsToMark.push_back(toTensorOp);
-        LLVM_DEBUG(llvm::dbgs() << "[TO_TENSOR_CHECK] Found permuted/strided origin: "
-                     << toTensorOp << "\n");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "[TO_TENSOR_CHECK] Found permuted/strided origin: "
+                   << toTensorOp << "\n");
       }
     });
 
@@ -312,8 +320,8 @@ struct AnnotateTransposePass
       // 中可能有重复（如果 func.walk 逻辑有交集），去重已经在 push_back
       // 时做了。
 
-      LLVM_DEBUG(llvm::dbgs() << "  [ANNOTATE_ACTION] Adding annotation to: " << toTensorOp
-                   << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "  [ANNOTATE_ACTION] Adding annotation to: "
+                              << toTensorOp << "\n");
 
       OpBuilder builder(toTensorOp->getContext());
       builder.setInsertionPointAfter(toTensorOp);
@@ -324,11 +332,13 @@ struct AnnotateTransposePass
       markOp->setAttr("MayImplicitTransposeWithLastAxis",
                       UnitAttr::get(builder.getContext()));
 
-      LLVM_DEBUG(llvm::dbgs() << "      -> Created annotation::MarkOp: " << markOp << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "      -> Created annotation::MarkOp: " << markOp << "\n");
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "[INFO] Finished AnnotateTransposePass on function: "
-                 << funcOp.getName() << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[INFO] Finished AnnotateTransposePass on function: "
+               << funcOp.getName() << "\n");
   }
 };
 } // namespace

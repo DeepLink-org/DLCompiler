@@ -261,6 +261,7 @@ def lightning_attention_prefill_forward_triton_loop(
         BLOCK=BLOCK_SIZE,
         NUM_BLOCK=NUM_BLOCK,
         BLOCK_MODEL=BLOCK_M,
+        add_annotate_transpose=True,
     )
     return o, kv
 
@@ -653,9 +654,9 @@ class TestLightningAttn:
             kv_check
         ), f"past_key_value torch:{past_key_value_torch}, past_key_value triton:{past_key_value_triton}"
         assert output_check, f"output torch:{out_torch}, output triton:{out_triton}"
-        print(
-            f"zmz debug torch kv_check:{past_key_value_torch}, triton :{past_key_value_triton}"
-        )
+        # print(
+        #     f"debug torch kv_check:{past_key_value_torch}, triton :{past_key_value_triton}"
+        # )
 
     # float32 only
     @pytest.mark.parametrize(

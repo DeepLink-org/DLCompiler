@@ -18,8 +18,8 @@
 namespace tvm {
 namespace codegen {
 
-using ffi::String;
 using ffi::Array;
+using ffi::String;
 
 class SSAType {
 public:

@@ -5,8 +5,8 @@
 namespace tvm {
 namespace codegen {
 
-using ffi::String;
 using ffi::Array;
+using ffi::String;
 
 ffi::Module BuildTileLangCommonIR(IRModule mod, Target target) {
   // using tvm::runtime::Registry;
@@ -31,7 +31,8 @@ ffi::Module BuildTileLangCommonIR(IRModule mod, Target target) {
 }
 TVM_FFI_STATIC_INIT_BLOCK() {
   namespace refl = tvm::ffi::reflection;
-  refl::GlobalDef().def("target.build.tilelang_commonir", BuildTileLangCommonIR);
+  refl::GlobalDef().def("target.build.tilelang_commonir",
+                        BuildTileLangCommonIR);
 }
 
 TVM_REGISTER_TARGET_KIND("commonir", kDLExtDev);

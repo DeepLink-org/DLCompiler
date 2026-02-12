@@ -4,10 +4,10 @@
 
 #include "codegen_commonir.h"
 #include "../op/builtin.h"
-#include "../op/region.h"
+#include "../op/copy.h"
 #include "../op/fill.h"
 #include "../op/gemm.h"
-#include "../op/copy.h"
+#include "../op/region.h"
 #include "arith/pattern_match.h"
 #include "tvm/ir/expr.h"
 #include "tvm/runtime/data_type.h"
@@ -22,9 +22,9 @@
 #include <sstream>
 #include <string>
 #include <tvm/arith/analyzer.h>
+#include <tvm/ffi/container/array.h>
 #include <tvm/ffi/reflection/registry.h>
 #include <tvm/tir/index_map.h>
-#include <tvm/ffi/container/array.h>
 #include <tvm/tir/op.h>
 #include <utility>
 #include <vector>
@@ -32,8 +32,8 @@
 namespace tvm {
 namespace codegen {
 
-using ffi::String;
 using ffi::Array;
+using ffi::String;
 
 template <typename T>
 inline void PrintBinary(const T *op, const char *opstr, std::ostream &os,
@@ -169,7 +169,6 @@ static std::string broadcastAttrCodegen(Array<PrimExpr> &buffer_shape0,
   }
   return temp.str();
 }
-
 
 void PrintBufferMap(const Map<Var, Buffer> &buffer_map) {
   for (const auto &kv : buffer_map) {
@@ -761,7 +760,6 @@ String CodeGenTileLangCOMMONIR::GenSubviewFromRegion(Buffer buffer_data,
   return new_buffer_name;
 }
 
-
 String CodeGenTileLangCOMMONIR::CreateMemrefToTensor(String src_data_name) {
   if (!dynamic_cast<Memref *>(type_info[src_data_name])) {
     LOG(FATAL) << src_data_name << " should be a memref";
@@ -773,11 +771,11 @@ String CodeGenTileLangCOMMONIR::CreateMemrefToTensor(String src_data_name) {
   std::ostringstream temp;
   temp << "bufferization.to_tensor %" << src_data_name
        << " restrict writable : " << GetMemrefInfo(src_data_name);
-  temp <<  " to " << GetTensorInfo(tempTensor);
+  temp << " to " << GetTensorInfo(tempTensor);
   new_tensor_name = SSAGetID(temp.str(), src_dtype);
   tempTensor->var_id = new_tensor_name;
   this->type_info_tensor[new_tensor_name] = tempTensor;
-  
+
   return new_tensor_name;
 }
 
@@ -831,7 +829,8 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     FillCodegen(op, os);
   } else if (op->op.same_as(Op::Get("tl.tileop.copy"))) {
     CopyCodegen(op, os);
-  } else if (op->op.same_as(Op::Get("tl.tileop.gemm")) || op->op.same_as(Op::Get("tl.tileop.gemm_py"))) {
+  } else if (op->op.same_as(Op::Get("tl.tileop.gemm")) ||
+             op->op.same_as(Op::Get("tl.tileop.gemm_py"))) {
     GemmCodegen(op, os);
   } else {
     CodeGenC::VisitExpr_(op, os);
@@ -897,8 +896,10 @@ void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
                                           std::ostream &os) {
   tvm::tl::Gemm gemmop(op->args);
   // todo(dkx): support transpose indexing_maps
-  ICHECK(!gemmop->transA_) << "Currently we only support: transA_ must be false";
-  ICHECK(!gemmop->transB_) << "Currently we only support: transB_ must be false";
+  ICHECK(!gemmop->transA_)
+      << "Currently we only support: transA_ must be false";
+  ICHECK(!gemmop->transB_)
+      << "Currently we only support: transB_ must be false";
   // todo(dkx): support clearAccum_ = True
   ICHECK(is_zero(gemmop->clearAccum_))
       << "Currently we only support: clearAccum_ must be const_false";
@@ -906,7 +907,8 @@ void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
   // ICHECK(gemmop->policy_ == tvm::tl::GemmWarpPolicyType::kSquare)
   //     << "Currently we only support: policy_ must be kSquare";
   ICHECK(gemmop->kPack_ == 1) << "Currently we only support: kPack_ must be 1";
-  ICHECK(gemmop->wgWait_ == 0) << "Currently we only support: wgWait_ must be 0";
+  ICHECK(gemmop->wgWait_ == 0)
+      << "Currently we only support: wgWait_ must be 0";
 
   Buffer a_buffer = gemmop->a_;
   Buffer b_buffer = gemmop->b_;

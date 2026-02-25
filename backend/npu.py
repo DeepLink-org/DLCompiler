@@ -23,7 +23,13 @@ TRITON_PROFILER_REGISTERED = False
 dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
 replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
 replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
-if dump_ir or (replace_ttshared_ir is not None) or (replace_linked_ir is not None):
+replace_commonir_linked_ir = os.environ.get("DLC_REPLACE_COMMONIR_LINKED_IR_FILE", None)
+if (
+    dump_ir
+    or (replace_ttshared_ir is not None)
+    or (replace_linked_ir is not None)
+    or (replace_commonir_linked_ir is not None)
+):
     os.environ["TRITON_ALWAYS_COMPILE"] = "1"
     dump_dir = "./tmp"
     os.environ["TRITON_DUMP_DIR"] = os.environ.get("TRITON_DUMP_DIR", dump_dir)
@@ -441,6 +447,7 @@ def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
             "--scalar-to-1d-tensor",
             f"--linalg-to-linked=global-kernel=false named-ops=true",
             "--linked-to-hivm",
+            "--vectorize-parallel-loop",
             "-o",
             dst_path,
         ]
@@ -471,14 +478,15 @@ def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
             "--scalar-to-1d-tensor",
             f"--linalg-to-linked=global-kernel=false named-ops=true",
             "--linked-to-hivm",
+            "--vectorize-parallel-loop",
         ]
         dicp_utils._dump_stage_ir(
             content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
         )
 
-    if replace_linked_ir is not None:
-        print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
-        return Path(replace_linked_ir).read_text()
+    if replace_commonir_linked_ir is not None:
+        print(f"[DEBUG] Replace Linkedir with {replace_commonir_linked_ir}")
+        return Path(replace_commonir_linked_ir).read_text()
     return content
 
 
@@ -489,6 +497,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     dicp_triton.passes.linked_npu.add_linalg_if_to_select(pm)
     dicp_triton.passes.linked_npu.add_linalg_generic_to_scf(pm)
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
+    # dicp_triton.passes.linked_npu.add_vectorize_kernel(pm)  # 添加vectorize-kernel pass
     dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
     pm.run(mod)
@@ -700,9 +709,9 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         callback_path = os.path.join(tmpdir, "libkernel.so")
         multibuffer = metadata["multibuffer"]
         _compile_option_list = []
-        if dump_ir:
-            _compile_option_list += [f"--mlir-print-ir-before-all"]
-            _compile_option_list += [f"--mlir-print-ir-after-all"]
+        # if dump_ir:
+        #     _compile_option_list += [f"--mlir-print-ir-before-all"]
+        #     _compile_option_list += [f"--mlir-print-ir-after-all"]
         _compile_option_list += [
             f"--enable-auto-multi-buffer={multibuffer}",
         ]

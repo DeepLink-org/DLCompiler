@@ -77,6 +77,10 @@ void init_triton_dicp_triton_pass_linked_npu(py::module &&m) {
         });
   ADD_PASS_WRAPPER_0("add_linked_to_hivm",
                      dicp::linked::createLinkedToHIVMPass);
+  m.def("add_vectorize_parallel_loop", [](mlir::PassManager &pm) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        dicp::LinalgExt::createVectorizeParallelLoopPass());
+  });
 }
 
 void init_triton_dicp_triton(py::module &&m) {
@@ -107,6 +111,7 @@ void init_triton_dicp_triton(py::module &&m) {
     dicp::LinalgExt::registerLinalgGenericToSCFPass();
     dicp::LinalgExt::registerScalarTo1DTensorPass();
     dicp::LinalgExt::registerNormalizeSliceOpsPass();
+    dicp::LinalgExt::registerVectorizeParallelLoopPass();
 
     context.appendDialectRegistry(registry);
     context.loadAllAvailableDialects();

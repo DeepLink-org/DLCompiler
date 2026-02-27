@@ -11,6 +11,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
@@ -303,21 +304,47 @@ Value NPUUnrollPipeline::getUnrolledValue(Value originalVal, int iterIdx) {
 Operation *NPUUnrollPipeline::cloneAndUpdateOperands(RewriterBase &rewriter,
                                                      Operation *op,
                                                      int iterIdx) {
-  Operation *clone = rewriter.clone(*op);
+  IRMapping mapper;
 
-  for (OpOperand &operand : clone->getOpOperands()) {
-    Value originalVal = op->getOperand(operand.getOperandNumber());
-    Value replacement = getUnrolledValue(originalVal, iterIdx);
+  // Walk the operation to identify and map all externally defined values used
+  // within 'op' or its nested regions. This ensures that when 'op' is cloned,
+  // any references to values defined in the original loop scope are correctly
+  // remapped to their unrolled counterparts for the current iteration.
+  op->walk([&](Operation *nestedOp) {
+    for (Value operand : nestedOp->getOperands()) {
+      // Skip if already mapped.
+      if (mapper.contains(operand))
+        continue;
 
-    if (replacement && replacement != originalVal) {
-      operand.set(replacement);
-    } else if (isa<BlockArgument>(originalVal) &&
-               cast<BlockArgument>(originalVal).getOwner() == forOp.getBody()) {
-      // If we failed to resolve a loop arg, it's a critical error for valid IR
-      LDBG("    CRITICAL WARNING: Failed to resolve loop argument "
-           << originalVal << " at Iter " << iterIdx);
+      bool isExternal = false;
+      // Check if the operand is a BlockArgument defined outside of 'op'.
+      if (auto arg = dyn_cast<BlockArgument>(operand)) {
+        Operation *parentOp = arg.getOwner()->getParentOp();
+        // It is external if the parent op is neither 'op' nor a descendant of 'op'.
+        if (parentOp != op && !op->isAncestor(parentOp))
+          isExternal = true;
+      }
+      // Check if the operand is an OpResult defined outside of 'op'.
+      else if (auto defOp = operand.getDefiningOp()) {
+        // It is external if the defining op is neither 'op' nor a descendant of 'op'.
+        if (defOp != op && !op->isAncestor(defOp))
+          isExternal = true;
+      }
+
+      if (isExternal) {
+        // Retrieve the unrolled value for the current iteration.
+        Value replacement = getUnrolledValue(operand, iterIdx);
+        if (replacement) {
+          mapper.map(operand, replacement);
+        }
+      }
     }
-  }
+  });
+
+  // Clone the operation using the populated mapper.
+  // This handles deep cloning and operand remapping for both the op and its
+  // nested regions (like scf.for body).
+  Operation *clone = rewriter.clone(*op, mapper);
 
   // Record the cloned op in the mapping for future lookups (Yield Source
   // resolution)
@@ -445,9 +472,8 @@ struct NPUUnroolPipelinePass
 
     mlir::IRRewriter rewriter(func.getContext());
     AliasAnalysis &aa = getAnalysis<AliasAnalysis>();
-
     // 1. Analyze and Reorder Stages (Topological Sort)
-    StageDependencyAnalyzer analyzer(targetLoop, aa);
+    StageDependencyAnalyzer analyzer(targetLoop.getBody(), aa);
     auto orderedStagesOrFailure = analyzer.runAndReorder(rewriter);
 
     if (failed(orderedStagesOrFailure)) {

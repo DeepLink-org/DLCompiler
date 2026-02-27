@@ -272,10 +272,13 @@ class DICPBackend(BaseBackend):
             raise RuntimeError("backend not supported")
 
     def load_dialects(self, ctx):
+        # TODO  Warning If additional backends are integrated into the common IR with customized passes, their respective Dialect interfaces must be registered here. A decoupled registration mechanism for each backend is preferred to maintain modularity.
         if self.driver.target == "mlu":
             from triton._C.libtriton import mlu
-
             mlu.load_dialects(ctx)
+        else:
+            from triton._C.libtriton import dicp_triton
+            dicp_triton.load_dialects(ctx)
         return
 
     @functools.lru_cache()

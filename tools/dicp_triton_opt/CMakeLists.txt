@@ -23,6 +23,8 @@ target_link_libraries(dicp_opt PRIVATE
   LinkedToHIVM
   DICPLinalgExt
   DiscreteMaskAccessConversion
+  DICPTransformOps
+  MLIRLinalgTransformOps
 
   BiShengIRHIVMDialect
   LinalgExtAnalysis

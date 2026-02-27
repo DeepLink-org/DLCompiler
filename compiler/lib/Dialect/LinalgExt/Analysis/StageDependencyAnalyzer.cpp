@@ -1,4 +1,3 @@
-
 #include "dicp/Dialect/LinalgExt/Analysis/StageDependencyAnalyzer.h"
 
 #include "bishengir/Dialect/HIVM/IR/HIVM.h"
@@ -15,23 +14,45 @@
 using namespace mlir;
 using namespace dicp;
 
-void StageDependencyAnalyzer::collectStages() {
+// Helper to check if an operation is a Matmul (Cube unit op)
+static bool isCubeOp(Operation *op) {
+  // We check if the operation name contains "matmul".
+  // This covers linalg.matmul, linalg.batch_matmul, or vendor specific ops like
+  // npu.matmul / aclnn.matmul.
+  StringRef opName = op->getName().getStringRef();
+  return opName.contains_insensitive("matmul");
+}
+
+static std::string getStageTypeStr(StageType type) {
+  switch (type) {
+  case StageType::Vector:
+    return "Vector";
+  case StageType::Cube:
+    return "Cube";
+  default:
+    return "Unknown";
+  }
+}
+
+FailureOr<std::vector<StageInfo>> StageDependencyAnalyzer::collectStages() {
   LDBG(">>> [Analysis] Collecting Stages...");
-  stages.clear();
+  std::vector<StageInfo> collectedStages;
   StageInfo currentStage;
   currentStage.id = 0;
+  // Default type is Vector, upgrades to Cube if a matmul is found
+  currentStage.type = StageType::Vector;
 
-  Block *body = forOp.getBody();
-  for (Operation &op : body->without_terminator()) {
+  for (Operation &op : block->without_terminator()) {
     // If the current operation is a SyncBlockWaitOp, it marks the start of a
     // new stage. We complete the current stage (if it's not empty) and start a
     // new one. The SyncBlockWaitOp will become the first operation of the new
     // stage.
     if (isa<hivm::SyncBlockWaitOp>(op)) {
       if (!currentStage.ops.empty()) {
-        stages.push_back(currentStage);
+        collectedStages.push_back(currentStage);
         currentStage = StageInfo();
-        currentStage.id = stages.size();
+        currentStage.id = collectedStages.size();
+        currentStage.type = StageType::Vector; // Reset type for new stage
       }
     }
 
@@ -41,25 +62,25 @@ void StageDependencyAnalyzer::collectStages() {
     if (isa<hivm::SyncBlockWaitOp>(op)) {
       currentStage.hasSync = true;
     }
+
+    // Check if this op upgrades the stage to a Cube stage
+    if (isCubeOp(&op)) {
+      currentStage.type = StageType::Cube;
+    }
   }
 
   if (!currentStage.ops.empty()) {
-    stages.push_back(currentStage);
+    collectedStages.push_back(currentStage);
   }
 
-  nodes.resize(stages.size());
-  for (size_t i = 0; i < stages.size(); ++i) {
-    nodes[i].id = i;
-    nodes[i].stageInfo = &stages[i];
-  }
-
-  LDBG("Collected " << stages.size() << " stages.");
+  LDBG("Collected " << collectedStages.size() << " stages.");
 
   // Debug: dump the ops contained in each stage (print full op IR).
   LLVM_DEBUG({
     llvm::dbgs() << "[" DEBUG_TYPE "] Detailed stage contents:\n";
-    for (const auto &stage : stages) {
+    for (const auto &stage : collectedStages) {
       llvm::dbgs() << "[" DEBUG_TYPE << "] Stage " << stage.id
+                   << " [Type: " << getStageTypeStr(stage.type) << "]"
                    << (stage.hasSync ? " (hasSync)" : "")
                    << " - ops: " << stage.ops.size() << "\n";
       for (Operation *op : stage.ops) {
@@ -69,6 +90,8 @@ void StageDependencyAnalyzer::collectStages() {
       }
     }
   });
+
+  return collectedStages;
 }
 
 void StageDependencyAnalyzer::collectEffects() {
@@ -83,7 +106,7 @@ void StageDependencyAnalyzer::collectEffects() {
         // We only care about operands defined within the loop (not block args
         // or invariant)
         if (auto defOp = operand.getDefiningOp()) {
-          if (defOp->getParentOp() == forOp) {
+          if (defOp->getBlock() == block) {
             node.consumedValues.insert(operand);
           }
         }
@@ -204,7 +227,8 @@ void StageDependencyAnalyzer::reorderStagesLogical() {
   newStages.reserve(stages.size());
   LDBG(">>> [Analysis] Reordered Stages (Logical Order):");
   for (const auto &node : sortedNodes) {
-    LDBG("  Stage ID: " << node.id << ", Level: " << node.level);
+    LDBG("  Stage ID: " << node.id << ", Level: " << node.level
+                        << ", Type: " << getStageTypeStr(node.stageInfo->type));
     newStages.push_back(*node.stageInfo);
   }
   stages = std::move(newStages);
@@ -212,7 +236,7 @@ void StageDependencyAnalyzer::reorderStagesLogical() {
 
 void StageDependencyAnalyzer::materializeScheduleToIR() {
   LDBG(">>> [Analysis] Materializing Schedule to IR (Physical Move)...");
-  Operation *terminator = forOp.getBody()->getTerminator();
+  Operation *terminator = block->getTerminator();
   for (const auto &stage : stages) {
     for (Operation *op : stage.ops) {
       if (op == terminator)
@@ -224,16 +248,38 @@ void StageDependencyAnalyzer::materializeScheduleToIR() {
 
 FailureOr<std::vector<StageInfo>>
 StageDependencyAnalyzer::runAndReorder(RewriterBase &rewriter) {
-  collectStages();
+  // 1. Collect Stages
+  auto stagesOrErr = collectStages();
+  if (failed(stagesOrErr))
+    return failure();
+
+  // Move collected stages to member variable
+  stages = std::move(*stagesOrErr);
+
+  // Initialize graph nodes.
+  // Note: We do this here instead of in collectStages because 'nodes' stores
+  // pointers to elements of 'stages'. We must ensure 'stages' is in its final
+  // location (member variable) before taking addresses.
+  nodes.resize(stages.size());
+  for (size_t i = 0; i < stages.size(); ++i) {
+    nodes[i].id = i;
+    nodes[i].stageInfo = &stages[i];
+  }
+
+  // 2. Run Analysis
   collectEffects();
   buildDependencyGraph();
   if (failed(computeStageLevels()))
     return failure();
+
+  // 3. Reorder
   reorderStagesLogical();
+
   LDBG(">>> [Result] Final Stage Dependency Summary:");
   LLVM_DEBUG(for (const auto &stage
                   : stages) {
-    llvm::dbgs() << "[" DEBUG_TYPE "] Stage " << stage.id << ":\n";
+    llvm::dbgs() << "[" DEBUG_TYPE "] Stage " << stage.id << " ("
+                 << getStageTypeStr(stage.type) << "):\n";
     llvm::dbgs() << "    Predecessors (Depends on): { stage: ";
     for (int p : stage.preds)
       llvm::dbgs() << p << " ";
@@ -243,6 +289,7 @@ StageDependencyAnalyzer::runAndReorder(RewriterBase &rewriter) {
       llvm::dbgs() << s << " ";
     llvm::dbgs() << "}\n";
   });
+
   materializeScheduleToIR();
   return stages;
 }

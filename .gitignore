@@ -102,3 +102,5 @@ launcher_cxx11abi*
 backend/triton-shared-opt-v3*
 backend/dicp_opt
 third_party/triton-shared-opt
+
+FA_FWD_PROF

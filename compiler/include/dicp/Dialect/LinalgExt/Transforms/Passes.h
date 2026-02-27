@@ -14,6 +14,9 @@ class FuncOp;
 
 namespace mlir::dicp::LinalgExt {
 
+#define GEN_PASS_DECL
+#include "dicp/Dialect/LinalgExt/Transforms/Passes.h.inc"
+
 std::unique_ptr<OperationPass<mlir::ModuleOp>> createLinalgIfToSelectPass();
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>> createLinalgGenericToSCFPass();
@@ -25,6 +28,21 @@ createNormalizeSliceOpsPass();
 
 std::unique_ptr<OperationPass<mlir::func::FuncOp>>
 createNPUUnroolPipelinePass();
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+createNPUVectorTileTaggingPass(const NPUVectorTileTaggingOptions &options = {});
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+createNPUVectorTileTaggingPass(unsigned vectorTile);
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
+createNPUVectorTileTransformPass();
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>> createDeLinalgizePass();
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>> createFuseLoopPass();
+std::unique_ptr<OperationPass<mlir::func::FuncOp>> createLoopUnrollStagePass();
+
+std::unique_ptr<OperationPass<mlir::func::FuncOp>> createShrinkBuffersPass();
 
 #define GEN_PASS_REGISTRATION
 #include "dicp/Dialect/LinalgExt/Transforms/Passes.h.inc"

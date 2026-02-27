@@ -50,6 +50,12 @@ if (TRITON_BUILD_PYTHON_MODULE)
     MLIRTransforms
     MLIRSupport
     MLIRBytecodeWriter
+    MLIRTransformDialect
+    ${extension_libs}
+    MLIRRegisterAllPasses
+    MLIRLinalgTransforms
+    MLIRTensorTransforms
+    MLIRFuncAllExtensions
     
     TritonToLinalgNPUCoversion
 
@@ -61,6 +67,7 @@ if (TRITON_BUILD_PYTHON_MODULE)
     LinkedToHIVM
     DiscreteMaskAccessConversion
     TritonToUnstructure
+    DICPTransformOps
     )
     target_link_libraries(tritonDicpTriton PRIVATE Python3::Module pybind11::headers)
 endif()

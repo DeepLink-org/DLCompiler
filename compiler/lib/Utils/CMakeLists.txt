@@ -4,4 +4,6 @@ add_triton_library(DICPUtils
   LINK_LIBS PUBLIC
   MLIRIR
   TritonIR
+  MLIRTransformDialect
+  MLIRTransformDialectUtils
 )

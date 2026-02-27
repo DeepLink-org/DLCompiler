@@ -2,8 +2,9 @@
 #define DICP_DIALECT_LINALGEXT_TRANSFORMS_STAGEDEPENDENCYANALYZER_H
 
 #include "mlir/Analysis/AliasAnalysis.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 
 #include "llvm/ADT/SetVector.h"
 
@@ -13,41 +14,51 @@
 namespace mlir {
 namespace dicp {
 
+/// Defines the execution unit type for the stage.
+enum class StageType {
+  Vector, // Default: General vector or scalar operations
+  Cube    // Matrix operations (e.g., Matmul)
+};
+
 /// Represents a single pipeline stage.
 /// A stage is a sequence of operations that execute together.
 /// Synchronization operations (SyncBlockWaitOp) typically delimit stage
 /// boundaries.
 struct StageInfo {
   int id = -1;
-  std::vector<Operation *> ops;
+  SmallVector<Operation *, 8> ops;
   // IDs of stages that this stage depends on
   std::set<int> preds;
   // IDs of stages that depend on this stage
   std::set<int> succs;
   bool hasSync = false;
+  // Stage execution type
+  StageType type = StageType::Vector;
 };
 
 // StageDependencyAnalyzer:
-// 1. Partitioning a loop body into "stages" based on synchronization primitives
+// 1. Partitioning a block into "stages" based on synchronization primitives
 //    (hivm::SyncBlockWaitOp).
 // 2. Building a dependency graph between these stages considering both:
 //    - SSA Data Flow (Producer-Consumer relationships).
-//    - Memory Dependencies (Read-After-Write via
-//    AliasAnalysis).
+//    - Memory Dependencies (Read-After-Write via AliasAnalysis).
 // 3. Computing a topological ordering (levels) to detect cycles and determine
 //    a valid execution schedule.
 // 4. Physically reordering the IR operations to match the valid schedule.
 //
 class StageDependencyAnalyzer {
 public:
-  StageDependencyAnalyzer(scf::ForOp forOp, AliasAnalysis &aliasAnalysis)
-      : forOp(forOp), aliasAnalysis(aliasAnalysis) {}
+  StageDependencyAnalyzer(Block *block, AliasAnalysis &aliasAnalysis)
+      : block(block), aliasAnalysis(aliasAnalysis) {}
 
   /// Runs the analysis, computes the topological sort, and physically reorders
-  /// the operations in the loop body.
+  /// the operations in the block.
   /// Returns the ordered list of StageInfo on success, or failure if a cycle is
   /// detected.
   FailureOr<std::vector<StageInfo>> runAndReorder(RewriterBase &rewriter);
+
+  /// Scans the block to populate the `stages` vector.
+  FailureOr<std::vector<StageInfo>> collectStages();
 
 private:
   /// Internal node structure for the dependency graph.
@@ -65,13 +76,10 @@ private:
     llvm::SetVector<Value> consumedValues; // Values used in this stage
   };
 
-  scf::ForOp forOp;
+  Block *block;
   AliasAnalysis &aliasAnalysis;
   std::vector<StageInfo> stages;
   std::vector<StageNode> nodes;
-
-  /// Scans the loop body to populate the `stages` vector.
-  void collectStages();
 
   /// Collects SSA definitions/uses and Memory Read/Write effects for each
   /// stage.

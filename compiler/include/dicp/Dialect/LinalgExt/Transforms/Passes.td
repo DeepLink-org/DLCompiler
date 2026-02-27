@@ -4,7 +4,8 @@
 include "mlir/Pass/PassBase.td"
 
 def LinalgIfToSelect : Pass<"linalg-if-to-select", "mlir::ModuleOp"> {
-  let summary = "Convert scf.if inside parallel linalg.generic to arith.select and hoist selects.";
+  let summary = "Convert scf.if inside parallel linalg.generic to arith.select "
+                "and hoist selects.";
   let description = [{
     This pass converts conditional logic (`scf.if`) inside a parallel `linalg.generic`
     operation into data-flow operations (`arith.select`).
@@ -23,13 +24,12 @@ def LinalgIfToSelect : Pass<"linalg-if-to-select", "mlir::ModuleOp"> {
         simplify the body of the `linalg.generic` and enables further fusion.
   }];
   let constructor = "mlir::dicp::LinalgExt::createLinalgIfToSelectPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect",
-                           "mlir::arith::ArithDialect",
-                           "mlir::tensor::TensorDialect",
-                           "mlir::scf::SCFDialect",
-                           "mlir::memref::MemRefDialect"]; 
+  let dependentDialects = [
+    "mlir::linalg::LinalgDialect", "mlir::arith::ArithDialect",
+    "mlir::tensor::TensorDialect", "mlir::scf::SCFDialect",
+    "mlir::memref::MemRefDialect"
+  ];
 }
-
 
 def LinalgGenericToSCF : Pass<"linalg-generic-to-scf", "mlir::ModuleOp"> {
   let summary = "Lower linalg.generic ops to SCF loops";
@@ -42,22 +42,20 @@ def LinalgGenericToSCF : Pass<"linalg-generic-to-scf", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
-
 def ScalarTo1DTensor : Pass<"scalar-to-1d-tensor", "mlir::func::FuncOp"> {
-  let summary = "Convert scalar computations and memref load/store to tensor<1 x T> form";
-  let description = [{
-    The ScalarTo1DTensor pass targets scalar computations and
-    memory access within a function and rewrites them into an explicit
-    tensor<1 x T>-based form. This enables uniform handling of scalar
-    values in subsequent bufferization and lowering passes.
-  }];
-  
+  let summary =
+      "Convert scalar computations and memref load/store to tensor<1 x T> form";
+  let description =
+      [{The ScalarTo1DTensor pass targets scalar computations and memory access
+            within a function and rewrites them into an explicit tensor<1 x T> -
+        based form
+            .This enables uniform handling of scalar values in subsequent
+                bufferization and lowering passes.}];
+
   let constructor = "mlir::dicp::LinalgExt::createScalarTo1DTensorPass()";
   let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "mlir::tensor::TensorDialect",
-    "mlir::bufferization::BufferizationDialect",
+    "mlir::arith::ArithDialect", "mlir::memref::MemRefDialect",
+    "mlir::tensor::TensorDialect", "mlir::bufferization::BufferizationDialect",
     "mlir::func::FuncDialect"
   ];
 }
@@ -66,6 +64,21 @@ def NormalizeSliceOps : Pass<"normalize-slice-ops", "func::FuncOp"> {
   let summary = "Normalize Slice Ops.";
   let constructor = "mlir::dicp::LinalgExt::createNormalizeSliceOpsPass()";
   let dependentDialects = ["mlir::tensor::TensorDialect"];
+}
+
+def VectorizeParallelLoop : Pass<"vectorize-parallel-loop", "func::FuncOp"> {
+  let summary = "Convert single-element parallel loops to vectorized batch "
+                "processing with step=size.";
+  let description = [{This pass transforms parallel loops that process single
+                          elements into vectorized operations that can process
+                              multiple elements simultaneously,
+                      potentially increasing computational throughput.}];
+  let constructor = "mlir::dicp::LinalgExt::createVectorizeParallelLoopPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect", "mlir::memref::MemRefDialect",
+    "mlir::tensor::TensorDialect", "mlir::scf::SCFDialect",
+    "mlir::bufferization::BufferizationDialect", "mlir::func::FuncDialect"
+  ];
 }
 
 #endif

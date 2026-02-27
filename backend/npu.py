@@ -491,10 +491,20 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
     dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
+    # dicp_triton.passes.linked_npu.add_npu_vector_tile_tagging(pm,2)
+    # dicp_triton.passes.linked_npu.add_npu_vector_tile_transform(pm)
+    # dicp_triton.passes.linked_npu.add_fuse_loop(pm)
+    # dicp_triton.passes.linked_npu.add_de_linalgize(pm)
+    # dicp_triton.passes.linked_npu.add_loop_unroll_stage(pm)
+    # dicp_triton.passes.linked_npu.add_npu_unroll_pipeline(pm)
     pm.run(mod)
-
-    # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
     content = str(mod)
+    dicp_utils._dump_stage_ir(
+            content, metadata["hash"], "kernel.linkedir.mlir.2"
+        )
+    if replace_linked_ir is not None:
+        content= Path(replace_linked_ir).read_text()
+    # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
     # 将"*xfxxx"替换成"?xfxxx"
     content = content.replace("*xf", "?xf")
     content = content.replace("*xi", "?xi")
@@ -520,9 +530,7 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
             content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
         )
 
-    if replace_linked_ir is not None:
-        print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
-        return Path(replace_linked_ir).read_text()
+
     return content
 
 
@@ -683,7 +691,7 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
     return linalg, metadata
 
 
-def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
+def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt, capability):
     linalg, metadata = _parse_linalg_metadata(linalg, metadata)
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
@@ -706,6 +714,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         _compile_option_list += [
             f"--enable-auto-multi-buffer={multibuffer}",
         ]
+        if capability:
+            _compile_option_list += [f"--target={capability}"]
 
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]

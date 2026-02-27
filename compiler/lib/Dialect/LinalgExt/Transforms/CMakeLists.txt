@@ -4,9 +4,17 @@ add_triton_library(LinalgExtTransforms
   ScalarTo1DTensorPass.cpp
   RemoveSingleIterationLoop.cpp
   TensorTransform.cpp
+  NPUUnroolPipeline.cpp
+  NPUVectorTileTransform.cpp
+  NPUTileLoopTagging.cpp
+  DeLinalgize.cpp
+  FuseLoop.cpp
+  LoopUnrollStage.cpp
+  ShrinkBuffers.cpp
 
   DEPENDS
   LinalgExtTransformsIncGen
+  LinalgExtAnalysis
 
   LINK_LIBS PUBLIC
   TritonTilingExtIR
@@ -18,10 +26,20 @@ add_triton_library(LinalgExtTransforms
   MLIRTensorDialect
   MLIRTransforms
   MLIRSupport
+  MLIRAnalysis
+  MLIRSCFUtils
+  MLIRSCFTransforms
+  MLIRLinalgTransformOps
+  MLIRLinalgUtils
+  MLIRTransformUtils
+  MLIRTransformDialectTransforms
+  MLIRTensorTransforms
   TritonAnalysis
   TritonIR
   TritonTransforms
   TritonSharedAnalysis
+
+  DICPTransformOps
 
   TritonArithToLinalg
   StructuredToMemref

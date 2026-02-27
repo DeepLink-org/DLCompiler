@@ -405,12 +405,6 @@ ScanConverter::convertToTargetOp(triton::ScanOp op,
 
     Value scanInput = op.getOperand(0);
 
-    scanInput.dump();
-
-    for (Value operand : op->getOperands()) {
-      operand.dump();
-    }
-
     auto srcType = mlir::dyn_cast<RankedTensorType>(scanInput.getType());
     if (!srcType) {
       return rewriter.notifyMatchFailure(

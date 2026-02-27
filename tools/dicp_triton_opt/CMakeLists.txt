@@ -8,6 +8,7 @@ target_link_libraries(dicp_opt PRIVATE
   TritonAnalysis
   TritonTransforms
   TritonGPUTransforms
+  TritonNvidiaGPUTransforms
   TritonSharedAnalysis
   ${dialect_libs}
   ${translation_libs}
@@ -22,7 +23,11 @@ target_link_libraries(dicp_opt PRIVATE
   LinkedToHIVM
   DICPLinalgExt
   DiscreteMaskAccessConversion
+  DICPTransformOps
+  MLIRLinalgTransformOps
 
+  BiShengIRHIVMDialect
+  LinalgExtAnalysis
   TritonToLinalg
   TritonTilingExtIR
   TritonToLinalgNPUCoversion

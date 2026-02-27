@@ -1,0 +1,5 @@
+set(LLVM_TARGET_DEFINITIONS DicpTransformOps.td)
+mlir_tablegen(DicpTransformOps.h.inc -gen-op-decls)
+mlir_tablegen(DicpTransformOps.cpp.inc -gen-op-defs)
+add_public_tablegen_target(DICPTransformOpsIncGen)
+add_dependencies(mlir-headers DICPTransformOpsIncGen)

@@ -1,4 +1,4 @@
-// RUN: %triton_shared_opt %s --triton-to-linalg | %FileCheck %s
+// RUN: %triton-shared-opt-v3_4 %s --triton-to-linalg | %FileCheck %s
 
 module {
   tt.func public @fn_broadcast(%arg0: !tt.ptr<f32> {tt.divisibility = 16 : i32} , %arg1: !tt.ptr<f32> {tt.divisibility = 16 : i32, tt.shape_1 = 0 : i32} , %arg2: i32 {tt.divisibility = 16 : i32} ) attributes {noinline = false} {

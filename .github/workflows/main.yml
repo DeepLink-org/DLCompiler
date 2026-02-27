@@ -88,6 +88,31 @@ jobs:
           export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           export ASCEND_RT_VISIBLE_DEVICES=7
           bash test/ascend/run_tests.sh
+
+      - name: Run MLIR tests
+        run: |
+          set -ex
+          source /home/dlc_ci/.bashrc
+          source activate dlcompiler
+          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          cd ${{env.CI_PATH }}
+          echo "whoami? $(whoami)"
+          echo "which python? $(which python)"
+          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+          export ASCEND_RT_VISIBLE_DEVICES=7
+          bash test/ascend/test_mlir.sh
+
+      - name: Run DSL tests
+        run: |
+          set -ex
+          source /home/dlc_ci/.bashrc
+          source activate dlcompiler
+          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          cd ${{env.CI_PATH }}
+          echo "whoami? $(whoami)"
+          echo "which python? $(which python)"
+          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+          export ASCEND_RT_VISIBLE_DEVICES=7
           bash test/dsl/run_tests.sh
 
       - name: Clear workfile

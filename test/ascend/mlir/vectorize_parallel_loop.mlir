@@ -1,5 +1,4 @@
 // RUN: %dicp_opt %s --vectorize-parallel-loop | %FileCheck %s
-// /opt/conda/envs/commonir/lib/python3.10/site-packages/triton/_C/dicp_opt
 
 module {
   func.func @main(%arg0: memref<?xi8>, %arg1: memref<?xi8>, %arg2: memref<?xf32>, %arg3: memref<?xf32>, %arg4: memref<?xf32>, %arg5: i32, %arg6: i32, %arg7: i32, %arg8: i32, %arg9: i32, %arg10: i32) attributes {SyncBlockLockArgIdx = 0 : i64, WorkspaceArgIdx = 1 : i64, global_kernel = "local", mix_mode = "aiv"} {

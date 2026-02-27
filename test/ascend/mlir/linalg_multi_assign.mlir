@@ -1,4 +1,4 @@
-// RUN: %triton_shared_opt linalg_multi_assign.mlir --triton-to-linalg | /usr/bin/FileCheck-18 linalg_multi_assign.mlir
+// RUN: %triton-shared-opt-v3_4 %s --triton-to-linalg | %FileCheck %s
 
 module {
   tt.func public @gcd_kernel(%arg0: !tt.ptr<i32> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<i32> {tt.divisibility = 16 : i32}, %arg2: !tt.ptr<i32> {tt.divisibility = 16 : i32}, %arg3: i32 {tt.divisibility = 16 : i32}) attributes {noinline = false} {

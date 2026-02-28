@@ -78,7 +78,7 @@ class AdapterWrapper:
         result_idx,
         target,
         func_or_mod,
-        kernel_global_source,
+        host_kernel_source,
         kernel_lib_path,
         pass_configs,
     ):
@@ -86,9 +86,64 @@ class AdapterWrapper:
 
     @classmethod
     def _tilelang_to_commonir(cls, tilelang_module):
-        from tilelang.engine import lower
+        from tilelang.engine.lower import extrac_params
+        from tilelang.engine.param import CompiledArtifact
+        from tilelang.engine.phase import (
+            PreLowerSemanticCheck,
+            LowerAndLegalize,
+        )
         from tilelang import tvm as tvm
+        from tvm.target import Target
+        from tvm import tir, IRModule
         from tvm.ir.instrument import PrintAfterAll, PrintBeforeAll
+
+        def OptimizeForTarget(mod: IRModule, target: Target) -> IRModule:
+            mod = tir.transform.PlanAndUpdateBufferAllocationLocation()(mod)
+            mod = tir.transform.LowerOpaqueBlock()(mod)
+            mod = tir.transform.RemoveNoOp()(mod)
+            return mod
+
+        def LowerAndLegalize(mod: IRModule, target: Target) -> IRModule:
+            return tir.transform.BindTarget(target)(mod)
+
+        def canon_target_host(target: str | Target, target_host: str | Target | None):
+            if not target_host:
+                target_host = "llvm" if tvm.runtime.enabled("llvm") else "c"
+
+            return target_host
+
+        def device_codegen(device_mod: tvm.IRModule, target: Target) -> tvm.IRModule:
+            return tvm.ffi.get_global_func("target.build.tilelang_commonir")(
+                device_mod, target
+            )
+
+        def lower(
+            func_or_mod: tir.PrimFunc | tvm.IRModule,
+            target: str | Target = "auto",
+            target_host: str | Target | None = None,
+            runtime_only=False,
+        ) -> CompiledArtifact:
+            mod = func_or_mod
+            params = None
+            if isinstance(func_or_mod, tir.PrimFunc):
+                func = func_or_mod
+                params = extrac_params(func) if not runtime_only else None
+                mod = tvm.IRModule({func.attrs["global_symbol"]: func})
+            target = "commonir"
+            target_host = canon_target_host(target, target_host)
+            target_host = tvm.target.Target.canon_target(target_host)
+            target = tvm.target.Target(target, target_host)
+            # Before lowering, do semantic check
+            PreLowerSemanticCheck(mod)
+            # Phase 1: Lower and legalize the IR
+            mod = LowerAndLegalize(mod, target)
+            # Phase 2: Optimize the IR for the target
+            mod = OptimizeForTarget(mod, target)
+            codegen_mod = device_codegen(mod, target)
+            # print(codegen_mod.inspect_source())
+            return CompiledArtifact(
+                None, codegen_mod, params, codegen_mod.inspect_source(), None
+            )
 
         debug_enabled = os.environ.get("TILELANG_PRINT_COMMONIR", "0") in (
             "1",
@@ -98,11 +153,8 @@ class AdapterWrapper:
 
         instruments = [PrintAfterAll(), PrintBeforeAll()] if debug_enabled else []
         with tvm.transform.PassContext(instruments=instruments):
-            mlir_path = lower(tilelang_module)
-        if mlir_path.endswith(".mlir"):
-            mlir_content = cls._read_mlir_file(mlir_path)
-        else:
-            mlir_content = mlir_path
+            lower_result = lower(tilelang_module)
+            mlir_content = lower_result.kernel_source
         return mlir_content
 
     @classmethod

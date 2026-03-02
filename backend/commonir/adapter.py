@@ -199,6 +199,7 @@ class AdapterWrapper:
         except Exception as e:
             print(f"Error occurred while reading the file: {e}")
             return None
+
     @classmethod
     def _write_mlir_file(cls, file_path, mlir_content):
         try:

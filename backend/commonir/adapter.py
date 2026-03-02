@@ -1,4 +1,6 @@
 import os
+import tempfile
+import shutil
 import re
 from typing import Callable, List
 from triton.backends.dicp_triton.commonir.compiler import (
@@ -62,6 +64,16 @@ class AdapterWrapper:
         adapter_wrapper = AdapterWrapper()
         adapter_wrapper.artifact.set_kernel_source(tilelang_module)
         mlir_content = cls._tilelang_to_commonir(tilelang_module)
+        dump_ir = os.environ.get("DUMP_COMMON_IR", "0") == "1"
+        if dump_ir:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                print(mlir_content)
+                dst_path = os.path.join(tmpdir, "kernel.commonir.mlir")
+                print(dst_path)
+                cls._write_mlir_file(dst_path, mlir_content)
+                if not os.path.exists("./tmp"):
+                    os.makedirs("./tmp")
+                shutil.copy(dst_path, "./tmp/kernel.commonir.mlir")
         grid = cls._parse_grid(tilelang_module)
         signature = cls._parse_signature(mlir_content)
 
@@ -187,6 +199,18 @@ class AdapterWrapper:
         except Exception as e:
             print(f"Error occurred while reading the file: {e}")
             return None
+    @classmethod
+    def _write_mlir_file(cls, file_path, mlir_content):
+        try:
+            with open(file_path, "w", encoding="utf-8") as file:
+                file.write(mlir_content)
+            return True
+        except FileNotFoundError:
+            print(f"Error: Directory for '{file_path}' does not exist")
+            return False
+        except Exception as e:
+            print(f"Error occurred while writing to the file: {e}")
+            return False
 
     @classmethod
     def _parse_signature(cls, mlir_content) -> dict:

@@ -6,19 +6,24 @@ import tilelang.language as T
 
 import torch
 import torch_npu
+
 device = torch.npu.current_device()
 dtype = torch.float16
 # tilelang.cache.clear_cache()
+
 
 def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="float"):
 
     @T.prim_func
     def gemm(
-            A: T.Tensor((M, K), dtype),
-            B: T.Tensor((K, N), dtype),
-            C: T.Tensor((M, N), dtype),
+        A: T.Tensor((M, K), dtype),
+        B: T.Tensor((K, N), dtype),
+        C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M), threads=128) as (bx, by):
+        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M), threads=128) as (
+            bx,
+            by,
+        ):
             A_shared = T.alloc_shared((block_M, block_K), dtype)
             B_shared = T.alloc_shared((block_K, block_N), dtype)
             C_local = T.alloc_fragment((block_M, block_N), accum_dtype)
@@ -36,7 +41,7 @@ def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="flo
 
 def main():
     func = matmul(1024, 1024, 1024, 128, 128, 32)
-    kernel = tilelang.compile(func, target='commonir')
+    kernel = tilelang.compile(func, target="commonir")
     SIZEALL = 1024
 
     torch.manual_seed(0)

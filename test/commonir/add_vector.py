@@ -18,14 +18,14 @@ def vec_add(N, block_N, dtype="float32"):
 
     @T.prim_func
     def main(
-            A: T.Tensor((N), dtype),
-            B: T.Tensor((N), dtype),
-            C: T.Tensor((N), dtype),
+        A: T.Tensor((N), dtype),
+        B: T.Tensor((N), dtype),
+        C: T.Tensor((N), dtype),
     ):
         with T.Kernel(n_num, 1) as (by, bx):
             start_y1 = by * block_N
             start_y = start_y1 + bx
-            for (local_y) in T.Parallel(block_N):
+            for local_y in T.Parallel(block_N):
                 y = start_y + local_y
                 C[y] = A[y] + B[y]
 
@@ -34,7 +34,7 @@ def vec_add(N, block_N, dtype="float32"):
 
 def test_vec_add():
     func = vec_add(seq_len, seq_len // 4)
-    compiled_kernel = tilelang.compile(func, target='commonir')
+    compiled_kernel = tilelang.compile(func, target="commonir")
 
     v1 = torch.randn(size=[seq_len], dtype=eval("torch." + dtype)).npu()
     v2 = torch.randn(size=[seq_len], dtype=eval("torch." + dtype)).npu()
@@ -46,8 +46,10 @@ def test_vec_add():
     # print(y_ref)
     # print(v3)
 
-    print(f'The maximum difference between torch and Tilellang is '
-          f'{torch.max(torch.abs(y_ref - v3))}')
+    print(
+        f"The maximum difference between torch and Tilellang is "
+        f"{torch.max(torch.abs(y_ref - v3))}"
+    )
 
     if torch.allclose(v3, y_ref, atol=1e-2, rtol=0):
         print("✅ Tilellang and Torch match")

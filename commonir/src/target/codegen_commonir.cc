@@ -177,7 +177,6 @@ static std::string broadcastAttrCodegen(Array<PrimExpr> &buffer_shape0,
   return temp.str();
 }
 
-
 void PrintBufferMap(const Map<Var, Buffer> &buffer_map) {
   for (const auto &kv : buffer_map) {
     const Var &var = kv.first;
@@ -769,7 +768,6 @@ String CodeGenTileLangCOMMONIR::GenSubviewFromRegion(Buffer buffer_data,
   return new_buffer_name;
 }
 
-
 String CodeGenTileLangCOMMONIR::CreateMemrefToTensor(String src_data_name) {
   if (!dynamic_cast<Memref *>(type_info[src_data_name])) {
     LOG(FATAL) << src_data_name << " should be a memref";
@@ -781,11 +779,11 @@ String CodeGenTileLangCOMMONIR::CreateMemrefToTensor(String src_data_name) {
   std::ostringstream temp;
   temp << "bufferization.to_tensor %" << src_data_name
        << " restrict writable : " << GetMemrefInfo(src_data_name);
-  temp <<  " to " << GetTensorInfo(tempTensor);
+  temp << " to " << GetTensorInfo(tempTensor);
   new_tensor_name = SSAGetID(temp.str(), src_dtype);
   tempTensor->var_id = new_tensor_name;
   this->type_info_tensor[new_tensor_name] = tempTensor;
-  
+
   return new_tensor_name;
 }
 
@@ -839,7 +837,8 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     FillCodegen(op, os);
   } else if (op->op.same_as(Op::Get("tl.tileop.copy"))) {
     CopyCodegen(op, os);
-  } else if (op->op.same_as(Op::Get("tl.tileop.gemm")) || op->op.same_as(Op::Get("tl.tileop.gemm_py"))) {
+  } else if (op->op.same_as(Op::Get("tl.tileop.gemm")) ||
+             op->op.same_as(Op::Get("tl.tileop.gemm_py"))) {
     GemmCodegen(op, os);
   } else if (op->op.same_as(Op::Get("tl.infinity"))) {
     InfinityCodegen(op, os);
@@ -855,8 +854,7 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     CodeGenC::VisitExpr_(op, os);
   }
 }
-void CodeGenTileLangCOMMONIR::StubCodegen(const CallNode *op,
-                                          std::ostream &os,
+void CodeGenTileLangCOMMONIR::StubCodegen(const CallNode *op, std::ostream &os,
                                           String stubname) {
   this->PrintIndent();
   this->stream << stubname << "\n";
@@ -927,7 +925,8 @@ void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
   // ICHECK(gemmop->policy_ == tvm::tl::GemmWarpPolicyType::kSquare)
   //     << "Currently we only support: policy_ must be kSquare";
   ICHECK(gemmop->kPack_ == 1) << "Currently we only support: kPack_ must be 1";
-  ICHECK(gemmop->wgWait_ == 0) << "Currently we only support: wgWait_ must be 0";
+  ICHECK(gemmop->wgWait_ == 0)
+      << "Currently we only support: wgWait_ must be 0";
 
   Buffer a_buffer = gemmop->a_;
   Buffer b_buffer = gemmop->b_;
@@ -1007,11 +1006,11 @@ void CodeGenTileLangCOMMONIR::ReduceCodegen(const CallNode *op,
                                             std::ostream &os) {
   tvm::tl::ReduceOp reduceop(op->args);
   // todo(dkx): support other reduce type
-  ICHECK(reduceop->type->isSum() || reduceop->type->isMax()) << "Currently we only support: sum or max";
+  ICHECK(reduceop->type->isSum() || reduceop->type->isMax())
+      << "Currently we only support: sum or max";
   this->PrintIndent();
   this->stream << "linalg.reduce \n";
 }
-
 
 void CodeGenTileLangCOMMONIR::VisitStmt_(const LetStmtNode *op) {
   std::string value = PrintExpr(op->value);
@@ -1079,9 +1078,10 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const AttrStmtNode *op) {
       this->PrintIndent();
       this->stream << "%" << block_id_ << " = arith.addi  %" << vid << ", "
                    << this->thread_context_args[arg_index] << ": i32\n";
-    } else if ((iv->thread_tag == "threadIdx.x" || iv->thread_tag == "threadIdx.y" ||
-         iv->thread_tag == "threadIdx.z") &&
-        iv->var->name_hint != "_") {
+    } else if ((iv->thread_tag == "threadIdx.x" ||
+                iv->thread_tag == "threadIdx.y" ||
+                iv->thread_tag == "threadIdx.z") &&
+               iv->var->name_hint != "_") {
       // todo(dkx): should handle this dilemma on npu
       auto block_id_ = AllocVarID(iv->var.get());
     }

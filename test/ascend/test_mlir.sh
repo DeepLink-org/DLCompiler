@@ -22,7 +22,6 @@ SKIP_FILES=(
     # "another_skip_test.mlir"
     "linalg_broadcast.mlir"
     "linalg_multi_assign.mlir"
-    # "vectorize_parallel_loop_v2.mlir"
 )
 
 # 函数：检查文件是否应该跳过

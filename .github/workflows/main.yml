@@ -10,7 +10,7 @@ on:
       - main
 
 env:
-  CI_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/${{ github.repository }}/${{ github.run_id }}"
+  CI_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}/${{ github.run_id }}"
   THIRD_PARTY_PATH: "${{ vars.CI_BASE_PATH }}/data/DLCompiler/third_party"
 
 concurrency:
@@ -31,6 +31,7 @@ jobs:
       - name: Create custom directory
         run: |
           set -ex
+          echo ${{ env.CI_BASE_PATH }}
           echo ${{ env.CI_PATH }}
           mkdir -p ${{ env.CI_PATH }}
 

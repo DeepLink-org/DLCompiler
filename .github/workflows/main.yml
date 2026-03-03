@@ -57,6 +57,8 @@ jobs:
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
+          which conda
+          echo "which conda? $(which conda)"
           conda activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{ env.CI_PATH }}
@@ -80,7 +82,7 @@ jobs:
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
-          source activate dlcompiler
+          conda activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"
@@ -93,7 +95,7 @@ jobs:
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
-          source activate dlcompiler
+          conda activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"
@@ -106,7 +108,7 @@ jobs:
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
-          source activate dlcompiler
+          conda activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"

@@ -7,6 +7,7 @@
 #include "../op/copy.h"
 #include "../op/fill.h"
 #include "../op/gemm.h"
+#include "../op/reduce.h"
 #include "../op/region.h"
 #include "arith/pattern_match.h"
 #include "tvm/ir/expr.h"
@@ -36,14 +37,20 @@ using ffi::Array;
 using ffi::String;
 
 template <typename T>
-inline void PrintBinary(const T *op, const char *opstr, std::ostream &os,
-                        CodeGenC *CG) {
-  auto PrintOp = [op, &os, CG](auto Operand) {
+inline void CodeGenTileLangCOMMONIR::PrintBinary(const T *op, const char *opstr,
+                                                 std::ostream &os) {
+  auto PrintOp = [op, &os, this](auto Operand) {
     std::ostringstream tmpos;
-    CG->PrintExpr(Operand, tmpos << "%");
+    if (Operand.template as<tvm::tir::IntImmNode>() ||
+        Operand.template as<tvm::tir::FloatImmNode>() ||
+        Operand.template as<tvm::tir::VarNode>()) {
+      PrintExpr(Operand, tmpos << "%");
+    } else {
+      std::string op_name = SSAGetID(PrintExpr(Operand), Operand->dtype);
+      tmpos << "%" << op_name;
+    }
     return tmpos.str();
   };
-
   if (op->dtype.lanes() == 1) {
     // left op
     os << "arith." << opstr << " ";
@@ -52,7 +59,7 @@ inline void PrintBinary(const T *op, const char *opstr, std::ostream &os,
     // right op
     os << PrintOp(op->b);
     os << " : ";
-    CG->PrintType(op->a->dtype, os);
+    PrintType(op->a->dtype, os);
   } else {
     os << "<<<invalid-op-dtype-lanes-not-one: %" << opstr << ">>>\n";
   }
@@ -348,6 +355,7 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const tir::IfThenElseNode *op) {
 void CodeGenTileLangCOMMONIR::PrintSSAAssign(const std::string &target,
                                              const std::string &src,
                                              DataType t) {
+  PrintIndent();
   stream << "%" << target << " = " << src << "\n";
 }
 
@@ -487,74 +495,74 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const FloorDivNode *op,
   // FIXME: The floor div in python is not the same as arith.divsi in negative
   // scenarios.
   if (op->dtype.is_int() || op->dtype.is_uint()) {
-    PrintBinary(op, "divsi", os, this);
+    PrintBinary(op, "divsi", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "divf", os, this);
+    PrintBinary(op, "divf", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const FloorModNode *op,
                                          std::ostream &os) {
   if (op->dtype.is_int() || op->dtype.is_uint()) {
-    PrintBinary(op, "remsi", os, this);
+    PrintBinary(op, "remsi", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "remf", os, this);
+    PrintBinary(op, "remf", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const LTNode *op, std::ostream &os) {
   if (op->a->dtype.is_int()) {
-    PrintBinary(op, "cmpi slt,", os, this);
+    PrintBinary(op, "cmpi slt,", os);
   } else if (op->a->dtype.is_uint()) {
-    PrintBinary(op, "cmpi ult,", os, this);
+    PrintBinary(op, "cmpi ult,", os);
   } else {
-    PrintBinary(op, "cmpf olt,", os, this);
+    PrintBinary(op, "cmpf olt,", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const NENode *op, std::ostream &os) {
   if (op->a->dtype.is_int() || op->a->dtype.is_uint()) {
-    PrintBinary(op, "cmpi ne,", os, this);
+    PrintBinary(op, "cmpi ne,", os);
   } else {
-    PrintBinary(op, "cmpf one,", os, this);
+    PrintBinary(op, "cmpf one,", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const EQNode *op, std::ostream &os) {
   if (op->a->dtype.is_int() || op->a->dtype.is_uint()) {
-    PrintBinary(op, "cmpi eq,", os, this);
+    PrintBinary(op, "cmpi eq,", os);
   } else {
-    PrintBinary(op, "cmpf oeq,", os, this);
+    PrintBinary(op, "cmpf oeq,", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const LENode *op, std::ostream &os) {
   if (op->a->dtype.is_int()) {
-    PrintBinary(op, "cmpi sle,", os, this);
+    PrintBinary(op, "cmpi sle,", os);
   } else if (op->a->dtype.is_uint()) {
-    PrintBinary(op, "cmpi ule,", os, this);
+    PrintBinary(op, "cmpi ule,", os);
   } else {
-    PrintBinary(op, "cmpf ole,", os, this);
+    PrintBinary(op, "cmpf ole,", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const GENode *op, std::ostream &os) {
   if (op->a->dtype.is_int()) {
-    PrintBinary(op, "cmpi sge,", os, this);
+    PrintBinary(op, "cmpi sge,", os);
   } else if (op->a->dtype.is_uint()) {
-    PrintBinary(op, "cmpi uge,", os, this);
+    PrintBinary(op, "cmpi uge,", os);
   } else {
-    PrintBinary(op, "cmpf oge,", os, this);
+    PrintBinary(op, "cmpf oge,", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const GTNode *op, std::ostream &os) {
   if (op->a->dtype.is_int()) {
-    PrintBinary(op, "cmpi sgt,", os, this);
+    PrintBinary(op, "cmpi sgt,", os);
   } else if (op->a->dtype.is_uint()) {
-    PrintBinary(op, "cmpi ugt,", os, this);
+    PrintBinary(op, "cmpi ugt,", os);
   } else {
-    PrintBinary(op, "cmpf ogt,", os, this);
+    PrintBinary(op, "cmpf ogt,", os);
   }
 }
 
@@ -832,9 +840,24 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
   } else if (op->op.same_as(Op::Get("tl.tileop.gemm")) ||
              op->op.same_as(Op::Get("tl.tileop.gemm_py"))) {
     GemmCodegen(op, os);
+  } else if (op->op.same_as(Op::Get("tl.infinity"))) {
+    InfinityCodegen(op, os);
+  } else if (op->op.same_as(Op::Get("tl.tileop.reduce"))) {
+    ReduceCodegen(op, os);
+  } else if (op->op.same_as(Op::Get("tir.rsqrt"))) {
+    StubCodegen(op, os, "tir.rsqrt");
+  } else if (op->op.same_as(Op::Get("tir.sigmoid"))) {
+    StubCodegen(op, os, "tir.sigmoid");
+  } else if (op->op.same_as(Op::Get("tir.exp"))) {
+    StubCodegen(op, os, "tir.exp");
   } else {
     CodeGenC::VisitExpr_(op, os);
   }
+}
+void CodeGenTileLangCOMMONIR::StubCodegen(const CallNode *op, std::ostream &os,
+                                          String stubname) {
+  this->PrintIndent();
+  this->stream << stubname << "\n";
 }
 
 void CodeGenTileLangCOMMONIR::FillCodegen(const CallNode *op,
@@ -895,11 +918,6 @@ void CodeGenTileLangCOMMONIR::CopyCodegen(const CallNode *op,
 void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
                                           std::ostream &os) {
   tvm::tl::Gemm gemmop(op->args);
-  // todo(dkx): support transpose indexing_maps
-  ICHECK(!gemmop->transA_)
-      << "Currently we only support: transA_ must be false";
-  ICHECK(!gemmop->transB_)
-      << "Currently we only support: transB_ must be false";
   // todo(dkx): support clearAccum_ = True
   ICHECK(is_zero(gemmop->clearAccum_))
       << "Currently we only support: clearAccum_ must be const_false";
@@ -928,6 +946,23 @@ void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
   temp << "outs(\%" << new_tensor_name << " : "
        << GetTensorInfo(new_tensor_name) << ") -> "
        << GetTensorInfo(new_tensor_name);
+
+  // todo(dkx): support transpose ops
+  std::string annotations = "";
+  if (gemmop->transA_ || gemmop->transB_) {
+    annotations += " {";
+    if (gemmop->transA_) {
+      annotations += "transA = 1";
+      if (gemmop->transB_) {
+        annotations += ", transB = 1";
+      }
+    } else {
+      annotations += "transB = 1";
+    }
+    annotations += "}";
+  }
+  temp << annotations;
+
   String C_tensor_out = SSAGetID(temp.str(), dst_dtype);
   temp.str("");
   temp.clear();
@@ -946,6 +981,37 @@ void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
                << GetMemrefInfo(c_buffer_name) << ") -> ()\n";
 }
 
+void CodeGenTileLangCOMMONIR::InfinityCodegen(const CallNode *op,
+                                              std::ostream &os) {
+  const DataType &dtype = op->dtype;
+  ICHECK_EQ(dtype.lanes(), 1);
+  if (dtype.is_float()) {
+    if (dtype.bits() == 64 || dtype.bits() == 32 || dtype.bits() == 16) {
+      PrimExpr imm_exp =
+          FloatImm(dtype, std::numeric_limits<float>::infinity(), op->span);
+      os << SSAGetID(PrintExpr(imm_exp), dtype);
+      return;
+    }
+  } else if (dtype.is_bfloat16()) {
+    PrimExpr imm_exp =
+        FloatImm(dtype, std::numeric_limits<float>::infinity(), op->span);
+    os << SSAGetID(PrintExpr(imm_exp), dtype);
+    return;
+  }
+  LOG(FATAL) << "Cannot decide infinity for type " << dtype;
+  throw;
+}
+
+void CodeGenTileLangCOMMONIR::ReduceCodegen(const CallNode *op,
+                                            std::ostream &os) {
+  tvm::tl::ReduceOp reduceop(op->args);
+  // todo(dkx): support other reduce type
+  ICHECK(reduceop->type->isSum() || reduceop->type->isMax())
+      << "Currently we only support: sum or max";
+  this->PrintIndent();
+  this->stream << "linalg.reduce \n";
+}
+
 void CodeGenTileLangCOMMONIR::VisitStmt_(const LetStmtNode *op) {
   std::string value = PrintExpr(op->value);
   PrintIndent();
@@ -955,8 +1021,6 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const LetStmtNode *op) {
 
 void CodeGenTileLangCOMMONIR::VisitStmt_(const BufferStoreNode *op) {
   std::string value = SSAGetID(PrintExpr(op->value), op->value->dtype);
-
-  PrintIndent();
 
   Buffer buffer_data = op->buffer;
   DataType buffer_type = buffer_data->dtype;
@@ -976,6 +1040,7 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const BufferStoreNode *op) {
   }
 
   Array<String> cast_index_array = GenConvertIndex(op->indices);
+  PrintIndent();
   this->stream << "memref.store  \%" + value + ", \%" + buffer_name_val;
   this->stream << "[";
   for (int i = 0; i < dim; i++) {
@@ -993,30 +1058,17 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const BufferStoreNode *op) {
 void CodeGenTileLangCOMMONIR::VisitStmt_(const AttrStmtNode *op) {
   if (op->attr_key == "thread_extent") {
     IterVar iv = Downcast<IterVar>(op->node);
-    if (iv->thread_tag == "blockIdx.x" && iv->var->name_hint != "_") {
-
-      std::ostringstream temp;
-      temp << "arith.constant 0"
-           << " : ";
-      PrintType(iv->var->dtype, temp);
-      std::string vid = SSAGetID(temp.str(), iv->var->dtype);
-
-      auto block_id_ = AllocVarID(iv->var.get());
-      this->PrintIndent();
-      this->stream << "%" << block_id_ << " = arith.addi  %" << vid << ", "
-                   << this->thread_context_args[3] << ": i32\n";
-    } else if (iv->thread_tag == "blockIdx.y" && iv->var->name_hint != "_") {
-      std::ostringstream temp;
-      temp << "arith.constant 0"
-           << " : ";
-      PrintType(iv->var->dtype, temp);
-      std::string vid = SSAGetID(temp.str(), iv->var->dtype);
-
-      auto block_id_ = AllocVarID(iv->var.get());
-      this->PrintIndent();
-      this->stream << "%" << block_id_ << " = arith.addi  %" << vid << ", "
-                   << this->thread_context_args[4] << ": i32\n";
-    } else if (iv->thread_tag == "blockIdx.z" && iv->var->name_hint != "_") {
+    if ((iv->thread_tag == "blockIdx.x" || iv->thread_tag == "blockIdx.y" ||
+         iv->thread_tag == "blockIdx.z") &&
+        iv->var->name_hint != "_") {
+      int arg_index = -1;
+      if (iv->thread_tag == "blockIdx.x") {
+        arg_index = 3;
+      } else if (iv->thread_tag == "blockIdx.y") {
+        arg_index = 4;
+      } else if (iv->thread_tag == "blockIdx.z") {
+        arg_index = 5;
+      }
       std::ostringstream temp;
       temp << "arith.constant 0"
            << " : ";
@@ -1025,7 +1077,13 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const AttrStmtNode *op) {
       auto block_id_ = AllocVarID(iv->var.get());
       this->PrintIndent();
       this->stream << "%" << block_id_ << " = arith.addi  %" << vid << ", "
-                   << this->thread_context_args[5] << ": i32\n";
+                   << this->thread_context_args[arg_index] << ": i32\n";
+    } else if ((iv->thread_tag == "threadIdx.x" ||
+                iv->thread_tag == "threadIdx.y" ||
+                iv->thread_tag == "threadIdx.z") &&
+               iv->var->name_hint != "_") {
+      // todo(dkx): should handle this dilemma on npu
+      auto block_id_ = AllocVarID(iv->var.get());
     }
     this->VisitStmt(op->body);
     return;
@@ -1066,37 +1124,37 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const AllocateNode *op) {
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const MinNode *op, std::ostream &os) {
   if (op->dtype.is_int()) {
-    PrintBinary(op, "minsi", os, this);
+    PrintBinary(op, "minsi", os);
   } else if (op->dtype.is_uint()) {
-    PrintBinary(op, "minui", os, this);
+    PrintBinary(op, "minui", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "minnumf", os, this);
+    PrintBinary(op, "minnumf", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const MaxNode *op, std::ostream &os) {
   if (op->dtype.is_int()) {
-    PrintBinary(op, "maxsi", os, this);
+    PrintBinary(op, "maxsi", os);
   } else if (op->dtype.is_uint()) {
-    PrintBinary(op, "maxui", os, this);
+    PrintBinary(op, "maxui", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "maxnumf", os, this);
+    PrintBinary(op, "maxnumf", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const AddNode *op, std::ostream &os) {
   if (op->dtype.is_int() || op->dtype.is_uint()) {
-    PrintBinary(op, "addi", os, this);
+    PrintBinary(op, "addi", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "addf", os, this);
+    PrintBinary(op, "addf", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const SubNode *op, std::ostream &os) {
   if (op->dtype.is_int() || op->dtype.is_uint()) {
-    PrintBinary(op, "subi", os, this);
+    PrintBinary(op, "subi", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "subf", os, this);
+    PrintBinary(op, "subf", os);
   }
 }
 
@@ -1108,7 +1166,14 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const FloatImmNode *op,
   } else if (op->value == std::numeric_limits<float>::infinity()) {
     temp << "arith.constant 0x7F800000 : ";
   } else {
-    temp << "arith.constant " << op->value << " : ";
+    temp << "arith.constant ";
+    double val = op->value;
+    if (std::floor(val) == val && std::isfinite(val)) {
+      temp << static_cast<long long>(val) << ".0";
+    } else {
+      temp << val;
+    }
+    temp << " : ";
   }
   PrintType(op->dtype, temp);
   os << SSAGetID(temp.str(), op->dtype);
@@ -1129,26 +1194,26 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const IntImmNode *op,
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const MulNode *op, std::ostream &os) {
   if (op->dtype.is_int() || op->dtype.is_uint()) {
-    PrintBinary(op, "muli", os, this);
+    PrintBinary(op, "muli", os);
   } else if (op->dtype.is_float()) {
-    PrintBinary(op, "mulf", os, this);
+    PrintBinary(op, "mulf", os);
   }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const AndNode *op, std::ostream &os) {
   assert(op->a.dtype().is_int() || op->a.dtype().is_uint());
   assert(op->b.dtype().is_int() || op->b.dtype().is_uint());
-  PrintBinary(op, "andi", os, this);
+  PrintBinary(op, "andi", os);
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const OrNode *op, std::ostream &os) {
   assert(op->a.dtype().is_int() || op->a.dtype().is_uint());
   assert(op->b.dtype().is_int() || op->b.dtype().is_uint());
-  PrintBinary(op, "ori", os, this);
+  PrintBinary(op, "ori", os);
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const DivNode *op, std::ostream &os) {
-  PrintBinary(op, "<<<divf>>>", os, this);
+  PrintBinary(op, "<<<divf>>>", os);
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const SelectNode *op,

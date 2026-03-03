@@ -125,6 +125,8 @@ public:
   void AddFunction(const GlobalVar &gvar, const PrimFunc &f);
 
 private:
+  template <typename T>
+  inline void PrintBinary(const T *op, const char *opstr, std::ostream &os);
   Array<String> GenConvertIndex(Array<PrimExpr> exprs);
   String GenSubviewFromRegion(const CallNode *region_node);
   String GenSubviewFromRegion(Buffer buffer_data, Array<Range> range);
@@ -141,6 +143,9 @@ private:
   void FillCodegen(const CallNode *op, std::ostream &os);
   void CopyCodegen(const CallNode *op, std::ostream &os);
   void GemmCodegen(const CallNode *op, std::ostream &os);
+  void InfinityCodegen(const CallNode *op, std::ostream &os);
+  void ReduceCodegen(const CallNode *op, std::ostream &os);
+  void StubCodegen(const CallNode *op, std::ostream &os, String stubname);
 
   // save memref name and type
   std::map<String, Memref *> type_info;

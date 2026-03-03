@@ -10,7 +10,7 @@ on:
       - main
 
 env:
-  CI_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}"
+  CI_PATH: "${{ vars.CI_BASE_PATH }}/GitHub/${{ github.repository }}/${{ github.run_id }}"
   THIRD_PARTY_PATH: "${{ vars.CI_BASE_PATH }}/data/DLCompiler/third_party"
 
 concurrency:
@@ -80,7 +80,7 @@ jobs:
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
-          conda activate dlcompiler
+          source activate dlcompiler
           source /usr/local/Ascend/ascend-toolkit/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"

@@ -31,7 +31,7 @@ jobs:
       - name: Create custom directory
         run: |
           set -ex
-          echo ${{ env.CI_BASE_PATH }}
+          echo ${{ vars.CI_BASE_PATH }}
           echo ${{ env.CI_PATH }}
           mkdir -p ${{ env.CI_PATH }}
 
@@ -117,7 +117,7 @@ jobs:
           bash test/dsl/run_tests.sh
 
       - name: Clear workfile
-        if: always()
+        if: success()
         run: |
           export workdir=$(pwd)
           cd ..

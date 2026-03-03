@@ -27,6 +27,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY_DLC_CI }}
+          timeout-minutes: 5
+          persist-credentials: false
 
       - name: Create custom directory
         run: |

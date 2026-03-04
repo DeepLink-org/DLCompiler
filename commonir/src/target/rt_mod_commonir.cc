@@ -35,7 +35,7 @@ TVM_FFI_STATIC_INIT_BLOCK() {
                         BuildTileLangCommonIR);
 }
 
-TVM_REGISTER_TARGET_KIND("commonir", kDLExtDev);
+TVM_REGISTER_TARGET_KIND("dlcompiler", kDLExtDev);
 
 } // namespace codegen
 } // namespace tvm

@@ -52,11 +52,11 @@ def test_gemm():
     golden = a @ b
     mask = golden.abs() < 1.0
     tmpatol = tmprtol = 2**-6
-   
+
     torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
     torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
     print("run matmul success")
-   
+
 
 if __name__ == "__main__":
     test_gemm()

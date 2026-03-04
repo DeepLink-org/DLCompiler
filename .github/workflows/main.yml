@@ -90,7 +90,7 @@ jobs:
           export TILELANG_USE_DLCOMPILER=1
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
-          bash scripts/install_tilelang.sh
+          bash scripts/install_tilelang-dlc.sh
 
       - name: Run triton tests on ascend
         run: |

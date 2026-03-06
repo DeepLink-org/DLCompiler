@@ -9,7 +9,6 @@ import torch_npu
 
 device = torch.npu.current_device()
 dtype = torch.float16
-# tilelang.cache.clear_cache()
 
 
 def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="float"):
@@ -39,9 +38,9 @@ def matmul(M, N, K, block_M, block_N, block_K, dtype="float16", accum_dtype="flo
     return gemm
 
 
-def main():
+def test_gemm():
     func = matmul(1024, 1024, 1024, 128, 128, 32)
-    kernel = tilelang.compile(func, target="commonir")
+    kernel = tilelang.compile(func)
     SIZEALL = 1024
 
     torch.manual_seed(0)
@@ -53,28 +52,11 @@ def main():
     golden = a @ b
     mask = golden.abs() < 1.0
     tmpatol = tmprtol = 2**-6
-    # try:
-    #     torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
-    #     torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
-    #     print("run matmul success")
-    # except:
-    #     print(f"[ERROR] 存在精度问题")
-    #     # max diff
-    #     max_diff = torch.max(torch.abs(result - golden))
-    #     print(f"[ERROR] max diff: {max_diff}")
-    #     # max diff index
-    #     max_diff_index = torch.argmax(torch.abs(result - golden))
-    #     print(f"[ERROR] max diff index: {max_diff_index}")
-    #     print(f"[ERROR] result: {result}")
-    print(f"result is {result}, golden is {golden}")
-    if torch.allclose(result, golden, atol=1e-2, rtol=1e-2):
-        print("✅ Tilellang and Torch match")
-    else:
-        print("❌ Tilellang and Torch differ")
-        diff = torch.abs(result - golden)
-        print(f"Max diff: {diff.max().item()}")
-        print(f"Mean diff: {diff.mean().item()}")
+
+    torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
+    torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
+    print("run matmul success")
 
 
 if __name__ == "__main__":
-    main()
+    test_gemm()

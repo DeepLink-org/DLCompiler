@@ -81,7 +81,7 @@ def test_tilelang_sub():
 
     # 编译 TileLang kernel
     func = vec_sub(seq_len, seq_len // block)
-    compiled_kernel = tilelang.compile(func, target="commonir")
+    compiled_kernel = tilelang.compile(func)
 
     # 执行 TileLang kernel
     compiled_kernel(v1, v2, v3)
@@ -92,8 +92,6 @@ def test_tilelang_sub():
 
     torch.testing.assert_close(v3, y_ref, atol=1e-2, rtol=0)
     print("TileLang test passed!\n")
-
-    return v1, v2, v3, y_ref
 
 
 def test_triton_sub():
@@ -117,8 +115,6 @@ def test_triton_sub():
 
     torch.testing.assert_close(v3, y_ref, atol=1e-2, rtol=0)
     print("Triton test passed!\n")
-
-    return v1, v2, v3, y_ref
 
 
 def benchmark_function(func, *args, num_runs=100, warmup_runs=10):
@@ -232,8 +228,8 @@ def main():
     # 运行功能测试
     print("FUNCTIONALITY TESTS")
     print("-" * 20)
-    tilelang_data = test_tilelang_sub()
-    triton_data = test_triton_sub()
+    test_tilelang_sub()
+    test_triton_sub()
 
     # 运行性能测试
     run_performance_tests()

@@ -141,7 +141,7 @@ class AdapterWrapper:
                 func = func_or_mod
                 params = extrac_params(func) if not runtime_only else None
                 mod = tvm.IRModule({func.attrs["global_symbol"]: func})
-            target = "commonir"
+            target = "dlcompiler"
             target_host = canon_target_host(target, target_host)
             target_host = tvm.target.Target.canon_target(target_host)
             target = tvm.target.Target(target, target_host)

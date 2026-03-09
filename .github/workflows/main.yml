@@ -78,7 +78,21 @@ jobs:
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
           bash compile_shared.sh apply_patch=true
 
-      - name: Run tests on ascend
+      - name: Build and install tilelang-dlc
+        run: |
+          set -ex
+          source /home/dlc_ci/.bashrc
+          conda activate dlcompiler
+          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          cd ${{ env.CI_PATH }}
+          export TILELANG_DLC_PATH=${{ vars.CI_BASE_PATH }}/data/tilelang-dlc
+          export DLCOMPILER_SOURCE=${{ env.CI_PATH }}
+          export TILELANG_USE_DLCOMPILER=1
+          echo "whoami? $(whoami)"
+          echo "which python? $(which python)"
+          bash scripts/install_tilelang-dlc.sh
+
+      - name: Run triton tests on ascend
         run: |
           set -ex
           source /home/dlc_ci/.bashrc

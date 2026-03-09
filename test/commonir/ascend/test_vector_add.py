@@ -1,6 +1,5 @@
 import os
 import time
-
 import tilelang
 import tilelang.language as T
 
@@ -82,7 +81,7 @@ def test_tilelang_add():
     # 编译 TileLang kernel
     # func = vec_add(seq_len, seq_len // 32)  # 使用更合适的块大小 1M, 32K
     func = vec_add(seq_len, seq_len // block)
-    compiled_kernel = tilelang.compile(func, target="commonir")
+    compiled_kernel = tilelang.compile(func)
 
     # 执行 TileLang kernel
     compiled_kernel(v1, v2, v3)
@@ -93,8 +92,6 @@ def test_tilelang_add():
 
     torch.testing.assert_close(v3, y_ref, atol=1e-2, rtol=0)
     print("TileLang test passed!\n")
-
-    return v1, v2, v3, y_ref
 
 
 def test_triton_add():
@@ -118,8 +115,6 @@ def test_triton_add():
 
     torch.testing.assert_close(v3, y_ref, atol=1e-2, rtol=0)
     print("Triton test passed!\n")
-
-    return v1, v2, v3, y_ref
 
 
 def benchmark_function(func, *args, num_runs=100, warmup_runs=10):
@@ -233,8 +228,8 @@ def main():
     # 运行功能测试
     print("FUNCTIONALITY TESTS")
     print("-" * 20)
-    tilelang_data = test_tilelang_add()
-    triton_data = test_triton_add()
+    test_tilelang_add()
+    test_triton_add()
 
     # 运行性能测试
     run_performance_tests()

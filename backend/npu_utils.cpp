@@ -6,7 +6,8 @@
 #include <tuple>
 #include <unordered_map>
 
-#include "experiment/runtime/runtime/rt.h"
+// #include "experiment/runtime/runtime/rt.h"
+#include "/usr/local/Ascend/cann/pkg_inc/runtime/runtime/rt.h"
 
 // Use map to differentiate same name functions from different binary
 static std::unordered_map<std::string, size_t> registered_names;

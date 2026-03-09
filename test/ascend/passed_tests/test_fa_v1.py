@@ -83,11 +83,11 @@ def _attn_fwd_inner(
         if STAGE == 2:
             mask = offs_m[:, None] >= (start_n + offs_n[None, :])
             qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
-            m_ij = tl.maximum(m_i, tl.max(qk, 1))
+            m_ij = tl.maximum(m_i, tl.max(qk, 1), tl.PropagateNan.ALL)
             qk -= m_ij[:, None]
         else:
             qk = qk * qk_scale
-            m_ij = tl.maximum(m_i, tl.max(qk, 1))
+            m_ij = tl.maximum(m_i, tl.max(qk, 1), tl.PropagateNan.ALL)
             qk = qk - m_ij[:, None]
 
         # p = tl.math.exp2(qk)
@@ -516,7 +516,7 @@ def test_op(Z, H, N_CTX, HEAD_DIM, causal, dtype, BM, BN):
 
 if __name__ == "__main__":
     # test_op(1,8,8192,128, causal=True, dtype=torch.float16, BM = 32,BN = 32)
-    test_op(1, 2, 2048, 64, causal=False, dtype=torch.float16, BM=128, BN=512)
+    test_op(1, 2, 64 * 1024, 64, causal=False, dtype=torch.float16, BM=128, BN=512)
     # test_op(4,32,1024,64, causal=False, dtype=torch.float16, BM = 64,BN = 256)
     # test_op(4,32,4096,64, causal=False, dtype=torch.float16, BM = 64,BN = 256)
     # test_op(4,32,8192,64, causal=False, dtype=torch.float16, BM =64,BN = 256)

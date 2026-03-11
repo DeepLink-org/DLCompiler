@@ -330,7 +330,7 @@ class _attention(torch.autograd.Function):
             NUM_BLOCKS_M=NUM_BLOCKS_M,
             debug=True,
             multibuffer=True,  # 控制开double_buffer
-            unit_flag=True,  # cube搬出的一个优化项
+            # unit_flag=True,  # cube搬出的一个优化项
             limit_auto_multi_buffer_only_for_local_buffer=False,
             set_workspace_multibuffer=4,
             tile_mix_vector_loop=4,

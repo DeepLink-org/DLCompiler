@@ -41,7 +41,7 @@ def triton_codegen2(
     XBLOCK_SUB: tl.constexpr,
     RBLOCK: tl.constexpr,
 ):
-    ynumel = 8
+    ynumel = 2
     rnumel = 2048
     xnumel = 1024
     offset = tl.program_id(0) * XBLOCK
@@ -89,7 +89,7 @@ def foo_triton_wrapper(a, b, c):
     BLOCK2 = 64
 
     value = torch.empty_strided(
-        (c.shape[0], c.shape[2]), (c.shape[2], 1), dtype=torch.float32
+        (c.shape[0], c.shape[2]), (c.shape[2], 1), dtype=torch.float16
     ).npu()
 
     triton_codegen2[NBLOCKS, 1, 1](a, b, c, value, BLOCK1, BLOCK1_SUB, BLOCK2)
@@ -99,10 +99,10 @@ def foo_triton_wrapper(a, b, c):
 
 def test_npu_indexing2():
 
-    Y, X, R = (8, 2048, 1024)
-    a = torch.randn((Y, X, R), dtype=torch.float32).npu()
-    b = torch.randn((Y, X, R), dtype=torch.float32).npu()
-    c = torch.randn((Y, X, R), dtype=torch.float32).npu()
+    Y, X, R = (2, 2048, 1024)
+    a = torch.randn((Y, X, R), dtype=torch.float16).npu()
+    b = torch.randn((Y, X, R), dtype=torch.float16).npu()
+    c = torch.randn((Y, X, R), dtype=torch.float16).npu()
     r = foo_triton_wrapper(a, b, c)
     r1 = foo(a, b, c)
     print(

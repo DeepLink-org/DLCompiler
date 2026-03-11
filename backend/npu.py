@@ -1377,7 +1377,7 @@ extern "C" {
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 {'#include <torch_npu/csrc/framework/OpCommand.h>' if enable_taskqueue else ''}
-#include "experiment/runtime/runtime/rt.h"
+#include "/usr/local/Ascend/cann/pkg_inc/runtime/runtime/rt.h"
 {extract_device_print_code_from_cann() if enable_device_print else ''}
 
 #define TENSOR_KIND_INPUT 0

@@ -468,6 +468,7 @@ def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
     content = re.sub(pattern, r"\1 // to \2", content)
 
     if opt.debug or dump_ir:
+        # todo 调整commonir 路径。
         cmd_list = [
             _get_dicp_opt_path(),
             "kernel.ttshared.mlir",
@@ -1377,7 +1378,8 @@ extern "C" {
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 {'#include <torch_npu/csrc/framework/OpCommand.h>' if enable_taskqueue else ''}
-#include "experiment/runtime/runtime/rt.h"
+// #include "experiment/runtime/runtime/rt.h"
+#include "/usr/local/Ascend/cann/pkg_inc/runtime/runtime/rt.h"
 {extract_device_print_code_from_cann() if enable_device_print else ''}
 
 #define TENSOR_KIND_INPUT 0

@@ -481,6 +481,9 @@ def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
             "--vectorize-parallel-loop",
         ]
         dicp_utils._dump_stage_ir(
+            commonir, metadata["hash"], "kernel.commonir.mlir", cmd_list
+        )
+        dicp_utils._dump_stage_ir(
             content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
         )
 

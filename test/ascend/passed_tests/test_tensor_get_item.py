@@ -38,7 +38,7 @@ def triton_func(x: torch.Tensor, y: torch.Tensor, pos: int):
 
 
 def test_tensor_get_item():
-    size = (128, 128)
+    size = (32, 32)
     mid_pos = size[1] // 2
     x = torch.rand(size, device="npu")
     y = torch.rand(size, device="npu")

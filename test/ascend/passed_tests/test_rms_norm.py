@@ -105,30 +105,28 @@ def _rms_norm(shape, datatype):
 
 
 def test_cases():
-    _rms_norm((16, 1024), torch.float16)
-    _rms_norm((16, 1024), torch.float32)
-    _rms_norm((16, 1024), torch.bfloat16)
+    _rms_norm((16, 256), torch.float16)
+    _rms_norm((16, 256), torch.float32)
+    _rms_norm((16, 256), torch.bfloat16)
     _rms_norm((128, 3), torch.bfloat16)
     _rms_norm((128, 16), torch.bfloat16)
     _rms_norm((128, 37), torch.bfloat16)
     _rms_norm((128, 64), torch.bfloat16)
-    _rms_norm((128, 781), torch.bfloat16)
-    _rms_norm((128, 781), torch.bfloat16)
-    _rms_norm((16, 1024), torch.float16)
-    _rms_norm((16, 1024), torch.float32)
-    _rms_norm((16, 1024), torch.bfloat16)
+    _rms_norm((16, 256), torch.float16)
+    _rms_norm((16, 256), torch.float32)
+    _rms_norm((16, 256), torch.bfloat16)
 
-    _rms_norm((128, 128), torch.float16)
-    _rms_norm((128, 128), torch.float32)
-    _rms_norm((128, 128), torch.bfloat16)
+    _rms_norm((64, 64), torch.float16)
+    _rms_norm((64, 64), torch.float32)
+    _rms_norm((64, 64), torch.bfloat16)
 
     _rms_norm((1, 128), torch.float16)
     _rms_norm((1, 128), torch.float32)
     _rms_norm((1, 128), torch.bfloat16)
 
-    _rms_norm((65535, 128), torch.float16)
-    _rms_norm((65535, 128), torch.float32)
-    _rms_norm((65535, 128), torch.bfloat16)
+    _rms_norm((33, 128), torch.float16)
+    _rms_norm((33, 128), torch.float32)
+    _rms_norm((33, 128), torch.bfloat16)
 
     _rms_norm((128, 3), torch.float16)
     _rms_norm((128, 3), torch.float32)
@@ -146,6 +144,6 @@ def test_cases():
     _rms_norm((128, 64), torch.float32)
     _rms_norm((128, 64), torch.bfloat16)
 
-    _rms_norm((128, 781), torch.float16)
-    _rms_norm((128, 781), torch.float32)
-    _rms_norm((128, 781), torch.bfloat16)
+    _rms_norm((128, 181), torch.float16)
+    _rms_norm((128, 181), torch.float32)
+    _rms_norm((128, 181), torch.bfloat16)

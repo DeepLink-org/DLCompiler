@@ -33,6 +33,11 @@ if [ -z "${TILELANG_DLC_PATH}" ]; then
     exit 1
 fi
 
+if [ -z "${DLCOMPILER_SOURCE}" ]; then
+    echo "Error: 环境变量 DLCOMPILER_SOURCE 未设置" >&2
+    exit 1
+fi
+
 cd "${TILELANG_DLC_PATH}" || {
     echo "Error: Can not cd to dir: '${TILELANG_DLC_PATH}'" >&2
     exit 1

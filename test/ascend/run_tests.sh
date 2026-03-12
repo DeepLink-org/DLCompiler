@@ -18,7 +18,7 @@ function run_pytestcases() {
 
   echo "[Phase 1] Run tests in parallel"
   set +e
-  pytest . -n 8 --dist=loadscope --reruns 5 --reruns-delay 5
+  timeout --signal=TERM 40m  pytest . -n 8 --dist=loadscope --reruns 5 --reruns-delay 5
   parallel_rc=$?
   set -e
 

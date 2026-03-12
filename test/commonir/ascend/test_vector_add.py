@@ -1,4 +1,5 @@
 import os
+import pytest
 import time
 import tilelang
 import tilelang.language as T

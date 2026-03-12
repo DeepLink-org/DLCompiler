@@ -31,6 +31,30 @@ namespace {
 struct VectorizeParallelLoopPattern : public OpRewritePattern<scf::ParallelOp> {
   using OpRewritePattern<scf::ParallelOp>::OpRewritePattern;
 
+private:
+  // 检测值是否为常量或来自常量
+  bool isScalarConstant(Value val) const {
+    if (!val)
+      return false;
+
+    auto defOp = val.getDefiningOp();
+    if (!defOp)
+      return false;
+
+    // 检查是否为常量操作
+    return isa<arith::ConstantOp, arith::ConstantIndexOp, arith::ConstantIntOp,
+               arith::ConstantFloatOp>(defOp);
+  }
+
+  // 将标量广播为向量张量
+  Value broadcastScalarToTensor(PatternRewriter &rewriter, Location loc,
+                                Value scalar, int64_t size) const {
+    Type elemType = scalar.getType();
+    auto tensorType = RankedTensorType::get({size}, elemType);
+    return rewriter.create<tensor::SplatOp>(loc, tensorType, scalar);
+  }
+
+public:
   LogicalResult matchAndRewrite(scf::ParallelOp op,
                                 PatternRewriter &rewriter) const override {
     LLVM_DEBUG(
@@ -111,6 +135,10 @@ struct VectorizeParallelLoopPattern : public OpRewritePattern<scf::ParallelOp> {
         Operation *newOp = rewriter.clone(inst, mapper);
         LLVM_DEBUG(llvm::dbgs()
                    << "     New Op result: " << newOp->getResult(0) << "\n");
+        // 更新mapper：原结果 -> 新结果
+        for (unsigned i = 0; i < inst.getNumResults(); ++i) {
+          mapper.map(inst.getResult(i), newOp->getResult(i));
+        }
         continue;
       }
 
@@ -183,13 +211,32 @@ struct VectorizeParallelLoopPattern : public OpRewritePattern<scf::ParallelOp> {
         Value vecRhs =
             scalarToTensorMap.count(rhs) ? scalarToTensorMap[rhs] : nullptr;
 
+        bool lhsWasVector = (vecLhs != nullptr);
+        bool rhsWasVector = (vecRhs != nullptr);
+
         if (vecLhs)
           LLVM_DEBUG(llvm::dbgs() << "     LHS is vectorized.\n");
         if (vecRhs)
           LLVM_DEBUG(llvm::dbgs() << "     RHS is vectorized.\n");
 
-        // 如果两个输入都是向量，生成向量运算
-        if (vecLhs && vecRhs) {
+        // 处理标量常量：如果一个操作数未向量化但是常量，则广播
+        if (!vecLhs && isScalarConstant(lhs)) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     LHS is scalar constant, broadcasting to tensor<"
+                     << size << "x" << lhs.getType() << ">.\n");
+          vecLhs = broadcastScalarToTensor(rewriter, op.getLoc(), lhs, size);
+        }
+
+        if (!vecRhs && isScalarConstant(rhs)) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     RHS is scalar constant, broadcasting to tensor<"
+                     << size << "x" << rhs.getType() << ">.\n");
+          vecRhs = broadcastScalarToTensor(rewriter, op.getLoc(), rhs, size);
+        }
+
+        // 如果至少一个操作数原本是向量，才进行向量化
+        // （避免纯标量的索引计算被向量化）
+        if (vecLhs && vecRhs && (lhsWasVector || rhsWasVector)) {
           // 创建一个新的OperationState，使用与原操作相同的操作码
           OperationState state(op.getLoc(), inst.getName().getStringRef());
 
@@ -223,12 +270,22 @@ struct VectorizeParallelLoopPattern : public OpRewritePattern<scf::ParallelOp> {
             scalarToTensorMap[inst.getResult(i)] = newOp->getResult(i);
           }
 
-          LLVM_DEBUG({
-            llvm::dbgs() << "     Created Vector Operation: " << inst.getName()
-                         << "\n";
-            llvm::dbgs() << "     Result Type: "
-                         << newOp->getResult(0).getType() << "\n";
-          });
+          LLVM_DEBUG(
+              {
+                llvm::dbgs()
+                    << "     Created Vector Operation: " << inst.getName()
+                    << "\n";
+                if (!lhsWasVector && rhsWasVector) {
+                  llvm::dbgs()
+                      << "     (LHS was broadcasted from scalar constant)\n";
+                } else if (lhsWasVector && !rhsWasVector) {
+                  llvm::dbgs()
+                      << "     (RHS was broadcasted from scalar constant)\n";
+                }
+                llvm::dbgs()
+                    << "     Result Type: " << newOp->getResult(0).getType()
+                    << "\n";
+              });
         } else {
           // 如果不是向量操作（可能是索引计算的一部分），则回退到普通 clone
           LLVM_DEBUG(

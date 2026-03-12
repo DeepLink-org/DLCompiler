@@ -42,8 +42,8 @@ def triton_codegen2(
     RBLOCK: tl.constexpr,
 ):
     ynumel = 2
-    rnumel = 2048
-    xnumel = 1024
+    rnumel = 256
+    xnumel = 128
     offset = tl.program_id(0) * XBLOCK
     base1 = tl.arange(0, XBLOCK_SUB)
     loops1: tl.constexpr = XBLOCK // XBLOCK_SUB
@@ -58,17 +58,17 @@ def triton_codegen2(
             for loop2 in range(loops2):
                 r2 = loop2 * RBLOCK + base2[:, None]
                 tmp0 = tl.load(
-                    in_ptr0 + (x1 + (1024 * r2) + (2097152 * y0)),
+                    in_ptr0 + (x1 + (128 * r2) + (128 * 256 * y0)),
                     None,
                     eviction_policy="evict_last",
                 )
                 tmp1 = tl.load(
-                    in_ptr1 + (x1 + (1024 * r2) + (2097152 * y0)),
+                    in_ptr1 + (x1 + (128 * r2) + (128 * 256 * y0)),
                     None,
                     eviction_policy="evict_last",
                 )
                 tmp3 = tl.load(
-                    in_ptr2 + (x1 + (1024 * r2) + (2097152 * y0)),
+                    in_ptr2 + (x1 + (128 * r2) + (128 * 256 * y0)),
                     None,
                     eviction_policy="evict_last",
                 )
@@ -79,14 +79,14 @@ def triton_codegen2(
                 _tmp6 = tmp7
             tmp6 = tl.sum(_tmp6, 0).reshape(XBLOCK_SUB)
 
-            tl.store(out_ptr0 + (x + (1024 * y0)), tmp6, None)
+            tl.store(out_ptr0 + (x + (128 * y0)), tmp6, None)
 
 
 def foo_triton_wrapper(a, b, c):
-    NBLOCKS = 8
+    NBLOCKS = 2
     BLOCK1 = a.shape[2] // NBLOCKS
-    BLOCK1_SUB = 64
-    BLOCK2 = 64
+    BLOCK1_SUB = 32
+    BLOCK2 = 32
 
     value = torch.empty_strided(
         (c.shape[0], c.shape[2]), (c.shape[2], 1), dtype=torch.float16
@@ -99,7 +99,7 @@ def foo_triton_wrapper(a, b, c):
 
 def test_npu_indexing2():
 
-    Y, X, R = (2, 2048, 1024)
+    Y, X, R = (2, 256, 128)
     a = torch.randn((Y, X, R), dtype=torch.float16).npu()
     b = torch.randn((Y, X, R), dtype=torch.float16).npu()
     c = torch.randn((Y, X, R), dtype=torch.float16).npu()

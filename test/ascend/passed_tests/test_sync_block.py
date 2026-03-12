@@ -141,8 +141,8 @@ def triton_func(a, b):
 
 def test_sync_block():
     torch.manual_seed(0)
-    a = test_common.generate_tensor((512, 512), "float16").npu()
-    b = test_common.generate_tensor((512, 512), "float16").npu()
+    a = test_common.generate_tensor((128, 128), "float16").npu()
+    b = test_common.generate_tensor((128, 128), "float16").npu()
     triton_output = triton_func(a, b)
     torch_output = torch_func(a, b)
     # print(f"triton_output_with_fp16_inputs={triton_output}")

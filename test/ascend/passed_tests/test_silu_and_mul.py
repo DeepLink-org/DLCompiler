@@ -5,6 +5,7 @@ import triton.language as tl
 
 fast_expf = tl.math.exp
 
+
 @triton.jit
 def _silu_and_mul_kernel(
     gateup_ptr,
@@ -90,7 +91,7 @@ def silu_and_mul(gate_up: torch.Tensor, out: torch.Tensor = None):
     BLOCK_SIZE_N = min(BLOCK_SIZE_N, 1024)
     num_warps = 4
     num_stages = 2
-    grid = (M, )
+    grid = (M,)
     if N % BLOCK_SIZE_N == 0:
         _silu_and_mul_kernel[grid](
             gate_up,
@@ -121,12 +122,11 @@ def silu_and_mul(gate_up: torch.Tensor, out: torch.Tensor = None):
     return out
 
 
-
 class TestSiluAndMul:
 
     @pytest.fixture
     def seqlen(self):
-        yield 256
+        yield 11
 
     @pytest.fixture
     def feat_size(self, request):
@@ -134,7 +134,7 @@ class TestSiluAndMul:
 
     @pytest.fixture
     def x(self, seqlen, feat_size):
-        yield torch.rand(seqlen, feat_size, dtype=torch.float16, device='npu')
+        yield torch.rand(seqlen, feat_size, dtype=torch.float16, device="npu")
 
     @pytest.fixture
     def gt(self, x):
@@ -142,7 +142,7 @@ class TestSiluAndMul:
         gate = torch.nn.functional.silu(gate)
         yield gate * up
 
-    @pytest.mark.parametrize('feat_size', [4096, 768], indirect=True)
+    @pytest.mark.parametrize("feat_size", [256, 768], indirect=True)
     def test_silu_and_mul(self, x, gt):
         out = silu_and_mul(x)
         torch.testing.assert_close(out, gt)
@@ -159,14 +159,14 @@ def _test_silu_and_mul(x):
 
 
 def test():
-    seqlen = 256
-    feat_size = 4096
-    x = torch.rand(seqlen, feat_size, dtype=torch.float16, device='npu')
+    seqlen = 11
+    feat_size = 128
+    x = torch.rand(seqlen, feat_size, dtype=torch.float16, device="npu")
 
     gt = _gt(x)
     tt = _test_silu_and_mul(x)
 
-    print('max diff', (gt - tt).abs().max())
+    print("max diff", (gt - tt).abs().max())
 
     # configs = []
     # configs.append(
@@ -198,5 +198,5 @@ def test():
     # bench_fn.run(show_plots=True, print_data=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test()

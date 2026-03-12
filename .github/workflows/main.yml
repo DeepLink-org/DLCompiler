@@ -60,7 +60,7 @@ jobs:
           which conda
           echo "which conda? $(which conda)"
           conda activate dlcompiler
-          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          source /usr/local/Ascend/cann-8.5.0/set_env.sh
           cd ${{ env.CI_PATH }}
           export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
           export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
@@ -83,7 +83,7 @@ jobs:
           set -ex
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
-          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          source /usr/local/Ascend/cann-8.5.0/set_env.sh
           cd ${{ env.CI_PATH }}
           export TILELANG_DLC_PATH=${{ vars.CI_BASE_PATH }}/data/tilelang-dlc
           export DLCOMPILER_SOURCE=${{ env.CI_PATH }}
@@ -92,12 +92,24 @@ jobs:
           echo "which python? $(which python)"
           bash scripts/install_tilelang-dlc.sh
 
+      - name: Run tilelang-dlc tests on ascend
+        run: |
+          set -ex
+          source /home/dlc_ci/.bashrc
+          conda activate dlcompiler
+          source /usr/local/Ascend/cann-8.5.0/set_env.sh
+          cd ${{env.CI_PATH }}
+          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+          export ASCEND_RT_VISIBLE_DEVICES=7
+          export TILELANG_USE_DLCOMPILER=1
+          bash test/commonir/run_tests.sh
+
       - name: Run triton tests on ascend
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
-          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          source /usr/local/Ascend/cann-8.5.0/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
@@ -110,7 +122,7 @@ jobs:
           set -ex
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
-          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          source /usr/local/Ascend/cann-8.5.0/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
@@ -123,7 +135,7 @@ jobs:
           set -ex
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
-          source /usr/local/Ascend/ascend-toolkit/set_env.sh
+          source /usr/local/Ascend/cann-8.5.0/set_env.sh
           cd ${{env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"

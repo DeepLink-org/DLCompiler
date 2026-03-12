@@ -155,7 +155,7 @@ def run_performance_tests():
 
     # TileLang kernel
     func = vec_add(seq_len, seq_len // block)  # 使用更合适的块大小
-    compiled_tilelang_kernel = tilelang.compile(func, target="commonir")
+    compiled_tilelang_kernel = tilelang.compile(func)
 
     def tilelang_benchmark():
         temp_v3 = torch.zeros_like(v3)

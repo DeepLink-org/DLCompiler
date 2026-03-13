@@ -35,6 +35,59 @@ def vec_add(N, block_N, dtype="float32"):
     return main
 
 
+@tilelang.jit(out_idx=[-1])
+def create_vector_add_developer(N, block_N, dtype="float32", threads=1):
+    """
+    TileLang developer mode implementation using standard pattern.
+
+    This follows the standard TileLang developer mode pattern:
+    - @tilelang.jit decorator with out_idx specification
+    - T.alloc_shared for explicit shared memory allocation
+    - T.alloc_fragment for register allocation
+    - T.copy for explicit data copying between memory hierarchies
+    - T.Parallel for explicit parallelization
+
+    This pattern demonstrates the full memory hierarchy:
+    Global → Shared → Fragment → Shared → Global
+
+    VectorizeParallelLoopPass will optimize the T.Parallel loops.
+
+    Args:
+        N: Total number of elements
+        block_N: Block size (number of elements per block)
+        dtype: Data type
+        threads: Number of threads per block
+
+    Returns:
+        Compiled kernel function (via @tilelang.jit)
+    """
+
+    @T.prim_func
+    def vector_add_dev(
+        A: T.Tensor((N,), dtype), B: T.Tensor((N,), dtype), C: T.Tensor((N,), dtype)
+    ):
+        with T.Kernel(T.ceildiv(N, block_N), threads=threads) as (bx,):
+            # Allocate memory hierarchy
+            A_shared = T.alloc_shared((block_N,), dtype)
+            B_shared = T.alloc_shared((block_N,), dtype)
+            C_local = T.alloc_fragment((block_N,), dtype)
+            C_shared = T.alloc_shared((block_N,), dtype)
+
+            # Copy: Global → Shared
+            T.copy(A[bx * block_N], A_shared)
+            T.copy(B[bx * block_N], B_shared)
+
+            # Compute: Shared → Fragment
+            for i in T.Parallel(block_N):
+                C_local[i] = A_shared[i] + B_shared[i]
+
+            # Copy: Fragment → Shared → Global
+            T.copy(C_local, C_shared)
+            T.copy(C_shared, C[bx * block_N])
+
+    return vector_add_dev
+
+
 @triton.jit
 def add_kernel(
     x_ptr,  # *Pointer* to first input vector.
@@ -118,6 +171,42 @@ def test_triton_add():
     print("Triton test passed!\n")
 
 
+def test_tilelang_developer_mode():
+    """
+    测试 TileLang 开发者模式实现（标准模式）
+
+    使用标准 TileLang 开发者模式 API：
+    - @tilelang.jit 装饰器 (out_idx 指定输出参数)
+    - T.alloc_shared 显式分配共享内存
+    - T.alloc_fragment 显式分配寄存器
+    - T.copy 显式数据拷贝（global→shared→fragment→shared→global）
+    - T.Parallel 显式并行化
+
+    这是固定的标准写法，VectorizeParallelLoopPass 需要能够处理这种模式。
+    """
+    print("Testing TileLang Developer Mode implementation...")
+
+    # 创建测试数据
+    v1, v2, v3 = create_test_data()
+    y_ref = v1 + v2
+
+    # 调用 @tilelang.jit 装饰的函数
+    # 第一次调用会触发编译，返回 compiled kernel
+    kernel_func = create_vector_add_developer(seq_len, block, dtype)
+
+    # 执行 kernel
+    kernel_func(v1, v2, v3)
+
+    # 验证结果
+    max_diff = torch.max(torch.abs(y_ref - v3))
+    print(
+        f"The maximum difference between torch and TileLang Developer Mode is {max_diff}"
+    )
+
+    torch.testing.assert_close(v3, y_ref, atol=1e-2, rtol=0)
+    print("TileLang Developer Mode test passed!\n")
+
+
 def benchmark_function(func, *args, num_runs=100, warmup_runs=10):
     """性能测试函数"""
     # 预热运行
@@ -156,7 +245,7 @@ def run_performance_tests():
 
     # TileLang kernel
     func = vec_add(seq_len, seq_len // block)  # 使用更合适的块大小
-    compiled_tilelang_kernel = tilelang.compile(func, target="commonir")
+    compiled_tilelang_kernel = tilelang.compile(func)
 
     def tilelang_benchmark():
         temp_v3 = torch.zeros_like(v3)
@@ -230,6 +319,7 @@ def main():
     print("FUNCTIONALITY TESTS")
     print("-" * 20)
     test_tilelang_add()
+    test_tilelang_developer_mode()
     test_triton_add()
 
     # 运行性能测试

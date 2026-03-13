@@ -433,6 +433,8 @@ def ttir_to_ttsharedir_ascend(mod, metadata, opt, *, named_ops=False):
 
 def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
     assert isinstance(commonir, str)
+    if opt.debug or dump_ir:
+        dicp_utils._dump_stage_ir(commonir, metadata["hash"], "kernel.commonir.mlir")
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "kernel.commonir.mlir")
         dst_path = os.path.join(tmpdir, "kernel.linked.mlir")
@@ -480,9 +482,6 @@ def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
             "--linked-to-hivm",
             "--vectorize-parallel-loop",
         ]
-        dicp_utils._dump_stage_ir(
-            commonir, metadata["hash"], "kernel.commonir.mlir", cmd_list
-        )
         dicp_utils._dump_stage_ir(
             content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
         )

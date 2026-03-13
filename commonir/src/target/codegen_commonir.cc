@@ -334,7 +334,7 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const tir::ForNode *op) {
   }
 }
 
-void CodeGenTileLangCOMMONIR::VisitStmt_(const tir::IfThenElseNode *op) {
+void CodeGenTileLangCOMMONIR::VisitStmt_(const IfThenElseNode *op) {
   std::string cond = SSAGetID(PrintExpr(op->condition), op->condition->dtype);
   PrintIndent();
   stream << "scf.if %" << cond << " {\n";
@@ -850,6 +850,8 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     StubCodegen(op, os, "tir.sigmoid");
   } else if (op->op.same_as(Op::Get("tir.exp"))) {
     StubCodegen(op, os, "tir.exp");
+  } else if (op->op.same_as(builtin::if_then_else())) {
+    IfThenElseCodegen(op, os);
   } else {
     CodeGenC::VisitExpr_(op, os);
   }
@@ -913,6 +915,19 @@ void CodeGenTileLangCOMMONIR::CopyCodegen(const CallNode *op,
                  << GetMemrefInfo(dst_data_name) << ") -> ()";
     this->stream << "\n";
   }
+}
+
+void CodeGenTileLangCOMMONIR::IfThenElseCodegen(const CallNode *op,
+                                                std::ostream &os) {
+  std::string cond = SSAGetID(PrintExpr(op->args[0]), op->dtype);
+  std::string true_val = PrintExpr(op->args[1]);
+  std::string false_val = PrintExpr(op->args[2]);
+  std::ostringstream temp;
+  temp << "arith.select %" << cond << ", %"
+    << true_val << ", %" << false_val << " : ";
+  PrintType(op->dtype, temp);
+  std::string result = SSAGetID(temp.str(), op->dtype);
+  os << result;
 }
 
 void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
@@ -1218,12 +1233,22 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const DivNode *op, std::ostream &os) {
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const SelectNode *op,
                                          std::ostream &os) {
-  auto condition = PrintExpr(op->condition);
-  auto true_value = PrintExpr(op->true_value);
-  auto false_value = PrintExpr(op->false_value);
+  auto PrintOp = [this](const PrimExpr &operand) {
+    std::ostringstream tmpos;
+    if (operand.as<tvm::tir::IntImmNode>() ||
+        operand.as<tvm::tir::FloatImmNode>() ||
+        operand.as<tvm::tir::VarNode>()) {
+      PrintExpr(operand, tmpos << "%");
+    } else {
+      std::string op_name = SSAGetID(PrintExpr(operand), operand->dtype);
+      tmpos << "%" << op_name;
+    }
+    return tmpos.str();
+  };
 
-  os << "(" << condition << " ? "
-     << "" << true_value << " : " << false_value << ")";
+  os << "arith.select " << PrintOp(op->condition) << ", "
+     << PrintOp(op->true_value) << ", " << PrintOp(op->false_value) << " : ";
+  PrintType(op->dtype, os);
 }
 
 void PrintHostFunc(const PrimFunc &f, const std::string &name, std::ostream &os,

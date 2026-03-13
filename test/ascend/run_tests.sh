@@ -23,7 +23,7 @@ function run_pytestcases() {
   set -e
 
   if [ "${parallel_rc}" -eq 0 ]; then
-    echo "[Phase 1] All tests passed"
+    echo "[SUCCESS] All tests passed"
     return 0
   fi
 
@@ -34,11 +34,11 @@ function run_pytestcases() {
   set -e
 
   if [ "${serial_rc}" -ne 0 ]; then
-    echo "[Result] Serial rerun still has failures"
+    echo "[ERROR] Serial rerun still has failures"
     return 1
   fi
 
-  echo "[Result] Failed cases from parallel run passed in serial rerun"
+  echo "[SUCCESS] Cases run passed in serial rerun"
   return 0
 
 }

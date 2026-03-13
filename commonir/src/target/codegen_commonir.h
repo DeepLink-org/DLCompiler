@@ -120,7 +120,7 @@ public:
   void VisitStmt_(const AttrStmtNode *op) final;
   void VisitStmt_(const LetStmtNode *op) final;
   void VisitStmt_(const ForNode *op) final;
-  void VisitStmt_(const tir::IfThenElseNode *op) final;
+  void VisitStmt_(const IfThenElseNode *op) final;
 
   void AddFunction(const GlobalVar &gvar, const PrimFunc &f);
 
@@ -143,6 +143,7 @@ private:
   void FillCodegen(const CallNode *op, std::ostream &os);
   void CopyCodegen(const CallNode *op, std::ostream &os);
   void GemmCodegen(const CallNode *op, std::ostream &os);
+  void IfThenElseCodegen(const CallNode *op, std::ostream &os);
   void InfinityCodegen(const CallNode *op, std::ostream &os);
   void ReduceCodegen(const CallNode *op, std::ostream &os);
   void StubCodegen(const CallNode *op, std::ostream &os, String stubname);

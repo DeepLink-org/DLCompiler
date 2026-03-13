@@ -146,12 +146,7 @@ public:
       if (auto loadOp = dyn_cast<memref::LoadOp>(inst)) {
         LLVM_DEBUG(llvm::dbgs() << "     [Action] Vectorizing LoadOp.\n");
         Value memref = loadOp.getMemRef();
-        // 获取计算好的索引 (通过 mapper 查找)
-        Value index = mapper.lookup(loadOp.getIndices()[0]);
-        LLVM_DEBUG(llvm::dbgs() << "     Base MemRef: " << memref << "\n");
-        LLVM_DEBUG(llvm::dbgs() << "     Mapped Index: " << index << "\n");
 
-        // 1. Alloc Local Buffer
         auto memrefType = dyn_cast<MemRefType>(memref.getType());
         if (!memrefType) {
           LLVM_DEBUG(llvm::dbgs()
@@ -159,34 +154,71 @@ public:
                         "but not found.\n");
           return failure();
         }
-        auto localType = MemRefType::get({size}, memrefType.getElementType());
-        Value localAlloc =
-            rewriter.create<memref::AllocOp>(op.getLoc(), localType);
-        LLVM_DEBUG(llvm::dbgs() << "     Created Local Alloc: "
-                                << localAlloc.getType() << "\n");
 
-        // 2. Subview Global Memory
-        SmallVector<OpFoldResult> offsets = {index};
-        SmallVector<OpFoldResult> sizes = {rewriter.getIndexAttr(size)};
-        SmallVector<OpFoldResult> strides = {rewriter.getIndexAttr(1)};
-        Value subview = rewriter.create<memref::SubViewOp>(
-            op.getLoc(), memref, offsets, sizes, strides);
-        LLVM_DEBUG(llvm::dbgs() << "     Created Subview.\n");
+        // 检查是否为局部 alloc 的 memref
+        bool isLocalAlloc = memref.getDefiningOp<memref::AllocOp>() != nullptr;
 
-        // 3. Copy Global -> Local
-        rewriter.create<memref::CopyOp>(op.getLoc(), subview, localAlloc);
-        LLVM_DEBUG(llvm::dbgs() << "     Created Copy (Global -> Local).\n");
+        if (isLocalAlloc) {
+          LLVM_DEBUG(llvm::dbgs() << "     LoadOp from local alloc memref.\n");
+          LLVM_DEBUG(llvm::dbgs() << "     MemRef: " << memref << "\n");
 
-        // 4. Local Buffer -> Tensor
-        auto tensorType =
-            RankedTensorType::get({size}, memrefType.getElementType());
-        auto toTensor = rewriter.create<bufferization::ToTensorOp>(
-            op.getLoc(), tensorType, localAlloc, /*restrict=*/true);
-        LLVM_DEBUG(llvm::dbgs() << "     Created ToTensorOp (Result: "
-                                << toTensor.getResult() << ").\n");
+          // 检查该 memref 是否已经有向量化的数据（可能通过 store 写入）
+          if (scalarToTensorMap.count(memref)) {
+            LLVM_DEBUG(
+                llvm::dbgs()
+                << "     Using existing vectorized data for this memref.\n");
+            scalarToTensorMap[loadOp.getResult()] = scalarToTensorMap[memref];
+          } else {
+            // 直接将整个局部 memref 转为 tensor（可能是输入数据）
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Converting entire local memref to tensor.\n");
+            auto tensorType = RankedTensorType::get(
+                memrefType.getShape(), memrefType.getElementType());
+            auto toTensor = rewriter.create<bufferization::ToTensorOp>(
+                op.getLoc(), tensorType, memref, /*restrict=*/true);
+            scalarToTensorMap[loadOp.getResult()] = toTensor.getResult();
+            LLVM_DEBUG(llvm::dbgs() << "     Created ToTensorOp (Result: "
+                                    << toTensor.getResult() << ").\n");
+          }
+        } else {
+          // 原有逻辑：处理全局 memref（函数参数）
+          LLVM_DEBUG(llvm::dbgs() << "     LoadOp from global memref.\n");
 
-        // 5. 注册映射：原 Load 的标量结果 -> 新的 Tensor 结果
-        scalarToTensorMap[loadOp.getResult()] = toTensor.getResult();
+          // 获取计算好的索引 (通过 mapper 查找)
+          Value index = mapper.lookup(loadOp.getIndices()[0]);
+          LLVM_DEBUG(llvm::dbgs() << "     Base MemRef: " << memref << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "     Mapped Index: " << index << "\n");
+
+          // 1. Alloc Local Buffer
+          auto localType = MemRefType::get({size}, memrefType.getElementType());
+          Value localAlloc =
+              rewriter.create<memref::AllocOp>(op.getLoc(), localType);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Local Alloc: "
+                                  << localAlloc.getType() << "\n");
+
+          // 2. Subview Global Memory
+          SmallVector<OpFoldResult> offsets = {index};
+          SmallVector<OpFoldResult> sizes = {rewriter.getIndexAttr(size)};
+          SmallVector<OpFoldResult> strides = {rewriter.getIndexAttr(1)};
+          Value subview = rewriter.create<memref::SubViewOp>(
+              op.getLoc(), memref, offsets, sizes, strides);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Subview.\n");
+
+          // 3. Copy Global -> Local
+          rewriter.create<memref::CopyOp>(op.getLoc(), subview, localAlloc);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Copy (Global -> Local).\n");
+
+          // 4. Local Buffer -> Tensor
+          auto tensorType =
+              RankedTensorType::get({size}, memrefType.getElementType());
+          auto toTensor = rewriter.create<bufferization::ToTensorOp>(
+              op.getLoc(), tensorType, localAlloc, /*restrict=*/true);
+          LLVM_DEBUG(llvm::dbgs() << "     Created ToTensorOp (Result: "
+                                  << toTensor.getResult() << ").\n");
+
+          // 5. 注册映射：原 Load 的标量结果 -> 新的 Tensor 结果
+          scalarToTensorMap[loadOp.getResult()] = toTensor.getResult();
+        }
         continue;
       }
 
@@ -388,6 +420,93 @@ public:
           LLVM_DEBUG(llvm::dbgs()
                      << "     WARNING: Could not find vectorized source for "
                         "materialize.\n");
+        }
+        continue;
+      }
+
+      // --- Case E: 直接 Store 操作 (Store -> Vectorize) ---
+      if (auto storeOp = dyn_cast<memref::StoreOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing memref.store.\n");
+        Value valueToStore = storeOp.getValue();
+        Value destMemref = storeOp.getMemRef();
+
+        LLVM_DEBUG(llvm::dbgs()
+                   << "     Value to store: " << valueToStore << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "     Dest memref: " << destMemref << "\n");
+
+        // 检查是否有向量化的值
+        if (scalarToTensorMap.count(valueToStore)) {
+          Value vectorResult = scalarToTensorMap[valueToStore];
+          LLVM_DEBUG(llvm::dbgs() << "     Found vectorized value to store.\n");
+
+          // 检查 destMemref 是否为局部 alloc
+          bool isLocalAlloc =
+              destMemref.getDefiningOp<memref::AllocOp>() != nullptr;
+
+          if (isLocalAlloc) {
+            LLVM_DEBUG(llvm::dbgs() << "     Storing to local alloc memref.\n");
+
+            // 直接 materialize 到目标 memref
+            auto matOp =
+                rewriter.create<bufferization::MaterializeInDestinationOp>(
+                    op.getLoc(), vectorResult, destMemref);
+            matOp.setWritable(true);
+            LLVM_DEBUG(llvm::dbgs() << "     Created Materialize to local "
+                                       "memref (writable=true).\n");
+
+            // 重要：记录这个 memref 现在包含向量化的数据
+            // 后续的 load 可以直接使用这个 tensor
+            scalarToTensorMap[destMemref] = vectorResult;
+            LLVM_DEBUG(llvm::dbgs() << "     Registered memref " << destMemref
+                                    << " with vectorized data.\n");
+          } else {
+            // 写入到全局 memref（函数参数）
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Storing to global memref (not implemented in "
+                          "original store path).\n");
+
+            // 获取写入索引
+            Value index = mapper.lookup(storeOp.getIndices()[0]);
+
+            // 1. Alloc Local Buffer
+            auto tensorType =
+                dyn_cast<RankedTensorType>(vectorResult.getType());
+            if (!tensorType) {
+              LLVM_DEBUG(llvm::dbgs()
+                         << "     ERROR: Expected RankedTensorType "
+                            "for vector result.\n");
+              continue;
+            }
+            auto elemType = tensorType.getElementType();
+            auto localOutType = MemRefType::get({size}, elemType);
+            Value localOut =
+                rewriter.create<memref::AllocOp>(op.getLoc(), localOutType);
+            LLVM_DEBUG(llvm::dbgs() << "     Created Local Output Alloc.\n");
+
+            // 2. Materialize Tensor -> Local Buffer
+            auto matOp =
+                rewriter.create<bufferization::MaterializeInDestinationOp>(
+                    op.getLoc(), vectorResult, localOut);
+            matOp.setWritable(true);
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Created Materialize to local buffer.\n");
+
+            // 3. Copy Local -> Global (Subview)
+            SmallVector<OpFoldResult> offsets = {index};
+            SmallVector<OpFoldResult> sizes = {rewriter.getIndexAttr(size)};
+            SmallVector<OpFoldResult> strides = {rewriter.getIndexAttr(1)};
+
+            Value outSubview = rewriter.create<memref::SubViewOp>(
+                op.getLoc(), destMemref, offsets, sizes, strides);
+
+            rewriter.create<memref::CopyOp>(op.getLoc(), localOut, outSubview);
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Created Copy (Local -> Global).\n");
+          }
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     WARNING: Value to store is not vectorized, "
+                        "skipping.\n");
         }
         continue;
       }

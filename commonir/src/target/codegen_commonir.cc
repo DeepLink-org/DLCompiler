@@ -923,8 +923,8 @@ void CodeGenTileLangCOMMONIR::IfThenElseCodegen(const CallNode *op,
   std::string true_val = PrintExpr(op->args[1]);
   std::string false_val = PrintExpr(op->args[2]);
   std::ostringstream temp;
-  temp << "arith.select %" << cond << ", %"
-    << true_val << ", %" << false_val << " : ";
+  temp << "arith.select %" << cond << ", %" << true_val << ", %" << false_val
+       << " : ";
   PrintType(op->dtype, temp);
   std::string result = SSAGetID(temp.str(), op->dtype);
   os << result;

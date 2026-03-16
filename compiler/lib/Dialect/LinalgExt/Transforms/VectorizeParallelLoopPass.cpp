@@ -228,9 +228,9 @@ public:
           inst.getNumOperands() == 2 &&
           (isa<arith::AddFOp, arith::MulFOp, arith::AddIOp, arith::MulIOp,
                arith::SubFOp, arith::SubIOp, arith::DivFOp, arith::DivSIOp,
-               arith::DivUIOp,
-               arith::MinSIOp, arith::MinUIOp, arith::MinNumFOp, arith::MinimumFOp,
-               arith::MaxSIOp, arith::MaxUIOp, arith::MaxNumFOp, arith::MaximumFOp>(inst));
+               arith::DivUIOp, arith::MinSIOp, arith::MinUIOp, arith::MinNumFOp,
+               arith::MinimumFOp, arith::MaxSIOp, arith::MaxUIOp,
+               arith::MaxNumFOp, arith::MaximumFOp>(inst));
 
       if (isBinaryOp) {
         LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing Binary ArithOp: "

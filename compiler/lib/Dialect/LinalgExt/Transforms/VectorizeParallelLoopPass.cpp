@@ -1,6 +1,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -61,6 +62,20 @@ public:
         llvm::dbgs()
         << "\n[VectorizeParallelLoop] >>> Start matching scf.parallel at "
         << op.getLoc() << "\n");
+
+    // 预先检查：如果包含 math dialect 操作，暂时拒绝向量化
+    bool hasMathOps = false;
+    for (Operation &inst : op.getBody()->getOperations()) {
+      if (inst.getDialect() && inst.getDialect()->getNamespace() == "math") {
+        LLVM_DEBUG(llvm::dbgs() << "[VectorizeParallelLoop] Contains math op: "
+                                << inst.getName() << ", skipping vectorization for now.\n");
+        hasMathOps = true;
+        break;
+      }
+    }
+    if (hasMathOps) {
+      return failure();  // 拒绝向量化，保持原始循环
+    }
 
     // 1. 检查循环结构
     if (op.getNumLoops() != 1) {
@@ -330,6 +345,51 @@ public:
         continue;
       }
 
+      // --- Case C2: 一元数学操作 (Unary Math Operations -> Vector Unary Operations) ---
+      bool isUnaryMathOp =
+          inst.getNumOperands() == 1 &&
+          (isa<math::AbsFOp, math::AbsIOp>(inst));
+
+      if (isUnaryMathOp) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing Unary Math Op: "
+                                << inst.getName() << "\n");
+
+        Value operand = inst.getOperand(0);
+
+        // 检查操作数是否已向量化
+        if (scalarToTensorMap.count(operand)) {
+          Value vecOperand = scalarToTensorMap[operand];
+          LLVM_DEBUG(llvm::dbgs() << "     Operand is vectorized.\n");
+
+          // 创建向量化的一元操作
+          OperationState state(op.getLoc(), inst.getName().getStringRef());
+          state.addOperands({vecOperand});
+
+          // 结果类型：保持元素类型，但变为 tensor
+          Type scalarResultType = inst.getResult(0).getType();
+          Type vecResultType = RankedTensorType::get({size}, scalarResultType);
+          state.addTypes({vecResultType});
+
+          // 复制属性（如果有）
+          for (const auto &attr : inst.getAttrs()) {
+            state.addAttribute(attr.getName(), attr.getValue());
+          }
+
+          auto newOp = rewriter.create(state);
+          scalarToTensorMap[inst.getResult(0)] = newOp->getResult(0);
+
+          LLVM_DEBUG(llvm::dbgs() << "     Created Vector Unary Operation: "
+                                  << inst.getName() << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "     Result Type: "
+                                  << newOp->getResult(0).getType() << "\n");
+        } else {
+          LLVM_DEBUG(llvm::dbgs() << "     WARNING: Operand not vectorized, "
+                                     "cloning scalar op.\n");
+          rewriter.clone(inst, mapper);
+        }
+        continue;
+      }
+
       // --- Case D: 写回逻辑 (Materialize) ---
       if (auto matOp =
               dyn_cast<bufferization::MaterializeInDestinationOp>(inst)) {
@@ -528,6 +588,8 @@ public:
       LLVM_DEBUG(llvm::dbgs()
                  << "     [Unhandled] Operation not handled specifically: "
                  << inst.getName() << "\n");
+      // 对于未处理的操作，至少克隆它们以保持 IR 完整性
+      rewriter.clone(inst, mapper);
     }
 
     // 打印当前op

@@ -228,7 +228,9 @@ public:
           inst.getNumOperands() == 2 &&
           (isa<arith::AddFOp, arith::MulFOp, arith::AddIOp, arith::MulIOp,
                arith::SubFOp, arith::SubIOp, arith::DivFOp, arith::DivSIOp,
-               arith::DivUIOp>(inst));
+               arith::DivUIOp, arith::MinSIOp, arith::MinUIOp, arith::MinNumFOp,
+               arith::MinimumFOp, arith::MaxSIOp, arith::MaxUIOp,
+               arith::MaxNumFOp, arith::MaximumFOp>(inst));
 
       if (isBinaryOp) {
         LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing Binary ArithOp: "
@@ -537,8 +539,8 @@ public:
     // 打印映射表
     LLVM_DEBUG({
       llvm::dbgs() << "[VectorizeParallelLoop] Scalar to Tensor Map:\n";
-      for (auto &[scalar, tensor] : scalarToTensorMap) {
-        llvm::dbgs() << "  " << scalar << " -> " << tensor << "\n";
+      for (const auto &kv : scalarToTensorMap) {
+        llvm::dbgs() << "  " << kv.first << " -> " << kv.second << "\n";
       }
     });
 

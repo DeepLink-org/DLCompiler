@@ -845,7 +845,6 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
   } else if (op->op.same_as(Op::Get("tl.tileop.reduce"))) {
     ReduceCodegen(op, os);
   } else if (op->op.same_as(Op::Get("tir.fabs"))) {
-    // 添加 abs 支持 (tir.abs 内部是 tir.fabs)
     ICHECK_EQ(op->args.size(), 1) << "abs expects 1 argument";
     std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
     if (op->dtype.is_float()) {

@@ -23,6 +23,7 @@ TRITON_PROFILER_REGISTERED = False
 dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
 replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
 replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
+replace_commonir_ir = os.environ.get("DLC_REPLACE_COMMON_IR_FILE", None)
 replace_commonir_linked_ir = os.environ.get("DLC_REPLACE_COMMONIR_LINKED_IR_FILE", None)
 if (
     dump_ir
@@ -432,6 +433,10 @@ def ttir_to_ttsharedir_ascend(mod, metadata, opt, *, named_ops=False):
 
 
 def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
+    if replace_commonir_ir is not None:
+        print(f"[DEBUG] Replace common ir with {replace_commonir_ir}")
+        commonir = Path(replace_commonir_ir).read_text()
+
     assert isinstance(commonir, str)
     if opt.debug or dump_ir:
         dicp_utils._dump_stage_ir(commonir, metadata["hash"], "kernel.commonir.mlir")

@@ -4,7 +4,7 @@ import tilelang.language as T
 import pytest
 
 
-@pytest.mark.skip("todu::zmz will remove this after fix pass")
+@pytest.mark.skip("todo::zmz will remove this after fix pass")
 def test_if_then_else_1d():
     N = 128
     block = 128
@@ -31,7 +31,7 @@ def test_if_then_else_1d():
     print("T.if_then_else test passed")
 
 
-@pytest.mark.skip("todu::zmz will remove this after fix pass")
+@pytest.mark.skip("todo::zmz will remove this after fix pass")
 def test_if_then_else_2d():
     M, N = 128, 128
     BM, BN = 64, 64

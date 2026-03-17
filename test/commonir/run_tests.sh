@@ -15,7 +15,7 @@ function run_pytestcases() {
   cd ${script_dir}
   TARGET_DIR="$1"
   cd ${TARGET_DIR}
-  pytest -n 16 --dist=load . || { exit 1 ; }
+  pytest -n 8 --dist=load . || { exit 1 ; }
 
 }
 

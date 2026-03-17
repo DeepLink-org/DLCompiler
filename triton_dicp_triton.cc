@@ -3,11 +3,14 @@
 #include "dicp/Conversion/LinalgToNPU/Passes.h"
 #include "dicp/Conversion/LinkedToHIVM/Passes.h"
 #include "dicp/Conversion/TritonToLinalgNPU/TritonToLinalgNPUCoversion/Passes.h"
+#include "dicp/Dialect/GPGPU/IR/Dialect.h"
 #include "dicp/Dialect/LinalgExt/Transforms/Passes.h"
 #include "dicp/Dialect/TritonExt/Transforms/Passes.h"
+#include "dicp_triton_gpgpu.cc"
 
 #include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -84,7 +87,9 @@ void init_triton_dicp_triton(py::module &&m) {
                     cf::ControlFlowDialect, func::FuncDialect,
                     linalg::LinalgDialect, index::IndexDialect,
                     math::MathDialect, scf::SCFDialect, triton::TritonDialect,
-                    affine::AffineDialect, ttx::TritonTilingExtDialect>();
+                    affine::AffineDialect, ttx::TritonTilingExtDialect,
+                    mlir::triton::nvidia_gpu::TritonNvidiaGPUDialect,
+                    mlir::triton::tlx::TLXDialect>();
 
     dicp::trtion_ext::registerCanonicalizeTritonIRAscendPass();
     dicp::trtion_ext::registerCanonicalizeCmpiPass();
@@ -101,4 +106,6 @@ void init_triton_dicp_triton(py::module &&m) {
     context.appendDialectRegistry(registry);
     context.loadAllAvailableDialects();
   });
+
+  init_triton_tlx(m.def_submodule("tlx"));
 }

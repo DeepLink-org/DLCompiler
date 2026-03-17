@@ -265,6 +265,27 @@ class DICPBackend(BaseBackend):
                             src, metadata, options
                         )
                     )
+        elif self.driver.target == "cuda":
+        #     from triton.backends.dicp_triton. import (
+        #         ttir_to_ttgir,
+        #         optimize_ttgir,
+        #         ttgir_to_llir,
+        #         get_architecture_descriptor,
+        #     )
+
+        #     arch = get_architecture_descriptor()
+        #     extern_libs = dict()
+        #     stages["ttgir"] = lambda src, metadata: optimize_ttgir(
+        #         ttir_to_ttgir(src, 4), options.num_stages, arch
+        #     )
+        #     stages["llir"] = lambda src, metadata: ttgir_to_llir(src, arch)
+        #     mxcc_arch = os.environ.get("MACA_PATH") + "/mxgpu_llvm/bin/mxcc"
+        #     if mxcc_arch is None:
+        #         raise RuntimeError("mxcc_arch is None (not specified)")
+        #     stages["mcfatbin"] = lambda src, metadata: llir_to_mcfatbin(
+        #         src, mxcc_arch, os.environ.get("MACA_PATH")
+        #     )
+            raise RuntimeError("cuda not supported")
         else:
             raise RuntimeError("backend not supported")
 

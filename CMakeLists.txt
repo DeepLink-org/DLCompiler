@@ -55,6 +55,8 @@ if (TRITON_BUILD_PYTHON_MODULE)
 
     LinalgExtTransforms
     TritonExtTransforms
+    TLXIR
+    TritonNvidiaGPUIR
 
     LinalgToLinked
     LinkedToHIVM

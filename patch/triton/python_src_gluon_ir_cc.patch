@@ -1,0 +1,20 @@
+diff --git a/python/src/gluon_ir.cc b/python/src/gluon_ir.cc
+index 00033c0fc..f15cd6028 100644
+--- a/python/src/gluon_ir.cc
++++ b/python/src/gluon_ir.cc
+@@ -694,6 +694,15 @@ void init_gluon_ir(py::module &&m) {
+            ret::reference)
+       .def("get_partition_op_holder",
+            &ttg::WarpSpecializeOp::getPartitionOpHolder, ret::reference)
++     .def(
++          "get_partition_region",
++          [](ttg::WarpSpecializeOp self, unsigned idx) -> Region & {
++            auto numPartitions = self.getPartitionRegions().size();
++            if (idx >= numPartitions)
++              throw pybind11::index_error("Op region index out of range");
++            return *self.getPartitionRegions()[idx];
++          },
++          ret::reference)
+       .def("set_requested_registers", [](ttg::WarpSpecializeOp &self,
+                                          std::vector<int> &requestedRegisters) {
+         self.setRequestedRegisters(requestedRegisters);

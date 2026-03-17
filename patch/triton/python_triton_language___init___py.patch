@@ -1,0 +1,21 @@
+diff --git a/python/triton/language/__init__.py b/python/triton/language/__init__.py
+index 5de6085fa..791c9c49b 100644
+--- a/python/triton/language/__init__.py
++++ b/python/triton/language/__init__.py
+@@ -3,6 +3,7 @@
+ 
+ from . import math
+ from . import extra
++from .extra.deeplink import async_task, async_tasks
+ from .standard import (
+     argmax,
+     argmin,
+@@ -156,6 +157,8 @@ __all__ = [
+     "atomic_or",
+     "atomic_xchg",
+     "atomic_xor",
++    "async_task",
++    "async_tasks",
+     "bfloat16",
+     "bitonic_merge",
+     "block_type",

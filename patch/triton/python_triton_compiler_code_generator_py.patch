@@ -1,16 +1,45 @@
 diff --git a/python/triton/compiler/code_generator.py b/python/triton/compiler/code_generator.py
-index df09b3198..3dac7c740 100644
+index df09b3198..3cbfe278d 100644
 --- a/python/triton/compiler/code_generator.py
 +++ b/python/triton/compiler/code_generator.py
-@@ -20,7 +20,6 @@ from .._utils import find_paths_if, get_iterable_path, set_iterable_path
+@@ -19,6 +19,11 @@ from ..runtime.jit import get_jit_fn_file_line, get_full_name, JITCallable, Boun
+ from .._utils import find_paths_if, get_iterable_path, set_iterable_path
  
  from .errors import (CompilationError, CompileTimeAssertionFailure, UnsupportedLanguageConstruct)
++from triton.language.extra.deeplink.compiler.dispatch import TLX_WITH_DISPATCH
++
++WITH_DISPATCH = {}  # central registry for all 'with' handlers
++
++WITH_DISPATCH.update(TLX_WITH_DISPATCH)
  
--
+ 
  def check_identifier_legality(name, type):
-     pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
-     if not re.match(pattern, name):
-@@ -578,6 +577,39 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -129,6 +134,8 @@ class enter_sub_region:
+         self.liveins = _clone_scope(self.generator.lscope)
+         self.prev_defs = _clone_scope(self.generator.local_defs)
+         self.generator.local_defs = {}
++        self.used_vars = self.generator.used_vars.copy()
++        self.generator.used_vars = set()
+         self.insert_block = self.generator.builder.get_insertion_block()
+         self.insert_point = self.generator.builder.get_insertion_point()
+         return self.liveins, self.insert_block
+@@ -137,6 +144,7 @@ class enter_sub_region:
+         self.generator.builder.restore_insertion_point(self.insert_point)
+         self.generator.lscope = self.liveins
+         self.generator.local_defs = self.prev_defs
++        self.generator.used_vars |= self.used_vars
+ 
+ 
+ # Check if the given syntax node has an "early" return
+@@ -350,6 +358,7 @@ class CodeGenerator(ast.NodeVisitor):
+         # SSA-construction
+         # name => language.tensor
+         self.local_defs: Dict[str, tensor] = {}
++        self.used_vars = set()
+         self.dereference_name: Callable[[str], Any] = self._define_name_lookup()
+         self.fn = None
+         # Are we currently visiting an ast.arg's default value?  These have some
+@@ -578,6 +587,39 @@ class CodeGenerator(ast.NodeVisitor):
          assert isinstance(args, language.core.tuple)
          return args.values
  
@@ -50,18 +79,65 @@ index df09b3198..3dac7c740 100644
      def visit_FunctionDef(self, node):
          arg_names, kwarg_names = self.visit(node.args)
          if self.fn:
-@@ -1044,6 +1076,10 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -708,6 +750,8 @@ class CodeGenerator(ast.NodeVisitor):
+     def visit_Name(self, node):
+         if type(node.ctx) is ast.Store:
+             return node.id
++        if isinstance(node.ctx, (ast.Load, ast.Store)):
++            self.used_vars.add(node.id)
+         return self.dereference_name(node.id)
+ 
+     def visit_Store(self, node):
+@@ -970,28 +1014,6 @@ class CodeGenerator(ast.NodeVisitor):
+             else:
+                 return self.visit(node.orelse)
+ 
+-    def visit_With(self, node):
+-        # Lower `with` statements by constructing context managers and calling their enter/exit hooks
+-        # Instantiate each context manager with builder injection
+-        cm_list = []
+-        for item in node.items:
+-            call = item.context_expr
+-            fn = self.visit(call.func)
+-            args = [self.visit(arg) for arg in call.args]
+-            kws = dict(self.visit(kw) for kw in call.keywords)
+-            cm = fn(*args, _semantic=self.semantic, **kws)
+-            cm_list.append(cm)
+-        for cm, item in zip(cm_list, node.items):
+-            res = cm.__enter__()
+-            if item.optional_vars is not None:
+-                var_name = self.visit(item.optional_vars)
+-                self.set_value(var_name, res)
+-        if ContainsReturnChecker(self.gscope).visit(node):
+-            raise self._unsupported(node, "Cannot have `return` statements inside `with` statements in triton ")
+-        self.visit_compound_statement(node.body)
+-        for cm in reversed(cm_list):
+-            cm.__exit__(None, None, None)
+-
+     def visit_Pass(self, node):
+         pass
+ 
+@@ -1043,6 +1065,19 @@ class CodeGenerator(ast.NodeVisitor):
+             f'Loop-carried variable {name} has initial type {live_val.type} '\
              f'but is re-assigned to {loop_val.type} in loop! '\
              f'Please make sure that the type stays consistent.'
- 
++        
++    def visit_withitem(self, node):
++        return self.visit(node.context_expr)
++    
 +    def visit_With(self, node):
 +        assert len(node.items) == 1
++        context = node.items[0].context_expr
++        if isinstance(context, ast.Call):
++            withitemClass = self.visit(context.func)
++            handler = WITH_DISPATCH.get(withitemClass)
++            if handler:
++                return handler(self, node)
 +        return self.visit_compound_statement(node.body)
-+
+ 
      def visit_While(self, node):
          with enter_sub_region(self) as sr:
-             liveins, insert_block = sr
-@@ -1137,7 +1173,8 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1137,7 +1172,8 @@ class CodeGenerator(ast.NodeVisitor):
          flatten = False
          warp_specialize = False
          disable_licm = False
@@ -71,7 +147,7 @@ index df09b3198..3dac7c740 100644
              iterator = IteratorClass(*iter_args, **iter_kwargs)
              # visit iterator arguments
              # note: only `range` iterator is supported now
-@@ -1151,6 +1188,8 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1151,6 +1187,8 @@ class CodeGenerator(ast.NodeVisitor):
              flatten = iterator.flatten
              warp_specialize = iterator.warp_specialize
              disable_licm = iterator.disable_licm
@@ -80,7 +156,7 @@ index df09b3198..3dac7c740 100644
          elif IteratorClass is range:
              # visit iterator arguments
              # note: only `range` iterator is supported now
-@@ -1210,6 +1249,9 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1210,6 +1248,9 @@ class CodeGenerator(ast.NodeVisitor):
              if disable_licm:
                  for_op.set_attr("llvm.loop_annotation", self.builder.get_disable_loop_licm_attr())
  
@@ -90,7 +166,7 @@ index df09b3198..3dac7c740 100644
              self.scf_stack.append(node)
              for_op_body = for_op.get_body(0)
              self.builder.set_insertion_point_to_start(for_op_body)
-@@ -1363,6 +1405,13 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1363,6 +1404,13 @@ class CodeGenerator(ast.NodeVisitor):
  
      def visit_Call(self, node):
          fn = _unwrap_if_constexpr(self.visit(node.func))

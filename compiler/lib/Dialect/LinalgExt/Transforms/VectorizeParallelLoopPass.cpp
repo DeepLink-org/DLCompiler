@@ -1,6 +1,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -116,9 +117,19 @@ public:
         << "[VectorizeParallelLoop] Starting to process body operations...\n");
 
     // 3. 遍历原循环体，按顺序生成向量化代码
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "[VectorizeParallelLoop] Starting to process body operations...\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[VectorizeParallelLoop] Total operations in body: "
+               << op.getBody()->getOperations().size() << "\n");
+
+    int opIndex = 0;
     for (Operation &inst : body->getOperations()) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "  -> Visiting Op: " << inst.getName() << "\n");
+      opIndex++;
+      LLVM_DEBUG(llvm::dbgs() << "\n  -> [Op " << opIndex << "/"
+                              << op.getBody()->getOperations().size()
+                              << "] Visiting: " << inst.getName() << "\n");
 
       // 跳过 terminator
       if (isa<scf::ReduceOp>(inst) || isa<scf::YieldOp>(inst)) {
@@ -146,6 +157,14 @@ public:
       if (auto loadOp = dyn_cast<memref::LoadOp>(inst)) {
         LLVM_DEBUG(llvm::dbgs() << "     [Action] Vectorizing LoadOp.\n");
         Value memref = loadOp.getMemRef();
+
+        LLVM_DEBUG(llvm::dbgs() << "     LoadOp memref: " << memref << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "     LoadOp indices count: "
+                                << loadOp.getIndices().size() << "\n");
+        if (!loadOp.getIndices().empty()) {
+          LLVM_DEBUG(llvm::dbgs() << "     LoadOp index[0]: "
+                                  << loadOp.getIndices()[0] << "\n");
+        }
 
         auto memrefType = dyn_cast<MemRefType>(memref.getType());
         if (!memrefType) {
@@ -185,7 +204,28 @@ public:
           LLVM_DEBUG(llvm::dbgs() << "     LoadOp from global memref.\n");
 
           // 获取计算好的索引 (通过 mapper 查找)
-          Value index = mapper.lookup(loadOp.getIndices()[0]);
+          Value indexToLookup = loadOp.getIndices()[0];
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     Index to lookup: " << indexToLookup << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "     Mapper size: "
+                                  << mapper.getValueMap().size() << "\n");
+          LLVM_DEBUG({
+            llvm::dbgs() << "     Mapper contents:\n";
+            for (const auto &kv : mapper.getValueMap()) {
+              llvm::dbgs() << "       " << kv.first << " -> " << kv.second
+                           << "\n";
+            }
+          });
+
+          Value index = mapper.lookupOrNull(indexToLookup);
+          if (!index) {
+            LLVM_DEBUG(
+                llvm::dbgs()
+                << "     ERROR: Index not in mapper, cannot vectorize.\n"
+                << "     Rejecting vectorization to keep original loop.\n");
+            return failure(); // 拒绝向量化，保持原始循环
+          }
+
           LLVM_DEBUG(llvm::dbgs() << "     Base MemRef: " << memref << "\n");
           LLVM_DEBUG(llvm::dbgs() << "     Mapped Index: " << index << "\n");
 
@@ -325,6 +365,70 @@ public:
           LLVM_DEBUG(
               llvm::dbgs()
               << "     WARNING: Operands not vectorized, cloning scalar op.\n");
+          rewriter.clone(inst, mapper);
+        }
+        continue;
+      }
+
+      // --- Case C2: 一元数学操作 (Unary Math Operations -> Vector Unary
+      // Operations) ---
+      LLVM_DEBUG(llvm::dbgs() << "     Checking if unary math op...\n");
+      LLVM_DEBUG(llvm::dbgs() << "     inst.getNumOperands() = "
+                              << inst.getNumOperands() << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "     inst dialect: "
+                 << (inst.getDialect() ? inst.getDialect()->getNamespace()
+                                       : "none")
+                 << "\n");
+
+      LLVM_DEBUG(llvm::dbgs() << "     Checking isa<math::AbsFOp>: "
+                              << isa<math::AbsFOp>(inst) << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "     Checking isa<math::AbsIOp>: "
+                              << isa<math::AbsIOp>(inst) << "\n");
+
+      bool isUnaryMathOp =
+          inst.getNumOperands() == 1 &&
+          (isa<math::AbsFOp, math::AbsIOp, math::SqrtOp, math::ExpOp,
+               math::TanhOp, math::LogOp, math::SinOp, math::CosOp>(inst));
+
+      LLVM_DEBUG(llvm::dbgs()
+                 << "     isUnaryMathOp = " << isUnaryMathOp << "\n");
+
+      if (isUnaryMathOp) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing Unary Math Op: "
+                                << inst.getName() << "\n");
+
+        Value operand = inst.getOperand(0);
+
+        // 检查操作数是否已向量化
+        if (scalarToTensorMap.count(operand)) {
+          Value vecOperand = scalarToTensorMap[operand];
+          LLVM_DEBUG(llvm::dbgs() << "     Operand is vectorized.\n");
+
+          // 创建向量化的一元操作
+          OperationState state(op.getLoc(), inst.getName().getStringRef());
+          state.addOperands({vecOperand});
+
+          // 结果类型：保持元素类型，但变为 tensor
+          Type scalarResultType = inst.getResult(0).getType();
+          Type vecResultType = RankedTensorType::get({size}, scalarResultType);
+          state.addTypes({vecResultType});
+
+          // 复制属性（如果有）
+          for (const auto &attr : inst.getAttrs()) {
+            state.addAttribute(attr.getName(), attr.getValue());
+          }
+
+          auto newOp = rewriter.create(state);
+          scalarToTensorMap[inst.getResult(0)] = newOp->getResult(0);
+
+          LLVM_DEBUG(llvm::dbgs() << "     Created Vector Unary Operation: "
+                                  << inst.getName() << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "     Result Type: "
+                                  << newOp->getResult(0).getType() << "\n");
+        } else {
+          LLVM_DEBUG(llvm::dbgs() << "     WARNING: Operand not vectorized, "
+                                     "cloning scalar op.\n");
           rewriter.clone(inst, mapper);
         }
         continue;
@@ -528,7 +632,22 @@ public:
       LLVM_DEBUG(llvm::dbgs()
                  << "     [Unhandled] Operation not handled specifically: "
                  << inst.getName() << "\n");
+      // 对于未处理的操作，至少克隆它们以保持 IR 完整性
+      rewriter.clone(inst, mapper);
     }
+
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "\n[VectorizeParallelLoop] Finished processing all operations.\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "[VectorizeParallelLoop] scalarToTensorMap size: "
+               << scalarToTensorMap.size() << "\n");
+    LLVM_DEBUG({
+      llvm::dbgs() << "[VectorizeParallelLoop] scalarToTensorMap contents:\n";
+      for (const auto &kv : scalarToTensorMap) {
+        llvm::dbgs() << "  " << kv.first << " -> " << kv.second << "\n";
+      }
+    });
 
     // 打印当前op
     LLVM_DEBUG({
@@ -548,6 +667,16 @@ public:
     LLVM_DEBUG(
         llvm::dbgs()
         << "[VectorizeParallelLoop] Erasing original scf.parallel op.\n");
+
+    // 在删除前，确保至少处理了一些操作
+    if (scalarToTensorMap.empty()) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "[VectorizeParallelLoop] WARNING: No operations vectorized, "
+          << "keeping original loop.\n");
+      return failure(); // 如果没有向量化任何操作，保持原样
+    }
+
     rewriter.eraseOp(op);
 
     LLVM_DEBUG(llvm::dbgs()

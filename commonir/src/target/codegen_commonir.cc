@@ -903,12 +903,39 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     InfinityCodegen(op, os);
   } else if (op->op.same_as(Op::Get("tl.tileop.reduce"))) {
     ReduceCodegen(op, os);
+  } else if (op->op.same_as(Op::Get("tir.fabs"))) {
+    ICHECK_EQ(op->args.size(), 1) << "abs expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    if (op->dtype.is_float()) {
+      os << "math.absf %" << operand << " : ";
+    } else {
+      os << "math.absi %" << operand << " : ";
+    }
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.sqrt"))) {
+    ICHECK_EQ(op->args.size(), 1) << "sqrt expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.sqrt %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.exp"))) {
+    ICHECK_EQ(op->args.size(), 1) << "exp expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.exp %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.tanh"))) {
+    ICHECK_EQ(op->args.size(), 1) << "tanh expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.tanh %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.log"))) {
+    ICHECK_EQ(op->args.size(), 1) << "log expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.log %" << operand << " : ";
+    PrintType(op->dtype, os);
   } else if (op->op.same_as(Op::Get("tir.rsqrt"))) {
     StubCodegen(op, os, "tir.rsqrt");
   } else if (op->op.same_as(Op::Get("tir.sigmoid"))) {
     StubCodegen(op, os, "tir.sigmoid");
-  } else if (op->op.same_as(Op::Get("tir.exp"))) {
-    StubCodegen(op, os, "tir.exp");
   } else if (op->op.same_as(builtin::if_then_else())) {
     IfThenElseCodegen(op, os);
   } else {

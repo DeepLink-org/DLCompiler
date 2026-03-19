@@ -67,7 +67,7 @@ python ./test/ascend/passed_tests/test_silu_and_mul.py
 
 ### 支持寒武纪芯片
 
-MLU590
+MLU
 
 ### 寒武纪上编译
 

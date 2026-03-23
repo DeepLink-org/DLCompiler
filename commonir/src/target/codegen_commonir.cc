@@ -909,12 +909,37 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     StubCodegen(op, os, "tir.sigmoid");
   } else if (op->op.same_as(Op::Get("tir.exp"))) {
     StubCodegen(op, os, "tir.exp");
+  } else if (op->op.same_as(Op::Get("tir.exp2"))) {
+    UnaryOpCodegen(op, os, "math.exp");
   } else if (op->op.same_as(builtin::if_then_else())) {
     IfThenElseCodegen(op, os);
   } else {
     CodeGenC::VisitExpr_(op, os);
   }
 }
+void CodeGenTileLangCOMMONIR::UnaryOpCodegen(const CallNode *op,
+                                             std::ostream &os, String op_name) {
+  auto PrintOp = [op, this](const PrimExpr &operand) {
+    std::ostringstream tmpos;
+    if (operand.as<tvm::tir::IntImmNode>() ||
+        operand.as<tvm::tir::FloatImmNode>() ||
+        operand.as<tvm::tir::VarNode>()) {
+      PrintExpr(operand, tmpos << "%");
+    } else {
+      std::string op_id = SSAGetID(PrintExpr(operand), operand->dtype);
+      tmpos << "%" << op_id;
+    }
+    return tmpos.str();
+  };
+
+  if (op->dtype.lanes() == 1 && op->args.size() == 1) {
+    os << op_name << " " << PrintOp(op->args[0]) << " : ";
+    PrintType(op->args[0]->dtype, os);
+  } else {
+    os << "<<<invalid-unary-op: %" << op_name << ">>>\n";
+  }
+}
+
 void CodeGenTileLangCOMMONIR::StubCodegen(const CallNode *op, std::ostream &os,
                                           String stubname) {
   this->PrintIndent();

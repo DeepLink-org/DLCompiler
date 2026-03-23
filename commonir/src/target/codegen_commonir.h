@@ -147,6 +147,7 @@ private:
   void InfinityCodegen(const CallNode *op, std::ostream &os);
   void ReduceCodegen(const CallNode *op, std::ostream &os);
   void StubCodegen(const CallNode *op, std::ostream &os, String stubname);
+  void UnaryOpCodegen(const CallNode *op, std::ostream &os, String op_name);
 
   // save memref name and type
   std::map<String, Memref *> type_info;

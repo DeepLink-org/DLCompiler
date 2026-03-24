@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 
-@pytest.mark.skip("todo::zmz will remove this after fix pass")
+# @pytest.mark.skip("todo::zmz will remove this after fix pass")
 def test_if_then_else_1d():
     N = 128
     block = 128

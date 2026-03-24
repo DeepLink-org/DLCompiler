@@ -619,8 +619,12 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const BufferLoadNode *op,
   int dim = buffer_shape.size();
 
   String buffer_name_val = "";
-  if (dynamic_cast<Memref *>(type_info[buffer_name])) {
-    buffer_name_val = buffer_name;
+  if (auto memrefInfo = dynamic_cast<Memref *>(type_info[buffer_name])) {
+    if (memrefInfo->is_arg) {
+      buffer_name_val = buffer_name + "_Recast";
+    } else {
+      buffer_name_val = buffer_name;
+    }
   } else {
     LOG(FATAL) << buffer_name << " should be a memref";
   }
@@ -698,8 +702,12 @@ String CodeGenTileLangCOMMONIR::GenSubviewFromRegion(Buffer buffer_data,
     region_indeces.push_back(r.get()->min);
   }
   String buffer_name_val = "";
-  if (dynamic_cast<Memref *>(type_info[buffer_name])) {
-    buffer_name_val = buffer_name;
+  if (auto memrefInfo = dynamic_cast<Memref *>(type_info[buffer_name])) {
+    if (memrefInfo->is_arg) {
+      buffer_name_val = buffer_name + "_Recast";
+    } else {
+      buffer_name_val = buffer_name;
+    }
   } else {
     LOG(FATAL) << buffer_name << " should be a memref";
   }
@@ -708,79 +716,7 @@ String CodeGenTileLangCOMMONIR::GenSubviewFromRegion(Buffer buffer_data,
 
   String new_buffer_name = buffer_name_val;
   String src_data_info = GetMemrefInfo(buffer_name_val);
-  bool is_full_region =
-      IsEqual(buffer_shape, region_shape) && AllZero(region_indeces);
-  if (src_memref->is_arg) {
-    Array<PrimExpr> curr_shape = is_full_region ? buffer_shape : region_shape;
-    Array<PrimExpr> curr_indices;
-    if (is_full_region) {
-      for (int i = 0; i < dim; ++i) {
-        curr_indices.push_back(make_const(DataType::Int(64), 0));
-      }
-    } else {
-      curr_indices = region_indeces;
-    }
-
-    Array<String> cast_shape_array = GenConvertIndex(curr_shape);
-    Array<PrimExpr> strides_expr;
-    for (int i = 0; i < src_memref->dim; ++i) {
-      strides_expr.push_back(src_memref->stride[i]);
-    }
-    Array<String> cast_stride_array = GenConvertIndex(strides_expr);
-
-    PrimExpr dynamic_offset = make_const(DataType::Int(64), 0);
-    for (int i = 0; i < src_memref->dim; ++i) {
-      PrimExpr idx = curr_indices[i];
-      PrimExpr stride = strides_expr[i];
-      if (idx.dtype() != stride.dtype()) {
-        idx = tvm::tir::Cast(stride.dtype(), idx);
-      }
-      dynamic_offset = dynamic_offset + idx * stride;
-    }
-
-    Array<PrimExpr> offset_exprs;
-    offset_exprs.push_back(arith::Analyzer().Simplify(dynamic_offset));
-    Array<String> cast_offset_array = GenConvertIndex(offset_exprs);
-    unsigned long offset = ComputeOffset(src_memref, curr_indices);
-
-    new_buffer_name = buffer_name_val + "_reinterpret";
-    auto tempMemref = new Memref(new_buffer_name, curr_shape, buffer_type,
-                                 src_memref->address_space, offset == -1,
-                                 src_memref->stride, offset);
-    String dst_data_info = GetMemrefInfo(tempMemref);
-
-    temp << "memref.reinterpret_cast %" << buffer_name_val;
-    temp << " to offset: [";
-    if (offset == -1) {
-      temp << cast_offset_array[0];
-    } else {
-      temp << offset;
-    }
-    temp << "], sizes: [";
-    for (int i = 0; i < dim; ++i) {
-      if (i > 0) {
-        temp << ", ";
-      }
-      temp << cast_shape_array[i];
-    }
-    temp << "], strides: [";
-    for (int i = 0; i < dim; ++i) {
-      if (i > 0) {
-        temp << ", ";
-      }
-      temp << cast_stride_array[i];
-    }
-    temp << "] : ";
-    temp << src_data_info;
-    temp << " to ";
-    temp << dst_data_info;
-
-    delete tempMemref;
-    new_buffer_name = SSAGetID(temp.str(), buffer_type);
-    this->type_info[new_buffer_name] = new Memref(
-        new_buffer_name, curr_shape, buffer_type, src_memref->address_space,
-        offset == -1, src_memref->stride, offset);
-  } else if (!is_full_region) {
+  if (!(IsEqual(buffer_shape, region_shape) && AllZero(region_indeces))) {
     Array<String> cast_offset_array = GenConvertIndex(region_indeces);
     Array<String> cast_shape_array = GenConvertIndex(region_shape);
     unsigned long offset = ComputeOffset(src_memref, region_indeces);
@@ -903,40 +839,48 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const CallNode *op, std::ostream &os) {
     InfinityCodegen(op, os);
   } else if (op->op.same_as(Op::Get("tl.tileop.reduce"))) {
     ReduceCodegen(op, os);
+  } else if (op->op.same_as(Op::Get("tir.fabs"))) {
+    ICHECK_EQ(op->args.size(), 1U) << "fabs expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    if (op->dtype.is_float()) {
+      os << "math.absf %" << operand << " : ";
+    } else {
+      os << "math.absi %" << operand << " : ";
+    }
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.sqrt"))) {
+    ICHECK_EQ(op->args.size(), 1U) << "sqrt expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.sqrt %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.exp"))) {
+    ICHECK_EQ(op->args.size(), 1U) << "exp expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.exp %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.exp2"))) {
+    ICHECK_EQ(op->args.size(), 1U) << "exp2 expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.exp2 %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.tanh"))) {
+    ICHECK_EQ(op->args.size(), 1U) << "tanh expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.tanh %" << operand << " : ";
+    PrintType(op->dtype, os);
+  } else if (op->op.same_as(Op::Get("tir.log"))) {
+    ICHECK_EQ(op->args.size(), 1U) << "log expects 1 argument";
+    std::string operand = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+    os << "math.log %" << operand << " : ";
+    PrintType(op->dtype, os);
   } else if (op->op.same_as(Op::Get("tir.rsqrt"))) {
     StubCodegen(op, os, "tir.rsqrt");
   } else if (op->op.same_as(Op::Get("tir.sigmoid"))) {
     StubCodegen(op, os, "tir.sigmoid");
-  } else if (op->op.same_as(Op::Get("tir.exp"))) {
-    StubCodegen(op, os, "tir.exp");
-  } else if (op->op.same_as(Op::Get("tir.exp2"))) {
-    UnaryOpCodegen(op, os, "math.exp");
   } else if (op->op.same_as(builtin::if_then_else())) {
     IfThenElseCodegen(op, os);
   } else {
     CodeGenC::VisitExpr_(op, os);
-  }
-}
-void CodeGenTileLangCOMMONIR::UnaryOpCodegen(const CallNode *op,
-                                             std::ostream &os, String op_name) {
-  auto PrintOp = [op, this](const PrimExpr &operand) {
-    std::ostringstream tmpos;
-    if (operand.as<tvm::tir::IntImmNode>() ||
-        operand.as<tvm::tir::FloatImmNode>() ||
-        operand.as<tvm::tir::VarNode>()) {
-      PrintExpr(operand, tmpos << "%");
-    } else {
-      std::string op_id = SSAGetID(PrintExpr(operand), operand->dtype);
-      tmpos << "%" << op_id;
-    }
-    return tmpos.str();
-  };
-
-  if (op->dtype.lanes() == 1 && op->args.size() == 1) {
-    os << op_name << " " << PrintOp(op->args[0]) << " : ";
-    PrintType(op->args[0]->dtype, os);
-  } else {
-    os << "<<<invalid-unary-op: %" << op_name << ">>>\n";
   }
 }
 
@@ -1003,9 +947,11 @@ void CodeGenTileLangCOMMONIR::CopyCodegen(const CallNode *op,
 
 void CodeGenTileLangCOMMONIR::IfThenElseCodegen(const CallNode *op,
                                                 std::ostream &os) {
-  std::string cond = SSAGetID(PrintExpr(op->args[0]), op->dtype);
-  std::string true_val = PrintExpr(op->args[1]);
-  std::string false_val = PrintExpr(op->args[2]);
+  // args[0] is the condition (bool/i1), must use its own dtype, not op->dtype
+  std::string cond = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+  // Ensure true/false values are proper SSA IDs (handles inline constant exprs)
+  std::string true_val = SSAGetID(PrintExpr(op->args[1]), op->args[1]->dtype);
+  std::string false_val = SSAGetID(PrintExpr(op->args[2]), op->args[2]->dtype);
   std::ostringstream temp;
   temp << "arith.select %" << cond << ", %" << true_val << ", %" << false_val
        << " : ";
@@ -1240,8 +1186,12 @@ void CodeGenTileLangCOMMONIR::VisitStmt_(const BufferStoreNode *op) {
   int dim = buffer_shape.size();
 
   String buffer_name_val = "";
-  if (dynamic_cast<Memref *>(type_info[buffer_name])) {
-    buffer_name_val = buffer_name;
+  if (auto memrefInfo = dynamic_cast<Memref *>(type_info[buffer_name])) {
+    if (memrefInfo->is_arg) {
+      buffer_name_val = buffer_name + "_Recast";
+    } else {
+      buffer_name_val = buffer_name;
+    }
   } else {
     LOG(FATAL) << buffer_name << " should be a memref";
   }
@@ -1511,6 +1461,8 @@ void CodeGenTileLangCOMMONIR::AddFunction(const GlobalVar &gvar,
 
   this->stream << "func.func @" << func_name << "(";
 
+  std::vector<String> recast_need_insert;
+
   this->type_info.clear();
   size_t n = f->params.size();
   for (size_t i = 0; i < f->params.size(); ++i) {
@@ -1527,6 +1479,9 @@ void CodeGenTileLangCOMMONIR::AddFunction(const GlobalVar &gvar,
       Memref *buffer = new Memref(arg_name, f->buffer_map[v], true);
       this->type_info[arg_name] = buffer;
       stream << "%" << arg_name << ": " << GetMemrefInfo(arg_name);
+      String recast_inst = "";
+      GenRecastFromArg(f->buffer_map[v], arg_name, recast_inst);
+      recast_need_insert.push_back(recast_inst);
 
       if (auto *ptr = v->type_annotation.as<PointerTypeNode>()) {
         if (auto *prim = ptr->element_type.as<PrimTypeNode>()) {
@@ -1548,6 +1503,10 @@ void CodeGenTileLangCOMMONIR::AddFunction(const GlobalVar &gvar,
   this->PrintIndent();
   stream << "{\n";
   int func_body_scope = this->BeginScope();
+  for (String recast_inst : recast_need_insert) {
+    this->PrintIndent();
+    stream << recast_inst;
+  }
   this->PrintStmt(f->body);
   this->EndScope(func_body_scope);
   this->PrintIndent();
@@ -1575,7 +1534,7 @@ String CodeGenTileLangCOMMONIR::GetMemrefInfo(Memref *memrefObj) {
   std::ostringstream memref_type;
   memref_type << "memref<";
   if (memrefObj->is_arg) {
-    memref_type << "*x";
+    memref_type << "?x";
   } else {
     for (PrimExpr s : memrefObj->shape) {
       if (auto s_int = as_const_int(s)) {

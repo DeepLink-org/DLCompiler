@@ -947,9 +947,11 @@ void CodeGenTileLangCOMMONIR::CopyCodegen(const CallNode *op,
 
 void CodeGenTileLangCOMMONIR::IfThenElseCodegen(const CallNode *op,
                                                 std::ostream &os) {
-  std::string cond = SSAGetID(PrintExpr(op->args[0]), op->dtype);
-  std::string true_val = PrintExpr(op->args[1]);
-  std::string false_val = PrintExpr(op->args[2]);
+  // args[0] is the condition (bool/i1), must use its own dtype, not op->dtype
+  std::string cond = SSAGetID(PrintExpr(op->args[0]), op->args[0]->dtype);
+  // Ensure true/false values are proper SSA IDs (handles inline constant exprs)
+  std::string true_val = SSAGetID(PrintExpr(op->args[1]), op->args[1]->dtype);
+  std::string false_val = SSAGetID(PrintExpr(op->args[2]), op->args[2]->dtype);
   std::ostringstream temp;
   temp << "arith.select %" << cond << ", %" << true_val << ", %" << false_val
        << " : ";

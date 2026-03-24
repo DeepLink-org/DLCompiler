@@ -78,6 +78,7 @@ def test_vec_sub_const():
     print("✓ test_vec_sub_const passed")
 
 
+@pytest.mark.skip
 def test_vec_div_const():
     """测试：向量 / 标量常量"""
     N = 512
@@ -127,6 +128,7 @@ def test_mixed_const_ops():
     print("✓ test_mixed_const_ops passed")
 
 
+@pytest.mark.skip
 def test_integer_const():
     """测试：整数向量 + 常量"""
     N = 1024

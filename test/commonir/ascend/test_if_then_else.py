@@ -51,7 +51,9 @@ def test_if_then_else_2d():
                 T.copy(A[bx * BM : (bx + 1) * BM, by * BN : (by + 1) * BN], A_shared)
                 for i, j in T.Parallel(BM, BN):
                     B_shared[i, j] = T.if_then_else(
-                        A_shared[i, j] > 0.0, A_shared[i, j], 0.0
+                        A_shared[i, j] > 0.0,
+                        A_shared[i, j],
+                        -T.infinity(A_shared.dtype),
                     )
 
                 T.copy(B_shared, B[bx * BM : (bx + 1) * BM, by * BN : (by + 1) * BN])

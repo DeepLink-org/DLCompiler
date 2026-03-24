@@ -1,7 +1,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -332,9 +332,8 @@ public:
       }
 
       // --- Case C2: 比较运算 (arith.cmpf / arith.cmpi -> tensor<N x i1>) ---
-      bool isCmpOp =
-          inst.getNumOperands() == 2 &&
-          (isa<arith::CmpFOp, arith::CmpIOp>(inst));
+      bool isCmpOp = inst.getNumOperands() == 2 &&
+                     (isa<arith::CmpFOp, arith::CmpIOp>(inst));
 
       if (isCmpOp) {
         LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing CmpOp: "
@@ -374,25 +373,29 @@ public:
         continue;
       }
 
-      // --- Case C3: arith.select (ternary if_then_else -> vectorized select) ---
+      // --- Case C3: arith.select (ternary if_then_else -> vectorized select)
+      // ---
       if (auto selOp = dyn_cast<arith::SelectOp>(inst)) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "     [Action] Processing arith.select.\n");
-        Value cond     = selOp.getCondition();
-        Value trueVal  = selOp.getTrueValue();
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing arith.select.\n");
+        Value cond = selOp.getCondition();
+        Value trueVal = selOp.getTrueValue();
         Value falseVal = selOp.getFalseValue();
 
-        Value vecCond  =
-            scalarToTensorMap.count(cond)     ? scalarToTensorMap[cond]     : nullptr;
-        Value vecTrue  =
-            scalarToTensorMap.count(trueVal)  ? scalarToTensorMap[trueVal]  : nullptr;
-        Value vecFalse =
-            scalarToTensorMap.count(falseVal) ? scalarToTensorMap[falseVal] : nullptr;
+        Value vecCond =
+            scalarToTensorMap.count(cond) ? scalarToTensorMap[cond] : nullptr;
+        Value vecTrue = scalarToTensorMap.count(trueVal)
+                            ? scalarToTensorMap[trueVal]
+                            : nullptr;
+        Value vecFalse = scalarToTensorMap.count(falseVal)
+                             ? scalarToTensorMap[falseVal]
+                             : nullptr;
 
-        if (!vecTrue  && isScalarConstant(trueVal))
-          vecTrue  = broadcastScalarToTensor(rewriter, op.getLoc(), trueVal,  size);
+        if (!vecTrue && isScalarConstant(trueVal))
+          vecTrue =
+              broadcastScalarToTensor(rewriter, op.getLoc(), trueVal, size);
         if (!vecFalse && isScalarConstant(falseVal))
-          vecFalse = broadcastScalarToTensor(rewriter, op.getLoc(), falseVal, size);
+          vecFalse =
+              broadcastScalarToTensor(rewriter, op.getLoc(), falseVal, size);
 
         if (vecCond && vecTrue && vecFalse) {
           Type elemTy = selOp.getType();
@@ -400,8 +403,7 @@ public:
           auto newSel = rewriter.create<arith::SelectOp>(
               op.getLoc(), resTy, vecCond, vecTrue, vecFalse);
           scalarToTensorMap[selOp.getResult()] = newSel.getResult();
-          LLVM_DEBUG(llvm::dbgs()
-                     << "     Created vectorized arith.select.\n");
+          LLVM_DEBUG(llvm::dbgs() << "     Created vectorized arith.select.\n");
         } else {
           LLVM_DEBUG(llvm::dbgs()
                      << "     WARNING: select operands not fully vectorized, "
@@ -411,7 +413,8 @@ public:
         continue;
       }
 
-      // --- Case C4: 一元 math 运算 (math.exp / exp2 / sqrt / tanh / log / absf) ---
+      // --- Case C4: 一元 math 运算 (math.exp / exp2 / sqrt / tanh / log /
+      // absf) ---
       bool isUnaryMathOp =
           inst.getNumOperands() == 1 && inst.getNumResults() == 1 &&
           inst.getResult(0).getType() == inst.getOperand(0).getType() &&
@@ -421,9 +424,9 @@ public:
         LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing UnaryMathOp: "
                                 << inst.getName() << "\n");
         Value operand = inst.getOperand(0);
-        Value vecOperand =
-            scalarToTensorMap.count(operand) ? scalarToTensorMap[operand]
-                                             : nullptr;
+        Value vecOperand = scalarToTensorMap.count(operand)
+                               ? scalarToTensorMap[operand]
+                               : nullptr;
 
         if (vecOperand) {
           Type elemTy = operand.getType();

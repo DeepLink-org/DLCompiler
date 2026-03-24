@@ -6,7 +6,6 @@ import triton
 import triton.language as tl
 
 
-# @pytest.mark.skip("todo::zmz will remove this after fix pass")
 def test_if_then_else_1d():
     N = 128
     block = 128
@@ -33,7 +32,7 @@ def test_if_then_else_1d():
 
     expected = torch.where(a > 0, a, torch.zeros_like(a))
     torch.testing.assert_close(b, expected, atol=1e-5, rtol=1e-5)
-    print("T.if_then_else test passed")
+    print("T.if_then_else 1d test passed")
 
 
 @pytest.mark.skip("todo::zmz will remove this after fix pass")
@@ -66,7 +65,7 @@ def test_if_then_else_2d():
 
     expected = torch.where(a > 0, a, torch.zeros_like(a))
     torch.testing.assert_close(b, expected, atol=1e-5, rtol=1e-5)
-    print("T.if_then_else test passed")
+    print("T.if_then_else 2d test passed")
 
 
 @triton.jit
@@ -94,3 +93,9 @@ def test_triton_if_then_else():
     if_then_else_kernel[grid](a, b, n_elements, BLOCK=block)
     expected = torch.where(a > 0, a, torch.zeros_like(a))
     torch.testing.assert_close(b, expected, atol=1e-5, rtol=1e-5)
+    print("T.if_then_else test passed")
+
+if __name__ == "__main__":
+    test_if_then_else_1d()
+    test_if_then_else_2d()
+    test_triton_if_then_else()

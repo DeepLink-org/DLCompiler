@@ -6,7 +6,6 @@ import tilelang.language as T
 dtype = "float32"
 
 
-@pytest.mark.skip
 def test_elementwise_max():
     """测试：Element-wise max(A, B)"""
     N = 1024
@@ -35,7 +34,6 @@ def test_elementwise_max():
     print("✓ test_elementwise_max passed")
 
 
-@pytest.mark.skip("todo::zmz will remove this after fix pass")
 def test_elementwise_max_tilelang():
     """测试：Element-wise max(A, B)"""
     N = 128
@@ -70,7 +68,6 @@ def test_elementwise_max_tilelang():
     print("✓ test_elementwise_max passed")
 
 
-@pytest.mark.skip
 def test_elementwise_min():
     """测试：Element-wise min(A, B)"""
     N = 1024
@@ -99,7 +96,6 @@ def test_elementwise_min():
     print("✓ test_elementwise_min passed")
 
 
-@pytest.mark.skip
 def test_relu():
     """测试：ReLU = max(x, 0)"""
     N = 512
@@ -124,7 +120,6 @@ def test_relu():
     print("✓ test_relu passed")
 
 
-@pytest.mark.skip
 def test_clip():
     """测试：clip(x, 0, 1) = min(max(x, 0), 1)"""
     N = 256

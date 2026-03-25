@@ -985,28 +985,60 @@ void CodeGenTileLangCOMMONIR::GemmCodegen(const CallNode *op,
   String new_tensor_name = CreateNewTensor(c_buffer_name, C_shared_tensor);
   std::ostringstream temp;
   DataType dst_dtype = this->type_info_tensor[new_tensor_name]->dtype;
-  temp << "linalg.matmul ins(\%" << A_shared_tensor << ", \%" << B_shared_tensor
-       << " : " << GetTensorInfo(A_shared_tensor) << ", "
-       << GetTensorInfo(B_shared_tensor) << ") ";
+
+  auto transpose_if_needed = [this,
+                              &temp](const String &tensor_name) -> String {
+    ICHECK(this->type_info_tensor.count(tensor_name))
+        << "Can not find tensor ssa object: " << tensor_name;
+    auto *src_tensor =
+        dynamic_cast<Tensor *>(this->type_info_tensor[tensor_name]);
+    ICHECK(src_tensor) << tensor_name << " should be a tensor";
+    ICHECK_EQ(src_tensor->shape.size(), 2)
+        << "Only support 2D transpose for gemm operands";
+
+    Array<PrimExpr> transposed_shape;
+    transposed_shape.push_back(src_tensor->shape[1]);
+    transposed_shape.push_back(src_tensor->shape[0]);
+
+    String transposed_tensor_name = tensor_name + "_transposed";
+    auto *transposed_tensor =
+        new Tensor(transposed_tensor_name, transposed_shape, src_tensor->dtype,
+                   src_tensor->address_space);
+
+    temp.str("");
+    temp.clear();
+    temp << "tensor.empty() :" << GetTensorInfo(transposed_tensor);
+    String transposed_init = SSAGetID(temp.str(), src_tensor->dtype);
+    transposed_tensor->var_id = transposed_init;
+    this->type_info_tensor[transposed_init] = transposed_tensor;
+
+    temp.str("");
+    temp.clear();
+    temp << "linalg.transpose ins(%" << tensor_name << " : "
+         << GetTensorInfo(tensor_name) << ") outs(%" << transposed_init << " : "
+         << GetTensorInfo(transposed_init) << ") permutation = [1, 0]";
+    String transposed_out = SSAGetID(temp.str(), src_tensor->dtype);
+    auto *transposed_out_tensor =
+        new Tensor(transposed_out, transposed_shape, src_tensor->dtype,
+                   src_tensor->address_space);
+    transposed_out_tensor->var_id = transposed_out;
+    this->type_info_tensor[transposed_out] = transposed_out_tensor;
+    return transposed_out;
+  };
+
+  String matmul_a_tensor =
+      gemmop->transA_ ? transpose_if_needed(A_shared_tensor) : A_shared_tensor;
+  String matmul_b_tensor =
+      gemmop->transB_ ? transpose_if_needed(B_shared_tensor) : B_shared_tensor;
+
+  temp.str("");
+  temp.clear();
+  temp << "linalg.matmul ins(\%" << matmul_a_tensor << ", \%" << matmul_b_tensor
+       << " : " << GetTensorInfo(matmul_a_tensor) << ", "
+       << GetTensorInfo(matmul_b_tensor) << ") ";
   temp << "outs(\%" << new_tensor_name << " : "
        << GetTensorInfo(new_tensor_name) << ") -> "
        << GetTensorInfo(new_tensor_name);
-
-  // todo(dkx): support transpose ops
-  std::string annotations = "";
-  if (gemmop->transA_ || gemmop->transB_) {
-    annotations += " {";
-    if (gemmop->transA_) {
-      annotations += "transA = 1";
-      if (gemmop->transB_) {
-        annotations += ", transB = 1";
-      }
-    } else {
-      annotations += "transB = 1";
-    }
-    annotations += "}";
-  }
-  temp << annotations;
 
   String C_tensor_out = SSAGetID(temp.str(), dst_dtype);
   temp.str("");
@@ -1370,7 +1402,15 @@ void CodeGenTileLangCOMMONIR::VisitExpr_(const OrNode *op, std::ostream &os) {
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const DivNode *op, std::ostream &os) {
-  PrintBinary(op, "<<<divf>>>", os);
+  if (op->dtype.is_int()) {
+    PrintBinary(op, "divsi", os);
+  } else if (op->dtype.is_uint()) {
+    PrintBinary(op, "divui", os);
+  } else if (op->dtype.is_float() || op->dtype.is_bfloat16()) {
+    PrintBinary(op, "divf", os);
+  } else {
+    LOG(FATAL) << "Unsupported dtype for div: " << op->dtype;
+  }
 }
 
 void CodeGenTileLangCOMMONIR::VisitExpr_(const SelectNode *op,

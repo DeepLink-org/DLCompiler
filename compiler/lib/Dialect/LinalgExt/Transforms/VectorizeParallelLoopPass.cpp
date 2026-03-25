@@ -683,6 +683,14 @@ struct VectorizeParallelLoopPass
            "ops.";
   }
 
+  // 声明依赖的 dialect，确保单独运行时也能正确加载
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<bufferization::BufferizationDialect,
+                    tensor::TensorDialect, arith::ArithDialect,
+                    memref::MemRefDialect, scf::SCFDialect,
+                    func::FuncDialect>();
+  }
+
   void runOnOperation() override {
     LLVM_DEBUG(llvm::dbgs()
                << "[Pass] Starting VectorizeParallelLoopPass on function...\n");

@@ -683,6 +683,12 @@ struct VectorizeParallelLoopPass
            "ops.";
   }
 
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<bufferization::BufferizationDialect, tensor::TensorDialect,
+                    arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
+                    func::FuncDialect>();
+  }
+
   void runOnOperation() override {
     LLVM_DEBUG(llvm::dbgs()
                << "[Pass] Starting VectorizeParallelLoopPass on function...\n");

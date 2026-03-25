@@ -1,5 +1,4 @@
 import os
-import time
 
 import pytest
 
@@ -8,6 +7,7 @@ import tilelang.language as T
 
 import triton
 import triton.language as tl
+from triton.testing import do_bench
 
 import torch
 
@@ -20,7 +20,6 @@ def vec_sub(N, block_N, dtype="float32"):
     n_num = (
         N // block_N
     )  # n_num是块的数量 32，block_N是每个块处理的元素数量 32k，N是总元素数量 1M
-    # print(f"zmz debug : n_num={n_num}, block_N={block_N}, N={N}")
 
     @T.prim_func
     def main(
@@ -119,31 +118,6 @@ def test_triton_sub():
     print("Triton test passed!\n")
 
 
-def benchmark_function(func, *args, num_runs=100, warmup_runs=10):
-    """性能测试函数"""
-    # 预热运行
-    for _ in range(warmup_runs):
-        func(*args)
-
-    # 同步NPU
-    if torch.npu.is_available():
-        torch.npu.synchronize()
-
-    # 正式测试
-    start_time = time.time()
-    for _ in range(num_runs):
-        func(*args)
-
-    # 同步NPU
-    if torch.npu.is_available():
-        torch.npu.synchronize()
-
-    end_time = time.time()
-
-    avg_time = (end_time - start_time) / num_runs
-    return avg_time * 1000  # 转换为毫秒
-
-
 def run_performance_tests():
     """运行性能测试"""
     print("=" * 60)
@@ -175,24 +149,22 @@ def run_performance_tests():
     # 运行基准测试
     print("Running benchmarks... (this may take a moment)")
 
-    tilelang_time = benchmark_function(tilelang_benchmark, num_runs=100, warmup_runs=10)
-    triton_time = benchmark_function(triton_benchmark, num_runs=100, warmup_runs=10)
-    torch_time = benchmark_function(torch_benchmark, num_runs=100, warmup_runs=10)
+    tilelang_time = do_bench(tilelang_benchmark)  # 返回秒
+    triton_time = do_bench(triton_benchmark)  # 返回秒
+    torch_time = do_bench(torch_benchmark)  # 返回秒
 
-    print(f"\nAverage execution time over 100 runs:")
-    print(f"  TileLang: {tilelang_time:.4f} ms")
-    print(f"  Triton:   {triton_time:.4f} ms")
-    print(f"  PyTorch:  {torch_time:.4f} ms")
+    print(f"\nAverage execution time over runs:")
+    print(f"  TileLang: {tilelang_time*1000:.4f} ms")  # 转换为毫秒
+    print(f"  Triton:   {triton_time*1000:.4f} ms")  # 转换为毫秒
+    print(f"  PyTorch:  {torch_time*1000:.4f} ms")  # 转换为毫秒
 
     # 计算吞吐量
     total_elements = seq_len
     triton_throughput = (total_elements * 4 * 3 / 1e9) / (
-        triton_time / 1000
+        triton_time
     )  # GB/s (read two + write one)
-    tilelang_throughput = (total_elements * 4 * 3 / 1e9) / (
-        tilelang_time / 1000
-    )  # GB/s
-    torch_throughput = (total_elements * 4 * 3 / 1e9) / (torch_time / 1000)  # GB/s
+    tilelang_throughput = (total_elements * 4 * 3 / 1e9) / (tilelang_time)  # GB/s
+    torch_throughput = (total_elements * 4 * 3 / 1e9) / (torch_time)  # GB/s
 
     print(f"\nThroughput Analysis:")
     print(f"  Triton:   {triton_throughput:.2f} GB/s")

@@ -45,7 +45,6 @@ def create_test_data():
     return v1, v2, v3
 
 
-# @pytest.mark.skip("todo::zmz will remove this after fix pass")
 def test_tilelang_developer_mode():
     v1, v2, v3 = create_test_data()
     y_ref = torch.exp(v1 + v2)

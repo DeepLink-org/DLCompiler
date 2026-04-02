@@ -129,6 +129,8 @@ class DICPDriver(DriverBase):
             return
         self.__initialized = True
         super().__init__()
+        self.is_cpu_verify = os.environ.get("DLC_CPU_VERIFY", "0") == "1"
+
         if target == "mlu":
             from triton.backends.dicp_triton.mlu import BangLauncher, BangUtils
 
@@ -166,6 +168,12 @@ class DICPDriver(DriverBase):
             self.launcher_cls = CudaLauncher
         else:
             self.target = "dicp"
+        if self.is_cpu_verify:
+            from .cpu_backend import CPUUtils, CPULauncher, CPUDriver
+
+            self.utils = CPUUtils()
+            self.launcher_cls = CPULauncher
+            self._cpu_driver = CPUDriver()
 
     def __new__(cls, target=None):
         if not hasattr(cls, "instance"):
@@ -231,6 +239,8 @@ class DICPDriver(DriverBase):
             )
 
     def get_device_capability(self):
+        if self.is_cpu_verify:
+            return self._cpu_driver.get_device_capability()
         if self.target == "mlu":
             return ("mlu", 0)
         elif self.target == "maca":
@@ -303,6 +313,8 @@ class DICPDriver(DriverBase):
         return
 
     def get_current_target(self):
+        if self.is_cpu_verify:
+            return self._cpu_driver.get_current_target()
         if self.target == "mlu":
             device = self.get_current_device()
             capability = self.utils.get_device_properties(device).get("isa_version")
@@ -357,9 +369,10 @@ class DICPDriver(DriverBase):
             assert False, f"Not implemented for {self.target}"
 
     def get_active_torch_device(self):
-        # todo: fix it.
         import torch
 
+        if self.is_cpu_verify:
+            return self._cpu_driver.get_active_torch_device()
         return torch.device("cpu")
 
     def map_python_to_cpp_type(self, ty: str) -> str:

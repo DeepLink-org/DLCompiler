@@ -6,6 +6,7 @@
 namespace mlir::dicp::linked {
 
 std::unique_ptr<OperationPass<ModuleOp>>
-createLinalgToLinkedPass(bool globalKernel = true, bool namedOps = true);
+createLinalgToLinkedPass(bool globalKernel = true, bool namedOps = true,
+                         bool cpuVerify = false);
 
 } // namespace mlir::dicp::linked

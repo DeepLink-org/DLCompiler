@@ -497,19 +497,22 @@ def commonir_to_linkedir(commonir, metadata, opt, *, named_ops=False):
     return content
 
 
-def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False):
+def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False, cpu_verify=False):
     pm = ir.pass_manager(mod.context)
     dicp_triton.passes.linked_npu.add_lower_affine(pm)
     dicp_triton.passes.linked_npu.add_normalize_slice_ops(pm)
     dicp_triton.passes.linked_npu.add_linalg_if_to_select(pm)
     dicp_triton.passes.linked_npu.add_linalg_generic_to_scf(pm)
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
-    dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, False, True)
+    dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, named_ops, True, cpu_verify)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
-    pm.run(mod)
-
+    if cpu_verify:
+        dicp_triton.passes.linked_npu.add_debug_cpu_verify(pm)
     # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
+    pm.run(mod)
     content = str(mod)
+    if cpu_verify:
+        return content
     # 将"*xfxxx"替换成"?xfxxx"
     content = content.replace("*xf", "?xf")
     content = content.replace("*xi", "?xi")

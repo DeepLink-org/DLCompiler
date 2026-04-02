@@ -425,9 +425,11 @@ public:
 
 class LinalgToLinkedPass : public LinalgToLinkedBase<LinalgToLinkedPass> {
 public:
-  explicit LinalgToLinkedPass(bool globalKernel, bool namedOps) {
+  explicit LinalgToLinkedPass(bool globalKernel, bool namedOps,
+                              bool cpuVerify) {
     this->globalKernel = globalKernel;
     this->namedOps = namedOps;
+    this->cpuVerify = cpuVerify;
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -513,43 +515,10 @@ public:
       signalPassFailure();
     }
 
-    // 强制在函数参数开头添加一个参数，代表工作空间的占位参数
-    for (auto func : getOperation().getOps<func::FuncOp>()) {
-      if (!func->hasAttr("global_kernel"))
-        continue;
-
-      auto context = func.getContext();
-      constexpr int64_t syncBlockLockArgIdx = 0;
-      NamedAttribute syncBlockLockArgAttr(
-          StringAttr::get(context, "syncBlockLock"), UnitAttr::get(context));
-      MemRefType syncBlockLockArgType =
-          MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
-                          IntegerType::get(context, 8));
-      if (failed(func.insertArgument(syncBlockLockArgIdx,  // argIndex
-                                     syncBlockLockArgType, // argType
-                                     nullptr, func->getLoc()))) {
-        signalPassFailure();
-        return;
-      }
-      func->setAttr("SyncBlockLockArgIdx",
-                    IntegerAttr::get(IntegerType::get(&getContext(), 64),
-                                     0)); // 64: 64位整型
-
-      constexpr int64_t workspaceArgIdx = 1;
-      MemRefType workspaceArgType =
-          MemRefType::get(SmallVector<int64_t>(1, ShapedType::kDynamic),
-                          IntegerType::get(context, 8));
-      NamedAttribute workspaceArgAttr(StringAttr::get(context, "workspace"),
-                                      UnitAttr::get(context));
-
-      if (failed(func.insertArgument(/*argIndex*/ workspaceArgIdx,
-                                     /*argType*/ workspaceArgType,
-                                     /*dicAttr*/ nullptr, func->getLoc()))) {
-        signalPassFailure();
-        return;
-      }
-      func->setAttr("WorkspaceArgIdx",
-                    IntegerAttr::get(IntegerType::get(&getContext(), 64), 1));
+    // Insert NPU workspace args unless in CPU verify mode
+    if (failed(insertWorkspaceArgs(moduleOp))) {
+      signalPassFailure();
+      return;
     }
 
     target.addIllegalOp<triton::ExternElementwiseOp>();
@@ -559,11 +528,40 @@ public:
       signalPassFailure();
     }
   }
+
+private:
+  /// Inserts syncBlockLock and workspace args when not in CPU verify mode.
+  LogicalResult insertWorkspaceArgs(ModuleOp module) {
+    if (cpuVerify)
+      return success();
+
+    MLIRContext *ctx = module.getContext();
+    auto memrefType =
+        MemRefType::get({ShapedType::kDynamic}, IntegerType::get(ctx, 8));
+
+    for (auto func : module.getOps<func::FuncOp>()) {
+      if (!func->hasAttr(globalKernelAttr))
+        continue;
+
+      if (failed(func.insertArgument(0, memrefType, nullptr, func.getLoc())))
+        return func.emitError("failed to insert syncBlockLock");
+      func->setAttr("SyncBlockLockArgIdx",
+                    IntegerAttr::get(IntegerType::get(ctx, 64), 0));
+
+      if (failed(func.insertArgument(1, memrefType, nullptr, func.getLoc())))
+        return func.emitError("failed to insert workspace");
+      func->setAttr("WorkspaceArgIdx",
+                    IntegerAttr::get(IntegerType::get(ctx, 64), 1));
+    }
+    return success();
+  }
 };
 
 } // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>>
-linked::createLinalgToLinkedPass(bool globalKernel, bool namedOps) {
-  return std::make_unique<LinalgToLinkedPass>(globalKernel, namedOps);
+linked::createLinalgToLinkedPass(bool globalKernel, bool namedOps,
+                                 bool cpuVerify) {
+  return std::make_unique<LinalgToLinkedPass>(globalKernel, namedOps,
+                                              cpuVerify);
 }

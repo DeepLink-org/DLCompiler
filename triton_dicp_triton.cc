@@ -70,13 +70,15 @@ void init_triton_dicp_triton_pass_linked_npu(py::module &&m) {
     pm.addNestedPass<mlir::func::FuncOp>(
         dicp::LinalgExt::createScalarTo1DTensorPass());
   });
-  m.def("add_linalg_to_linked",
-        [](mlir::PassManager &pm, bool globalKernel, bool namedOps) {
-          pm.addPass(mlir::dicp::linked::createLinalgToLinkedPass(globalKernel,
-                                                                  namedOps));
-        });
+  m.def("add_linalg_to_linked", [](mlir::PassManager &pm, bool globalKernel,
+                                   bool namedOps, bool cpuVerify) {
+    pm.addPass(mlir::dicp::linked::createLinalgToLinkedPass(
+        globalKernel, namedOps, cpuVerify));
+  });
   ADD_PASS_WRAPPER_0("add_linked_to_hivm",
                      dicp::linked::createLinkedToHIVMPass);
+  ADD_PASS_WRAPPER_0("add_debug_cpu_verify",
+                     dicp::linked::createDebugCPUVerifyPass);
   m.def("add_vectorize_parallel_loop", [](mlir::PassManager &pm) {
     pm.addNestedPass<mlir::func::FuncOp>(
         dicp::LinalgExt::createVectorizeParallelLoopPass());

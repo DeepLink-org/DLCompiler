@@ -120,7 +120,12 @@ class DICPBackend(BaseBackend):
     def __init__(self, target: str) -> None:
         super().__init__(target)
         self.driver = DICPDriver(target)
-        if self.driver.target == "dicp":
+        if self.driver.is_cpu_verify:
+            from .cpu_backend import CPUBackend
+
+            self._cpu_backend = CPUBackend(target)
+            self.binary_ext = "obj"
+        elif self.driver.target == "dicp":
             self.binary_ext = "ttlinalgdir"
         elif self.driver.target == "mlu":
             self.capability = target.arch
@@ -136,7 +141,7 @@ class DICPBackend(BaseBackend):
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ["dicp", "mlu", "maca", "ascend"]
+        return target.backend in ["dicp", "mlu", "maca", "ascend", "cpu"]
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -260,13 +265,31 @@ class DICPBackend(BaseBackend):
                         )
                     )
                     stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(
-                        src, metadata, options, named_ops=True
+                        src,
+                        metadata,
+                        options,
+                        named_ops=True,
+                        cpu_verify=self.driver.is_cpu_verify,
                     )
-                    stages["npubin"] = (
-                        lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                            src, metadata, options
+                    if self.driver.is_cpu_verify:
+                        from .cpu_backend import (
+                            _ttsharedir_to_llir,
+                            _llir_to_bin,
+                            _optimize_llir,
                         )
-                    )
+
+                        stages["llir"] = lambda src, metadata: _optimize_llir(
+                            _ttsharedir_to_llir(src, metadata)
+                        )
+                        stages["obj"] = lambda src, metadata: _llir_to_bin(
+                            src, metadata
+                        )
+                    else:
+                        stages["npubin"] = (
+                            lambda src, metadata: linalg_to_bin_enable_npu_compile(
+                                src, metadata, options
+                            )
+                        )
         else:
             raise RuntimeError("backend not supported")
 
@@ -286,6 +309,8 @@ class DICPBackend(BaseBackend):
 
     # parse  add_kernel[(16,)](x, y, output, n_elements, BLOCK_SIZE=1024)
     def parse_options(self, options: dict) -> Any:
+        if self.driver.is_cpu_verify:
+            return self._cpu_backend.parse_options(options)
         if self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import NPUOptions
 
@@ -360,7 +385,9 @@ class DICPBackend(BaseBackend):
 
     def get_codegen_implementation(self, options=None):
         codegen_fns = dict()
-        if self.target.backend == "ascend":
+        if self.driver.is_cpu_verify:
+            return self._cpu_backend.get_codegen_implementation(options)
+        elif self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import min_dot_size
 
             codegen_fns = {"min_dot_size": min_dot_size(self.target)}
@@ -384,6 +411,8 @@ class DICPBackend(BaseBackend):
         return codegen_fns
 
     def pack_metadata(self, metadata):
+        if self.driver.is_cpu_verify:
+            return self._cpu_backend.pack_metadata(metadata)
         if self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
 

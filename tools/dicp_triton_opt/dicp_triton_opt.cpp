@@ -100,6 +100,7 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   dicp::linked::registerLinkedToHIVMPass();
   dicp::linked::registerTritonToLinalgNPUCoversionPass();
   dicp::linked::registerMemRefCopyGatherToTensorInsertPass();
+  dicp::linked::registerDebugCPUVerifyPass();
 
   dicp::LinalgExt::registerLinalgIfToSelectPass();
   dicp::LinalgExt::registerLinalgGenericToSCFPass();

@@ -1,5 +1,6 @@
 add_triton_library(LinalgToLinked
   LinalgToLinkedPass.cpp
+  DebugCPUVerifyPass.cpp
   VerifyNoLinalgGenericPass.cpp
   TritonOpConverter.cpp
 
@@ -9,6 +10,7 @@ add_triton_library(LinalgToLinked
 
   LINK_LIBS PUBLIC
   BiShengIRAnnotationDialect
+  BiShengIRHIVMDialect
   TritonTilingExtIR
   MLIRArithDialect
   MLIRDialectUtils

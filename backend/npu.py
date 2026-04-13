@@ -23,6 +23,12 @@ TRITON_PROFILER_REGISTERED = False
 dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
 replace_ttshared_ir = os.environ.get("DLC_REPLACE_TTSHARED_IR_FILE", None)
 replace_linked_ir = os.environ.get("DLC_REPLACE_LINKED_IR_FILE", None)
+enable_npu_unroll_pipeline = (
+    os.environ.get("DLC_ENABLE_NPU_UNROLL_PIPELINE", "0") == "1"
+)
+enable_npu_vector_tile = os.environ.get("DLC_ENABLE_NPU_VECTOR_TILE", "0") == "1"
+npu_vector_tile_size = int(os.environ.get("DLC_NPU_VECTOR_TILE_SIZE", "2"))
+npu_tile_all_blocks = os.environ.get("DLC_NPU_TILE_ALL_BLOCKS", "1") == "1"
 replace_commonir_ir = os.environ.get("DLC_REPLACE_COMMON_IR_FILE", None)
 replace_commonir_linked_ir = os.environ.get("DLC_REPLACE_COMMONIR_LINKED_IR_FILE", None)
 if (
@@ -506,20 +512,33 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False, cpu_verify=Fa
     dicp_triton.passes.linked_npu.add_scalar_to_1d_tensor(pm)
     dicp_triton.passes.linked_npu.add_linalg_to_linked(pm, named_ops, True, cpu_verify)
     dicp_triton.passes.linked_npu.add_linked_to_hivm(pm)
+    if enable_npu_vector_tile:
+        dicp_triton.passes.linked_npu.add_npu_vector_tile_pipeline(
+            pm, npu_vector_tile_size, npu_tile_all_blocks
+        )
+    if enable_npu_unroll_pipeline:
+        dicp_triton.passes.linked_npu.add_npu_unroll_pipeline(pm)
     if cpu_verify:
         dicp_triton.passes.linked_npu.add_debug_cpu_verify(pm)
-    # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
     pm.run(mod)
     content = str(mod)
+    if replace_linked_ir is not None:
+        print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
+        content = Path(replace_linked_ir).read_text()
+    # TODO(zmz): 修改test_path 中内容，暂时在python中处理，bishengir-compile后续会支持，去掉这里逻辑。
     if cpu_verify:
         return content
     # 将"*xfxxx"替换成"?xfxxx"
     content = content.replace("*xf", "?xf")
     content = content.replace("*xi", "?xi")
     content = content.replace("*xbf", "?xbf")
-    # 匹配形如 "memref<...> to tensor<...>" 的模式
+    # 1️⃣ 处理 to_buffer → to_memref
+    pattern_buffer = (
+        r"bufferization\.to_buffer\s+([%\w\d]+)\s*:\s*tensor<.+?>\s+to\s+(memref<.+?>)"
+    )
+    content = re.sub(pattern_buffer, r"bufferization.to_memref \1 : \2", content)
+    # 2️⃣ 原有：memref<...> to tensor<...> → 注释
     pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
-    # 使用正则替换，保留memref和tensor类型，中间插入注释
     content = re.sub(pattern, r"\1 // to \2", content)
 
     if opt.debug or dump_ir:
@@ -538,9 +557,6 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False, cpu_verify=Fa
             content, metadata["hash"], "kernel.linkedir.mlir", cmd_list
         )
 
-    if replace_linked_ir is not None:
-        print(f"[DEBUG] Replace Linkedir with {replace_linked_ir}")
-        return Path(replace_linked_ir).read_text()
     return content
 
 
@@ -701,7 +717,7 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
     return linalg, metadata
 
 
-def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
+def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt, capability=None):
     linalg, metadata = _parse_linalg_metadata(linalg, metadata)
     with tempfile.TemporaryDirectory() as tmpdir:
         ttadapter_path = os.path.join(tmpdir, "kernel.ttadapter.mlir")
@@ -724,6 +740,8 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
         _compile_option_list += [
             f"--enable-auto-multi-buffer={multibuffer}",
         ]
+        if capability:
+            _compile_option_list += [f"--target={capability}"]
 
         if _is_ascend_sanitizer_enabled():
             _compile_option_list += ["--enable-sanitizer=true"]

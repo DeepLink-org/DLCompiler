@@ -136,6 +136,7 @@ class DICPBackend(BaseBackend):
             self.binary_ext = "mcfatbin"
         elif self.driver.target == "ascend":
             self.binary_ext = "npubin"
+            self.capability = target.arch
         else:
             raise RuntimeError(f"Target '{self.target_type}' is not supported.")
 
@@ -254,7 +255,7 @@ class DICPBackend(BaseBackend):
                     )
                     stages["npubin"] = (
                         lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                            src, metadata, options
+                            src, metadata, options, self.capability
                         )
                     )
             else:
@@ -287,17 +288,22 @@ class DICPBackend(BaseBackend):
                     else:
                         stages["npubin"] = (
                             lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                                src, metadata, options
+                                src, metadata, options, self.capability
                             )
                         )
         else:
             raise RuntimeError("backend not supported")
 
     def load_dialects(self, ctx):
+        # TODO  Warning If additional backends are integrated into the common IR with customized passes, their respective Dialect interfaces must be registered here. A decoupled registration mechanism for each backend is preferred to maintain modularity.
         if self.driver.target == "mlu":
             from triton._C.libtriton import mlu
 
             mlu.load_dialects(ctx)
+        else:
+            from triton._C.libtriton import dicp_triton
+
+            dicp_triton.load_dialects(ctx)
         return
 
     @functools.lru_cache()

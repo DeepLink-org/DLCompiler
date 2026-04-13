@@ -1,6 +1,7 @@
 
 #include "dicp/Dialect/TritonExt/Transforms/CanonicalizerPattern.h"
 #include "dicp/Dialect/TritonExt/Transforms/Passes.h"
+#include "dicp/Utils/Utils.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -44,7 +45,6 @@ using namespace mlir;
 using namespace triton;
 
 namespace mlir::dicp::trtion_ext {
-const std::string GeneratedByMakeTensorPtrTAG = "GeneratedByMakeTensorPtr";
 static SmallVector<utils::IteratorType> getNParallelLoopsAttrs(unsigned n) {
   return SmallVector<utils::IteratorType>(n, utils::IteratorType::parallel);
 }
@@ -689,7 +689,7 @@ void rewriteUserWithNewOrder(
         blkShapeI64, loadResShapedTy.getElementType());
     auto newLoadOp = rewriter.create<triton::LoadOp>(
         loc, newLoadTy, loadOp->getOperands(), loadOp->getAttrs());
-    newLoadOp->setAttr(GeneratedByMakeTensorPtrTAG,
+    newLoadOp->setAttr(dicp::tags::kGeneratedByMakeTensorPtr,
                        UnitAttr::get(rewriter.getContext()));
     rewriter.replaceOp(loadOp, newLoadOp);
     // load contiguous data then permute. thus the permute order is as
@@ -764,7 +764,7 @@ void rewriteUserWithNewOrder(
 void markLoadUsers(mlir::OpOperand *use, PatternRewriter &rewriter) {
   Operation *user = use->getOwner();
   if (auto loadOp = dyn_cast<triton::LoadOp>(user)) {
-    loadOp->setAttr(GeneratedByMakeTensorPtrTAG,
+    loadOp->setAttr(dicp::tags::kGeneratedByMakeTensorPtr,
                     UnitAttr::get(rewriter.getContext()));
   } else if (auto storeOp = dyn_cast<triton::StoreOp>(user)) {
     return;

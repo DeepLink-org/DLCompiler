@@ -1,4 +1,5 @@
 #include "dicp/Conversion/DiscreteMaskAccessConversion/MaskAnalysis.h"
+#include "dicp/Utils/Utils.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -14,237 +15,14 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <limits>
-#include <map>
-#include <optional>
-#include <unordered_set>
-#include <variant>
 
 #define DEBUG_TYPE "dicp-mask-analysis"
 
 namespace mlir {
 
-static Value createConstIndexValueOp(const Location &loc, OpBuilder &b,
-                                     int64_t value) {
-  return b.create<arith::ConstantOp>(loc, b.getIndexAttr(value)).getResult();
-}
-
-static std::optional<int64_t> getConstantOfAttr(const OpFoldResult &arg) {
-  if (isa<Attribute>(arg)) {
-    return getConstantIntValue(arg);
-  }
-
-  return std::nullopt;
-}
-
 static bool isZeroIndex(OpFoldResult v) {
-  if (!v)
-    return false;
-  if (auto attr = dyn_cast<Attribute>(v)) {
-    IntegerAttr intAttr = dyn_cast<IntegerAttr>(attr);
-    return intAttr && intAttr.getValue().isZero();
-  }
-  return false;
-}
-
-OpFoldResult addOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(lhsInt.value() + rhsInt.value());
-
-  if (!lhsInt && rhsInt && rhsInt.value() == 0)
-    return lhs;
-  if (!rhsInt && lhsInt && lhsInt.value() == 0)
-    return rhs;
-
-  auto lhsValue = dyn_cast<Value>(lhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  auto rhsValue = dyn_cast<Value>(rhs);
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::AddIOp>(loc, lhsValue, rhsValue).getResult();
-}
-
-OpFoldResult subOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(lhsInt.value() - rhsInt.value());
-
-  if (!lhsInt && rhsInt && rhsInt.value() == 0)
-    return lhs;
-
-  auto lhsValue = dyn_cast<Value>(lhs), rhsValue = dyn_cast<Value>(rhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::SubIOp>(loc, lhsValue, rhsValue).getResult();
-}
-
-OpFoldResult mulOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(lhsInt.value() * rhsInt.value());
-
-  if (lhsInt) {
-    if (lhsInt.value() == 0)
-      return lhs;
-    if (lhsInt.value() == 1)
-      return rhs;
-  }
-  if (rhsInt) {
-    if (rhsInt.value() == 0)
-      return rhs;
-    if (rhsInt.value() == 1)
-      return lhs;
-  }
-
-  auto lhsValue = dyn_cast<Value>(lhs), rhsValue = dyn_cast<Value>(rhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::MulIOp>(loc, lhsValue, rhsValue).getResult();
-}
-
-OpFoldResult divOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-
-  if (rhsInt && rhsInt.value() == 0) {
-    emitError(loc) << "cannot div 0!";
-    return OpFoldResult();
-  }
-
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(lhsInt.value() / rhsInt.value());
-
-  if (lhsInt) {
-    if (lhsInt.value() == 0)
-      return lhs;
-  }
-
-  if (rhsInt) {
-    if (rhsInt.value() == 1)
-      return lhs;
-  }
-
-  auto lhsValue = dyn_cast<Value>(lhs), rhsValue = dyn_cast<Value>(rhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::DivSIOp>(loc, lhsValue, rhsValue).getResult();
-}
-
-OpFoldResult remOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-
-  if (rhsInt && rhsInt.value() == 0) {
-    emitError(loc) << "cannot remainder by 0!";
-    return OpFoldResult();
-  }
-
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(lhsInt.value() % rhsInt.value());
-
-  if (lhsInt) {
-    if (lhsInt.value() == 0)
-      return lhs;
-  }
-
-  auto lhsValue = dyn_cast<Value>(lhs), rhsValue = dyn_cast<Value>(rhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::RemSIOp>(loc, lhsValue, rhsValue).getResult();
-}
-
-OpFoldResult minOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(std::min(lhsInt.value(), rhsInt.value()));
-
-  auto lhsValue = dyn_cast<Value>(lhs), rhsValue = dyn_cast<Value>(rhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::MinSIOp>(loc, lhsValue, rhsValue).getResult();
-}
-
-OpFoldResult maxOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
-                             const Location &loc, OpBuilder &b) {
-  auto lhsInt = getConstantOfAttr(lhs);
-  auto rhsInt = getConstantOfAttr(rhs);
-  if (lhsInt && rhsInt)
-    return b.getIndexAttr(std::max(lhsInt.value(), rhsInt.value()));
-
-  auto lhsValue = dyn_cast<Value>(lhs), rhsValue = dyn_cast<Value>(rhs);
-  if (lhsInt)
-    lhsValue = createConstIndexValueOp(loc, b, lhsInt.value());
-  else
-    assert(isa<IndexType>(lhsValue.getType()));
-
-  if (rhsInt)
-    rhsValue = createConstIndexValueOp(loc, b, rhsInt.value());
-  else
-    assert(isa<IndexType>(rhsValue.getType()));
-
-  return b.create<arith::MaxSIOp>(loc, lhsValue, rhsValue).getResult();
+  auto constant = getConstantIntValue(v);
+  return constant && *constant == 0;
 }
 
 // Fold layout constant info to attr, otherwise convert to index type value
@@ -354,24 +132,12 @@ memref::SubViewOp MaskState::getSubview(Value source, const Location &loc,
                                            source, offsets, dims, strides);
 }
 
-static memref::SubViewOp createSubview(Value src, const Location &loc,
-                                       OpBuilder &builder,
-                                       ArrayRef<OpFoldResult> offsets,
-                                       ArrayRef<OpFoldResult> sizes,
-                                       ArrayRef<OpFoldResult> strides) {
-  auto srcType = cast<MemRefType>(src.getType());
-  auto dstType =
-      memref::SubViewOp::inferResultType(srcType, offsets, sizes, strides);
-  return builder.create<memref::SubViewOp>(loc, cast<MemRefType>(dstType), src,
-                                           offsets, sizes, strides);
-}
-
 LogicalResult MaskState::addStateScalar(const MaskState &state,
                                         const OpFoldResult scalar,
                                         const Location &loc,
                                         OpBuilder &builder) {
-  start = addOpFoldResult(state.start, scalar, loc, builder);
-  end = addOpFoldResult(state.end, scalar, loc, builder);
+  start = addOfrs(builder, loc, state.start, scalar);
+  end = addOfrs(builder, loc, state.end, scalar);
   dims = state.dims;
   offsets = state.offsets;
   return success();
@@ -404,8 +170,8 @@ LogicalResult MaskState::divStateScalar(const MaskState &state,
                                         const OpFoldResult scalar,
                                         const Location &loc,
                                         OpBuilder &builder) {
-  start = divOpFoldResult(state.start, scalar, loc, builder);
-  end = divOpFoldResult(state.end, scalar, loc, builder);
+  start = divOfrs(builder, loc, state.start, scalar);
+  end = divOfrs(builder, loc, state.end, scalar);
   dims = state.dims;
   offsets = state.offsets;
   return success();
@@ -443,13 +209,13 @@ LogicalResult MaskState::minStates(const MaskState &lhsState,
   for (uint32_t i = 0; i < lhsState.getRank(); i++) {
     auto lhsOffset = lhsState.offsets[i];
     auto rhsOffset = rhsState.offsets[i];
-    auto newOffset = maxOpFoldResult(lhsOffset, rhsOffset, loc, builder);
+    auto newOffset = maxOfrs(builder, loc, lhsOffset, rhsOffset);
     auto lhsDim = lhsState.dims[i];
     auto rhsDim = rhsState.dims[i];
-    auto lhsEnd = addOpFoldResult(lhsOffset, lhsDim, loc, builder);
-    auto rhsEnd = addOpFoldResult(rhsOffset, rhsDim, loc, builder);
-    auto newEnd = minOpFoldResult(lhsEnd, rhsEnd, loc, builder);
-    auto newDim = subOpFoldResult(newEnd, newOffset, loc, builder);
+    auto lhsEnd = addOfrs(builder, loc, lhsOffset, lhsDim);
+    auto rhsEnd = addOfrs(builder, loc, rhsOffset, rhsDim);
+    auto newEnd = minOfrs(builder, loc, lhsEnd, rhsEnd);
+    auto newDim = subOfrs(builder, loc, newEnd, newOffset);
 
     offsets.push_back(newOffset);
     dims.push_back(newDim);
@@ -641,10 +407,9 @@ LogicalResult MaskState::parseCmp(arith::CmpIOp cmpOp, const Location &loc,
   this->dims = lhsState.dims;
   switch (predicate) {
   case arith::CmpIPredicate::slt: {
-    auto realBound =
-        maxOpFoldResult(lhsState.start, rhsState.scalar, loc, builder);
-    auto newEnd = minOpFoldResult(lhsState.end, realBound, loc, builder);
-    auto newDim = subOpFoldResult(newEnd, lhsState.start, loc, builder);
+    auto realBound = maxOfrs(builder, loc, lhsState.start, rhsState.scalar);
+    auto newEnd = minOfrs(builder, loc, lhsState.end, realBound);
+    auto newDim = subOfrs(builder, loc, newEnd, lhsState.start);
 
     this->dims[cmpDim] = newDim;
     break;
@@ -652,28 +417,26 @@ LogicalResult MaskState::parseCmp(arith::CmpIOp cmpOp, const Location &loc,
   case arith::CmpIPredicate::sle: {
     // lhs <= rhs  <=>  lhs < rhs + 1
     auto rhsPlusOne =
-        addOpFoldResult(rhsState.scalar, builder.getIndexAttr(1), loc, builder);
-    auto realBound = maxOpFoldResult(lhsState.start, rhsPlusOne, loc, builder);
-    auto newEnd = minOpFoldResult(lhsState.end, realBound, loc, builder);
-    auto newDim = subOpFoldResult(newEnd, lhsState.start, loc, builder);
+        addOfrs(builder, loc, rhsState.scalar, builder.getIndexAttr(1));
+    auto realBound = maxOfrs(builder, loc, lhsState.start, rhsPlusOne);
+    auto newEnd = minOfrs(builder, loc, lhsState.end, realBound);
+    auto newDim = subOfrs(builder, loc, newEnd, lhsState.start);
 
     this->dims[cmpDim] = newDim;
     break;
   }
   case arith::CmpIPredicate::sge: {
-    auto realBound =
-        maxOpFoldResult(lhsState.start, rhsState.scalar, loc, builder);
-    auto newStart = minOpFoldResult(lhsState.end, realBound, loc, builder);
-    auto newOffset = subOpFoldResult(newStart, lhsState.start, loc, builder);
-    auto newDim = subOpFoldResult(lhsState.end, newStart, loc, builder);
+    auto realBound = maxOfrs(builder, loc, lhsState.start, rhsState.scalar);
+    auto newStart = minOfrs(builder, loc, lhsState.end, realBound);
+    auto newOffset = subOfrs(builder, loc, newStart, lhsState.start);
+    auto newDim = subOfrs(builder, loc, lhsState.end, newStart);
 
     this->offsets[cmpDim] = newOffset;
     this->dims[cmpDim] = newDim;
     break;
   }
   case arith::CmpIPredicate::eq: {
-    auto newOffset =
-        subOpFoldResult(rhsState.scalar, lhsState.start, loc, builder);
+    auto newOffset = subOfrs(builder, loc, rhsState.scalar, lhsState.start);
     auto newDim = builder.getIndexAttr(1);
 
     this->offsets[cmpDim] = newOffset;
@@ -784,7 +547,7 @@ LogicalResult MaskState::parseSplat(triton::SplatOp splatOp,
       llvm::all_of(splatOp->getUsers(), splatAsMask)) {
     for (auto s : dstShape) {
       auto currentDim =
-          mulOpFoldResult(builder.getIndexAttr(s), this->scalar, loc, builder);
+          mulOfrs(builder, loc, builder.getIndexAttr(s), this->scalar);
       this->dims.push_back(currentDim);
       this->offsets.push_back(builder.getIndexAttr(0));
     }

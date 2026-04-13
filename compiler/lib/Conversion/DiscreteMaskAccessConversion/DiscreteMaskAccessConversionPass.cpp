@@ -58,7 +58,7 @@ struct DiscreteMaskStoreConversion : OpRewritePattern<triton::StoreOp> {
                                                   loadFromDstOp.getResult());
     auto newStore = rewriter.create<triton::StoreOp>(
         loc, dst, selOp, op.getCache(), op.getEvict());
-    newStore->setAttr(mlir::dicp::discreteMaskAttrName,
+    newStore->setAttr(mlir::dicp::tags::kDiscreteMask,
                       UnitAttr::get(rewriter.getContext()));
     rewriter.replaceOp(op, newStore);
     return success();
@@ -131,7 +131,7 @@ struct DiscreteMaskAtomicConversion : OpRewritePattern<triton::AtomicRMWOp> {
     auto typelessVal = initMap.at(rmwOp);
     if (typelessVal == TypelessValue::Undefined) {
       // Undefined default value atomic op will be decomposed in AscendNPU-IR
-      op->setAttr(mlir::dicp::discreteMaskAttrName,
+      op->setAttr(mlir::dicp::tags::kDiscreteMask,
                   UnitAttr::get(rewriter.getContext()));
       return failure();
     }

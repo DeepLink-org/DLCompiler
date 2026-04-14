@@ -56,6 +56,7 @@ jobs:
       - name: Build and install DLCompiler
         run: |
           set -ex
+          sudo -s <<'EOF'
           source /home/dlc_ci/.bashrc
           which conda
           echo "which conda? $(which conda)"
@@ -65,7 +66,6 @@ jobs:
           export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
           export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
           export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
-
           rm -rf ./third_party/*
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/ascendnpu-ir
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/json ./third_party/json
@@ -77,10 +77,12 @@ jobs:
           echo "git submodule update done."
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
           bash compile_shared.sh apply_patch=true
+          EOF
 
       - name: Build and install tilelang-dlc
         run: |
           set -ex
+          sudo -s <<'EOF'
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
           source /usr/local/Ascend/cann-8.5.0/set_env.sh
@@ -91,57 +93,66 @@ jobs:
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
           bash scripts/install_tilelang-dlc.sh
+          EOF
 
       - name: Run tilelang-dlc tests on ascend
         run: |
           set -ex
+          sudo -s <<'EOF'
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
           source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
+          cd ${{ env.CI_PATH }}
           export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           export ASCEND_RT_VISIBLE_DEVICES=7
           export TILELANG_USE_DLCOMPILER=1
           bash test/commonir/run_tests.sh
+          EOF
 
       - name: Run triton tests on ascend
         run: |
           set -ex
+          sudo -s <<'EOF'
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
           source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
+          cd ${{ env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
           export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           export ASCEND_RT_VISIBLE_DEVICES=7
           bash test/ascend/run_tests.sh
+          EOF
 
       - name: Run MLIR tests
         run: |
           set -ex
+          sudo -s <<'EOF'
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
           source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
+          cd ${{ env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
           export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           export ASCEND_RT_VISIBLE_DEVICES=7
           bash test/ascend/test_mlir.sh
+          EOF
 
       - name: Run DSL tests
         run: |
           set -ex
+          sudo -s <<'EOF'
           source /home/dlc_ci/.bashrc
           conda activate dlcompiler
           source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
+          cd ${{ env.CI_PATH }}
           echo "whoami? $(whoami)"
           echo "which python? $(which python)"
           export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
           export ASCEND_RT_VISIBLE_DEVICES=7
           bash test/dsl/run_tests.sh
+          EOF
 
       - name: Clear workfile
         if: always()

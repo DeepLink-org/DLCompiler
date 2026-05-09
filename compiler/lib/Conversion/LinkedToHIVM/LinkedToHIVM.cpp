@@ -123,10 +123,10 @@ struct TritonCustomSyncOpToHIVMSyncOpConversion
   }
 };
 
-
 // Convert CustomOp after operand type changed,
 // for example tt.ptr changed to memref.
-class TritonCustomOpToHIVMCustomOpConversion : public OpConversionPattern<triton::CustomOp> {
+class TritonCustomOpToHIVMCustomOpConversion
+    : public OpConversionPattern<triton::CustomOp> {
 public:
   using OpConversionPattern<triton::CustomOp>::OpConversionPattern;
 
@@ -135,7 +135,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     auto res_types = adaptor.getOutputs().getTypes();
     auto new_op = rewriter.create<hivm::CustomOp>(
-      op->getLoc(), res_types, adaptor.getOperands(), op->getAttrs());
+        op->getLoc(), res_types, adaptor.getOperands(), op->getAttrs());
     rewriter.replaceOp(op, new_op);
     return success();
   }

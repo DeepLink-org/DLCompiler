@@ -21,7 +21,7 @@ index 4c8a4233b..b88942c30 100644
  
    // Ops
    py::class_<OpState>(m, "OpState", py::module_local())
-@@ -1740,6 +1745,110 @@ void init_triton_ir(py::module &&m) {
+@@ -1740,6 +1745,108 @@ void init_triton_ir(py::module &&m) {
        .def("create_gather",
             [](TritonOpBuilder &self, Value src, Value indices, int axis)
                 -> Value { return self.create<GatherOp>(src, indices, axis); })

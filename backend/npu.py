@@ -521,6 +521,15 @@ def ttsharedir_to_linkedir(mod, metadata, opt, *, named_ops=False, cpu_verify=Fa
     pattern = r"(memref\<.*?\>)\s+to\s+(tensor\<.*?\>)"
     # 使用正则替换，保留memref和tensor类型，中间插入注释
     content = re.sub(pattern, r"\1 // to \2", content)
+    # 处理customop的attr
+    if len(re.findall("hivm\.hir\.custom", content)) > 0:
+        content = re.sub(r'"#hivm\.pipe<([A-Za-z0-9_]*)>"', r"#hivm.pipe<\1>", content)
+        content = re.sub(
+            r'"#hivm\.tcore_type<([A-Za-z0-9_]*)>"', r"#hivm.tcore_type<\1>", content
+        )
+        content = re.sub(
+            r'"#hivm\.vf_mode<([A-Za-z0-9_]*)>"', r"#hivm.vf_mode<\1>", content
+        )
 
     if opt.debug or dump_ir:
         cmd_list = [
@@ -681,6 +690,10 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
     TENSOR_KIND_REGEX = (
         r"%arg(\d+):[^,)]*?\{[^}]*?tt\.tensor_kind\s*=\s*([^:\s}]+)\s*:[^}]*?\}"
     )
+
+    # Example: bitcode = "a.bc"
+    BITCODES_REGEX = r'bitcode\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|(\w+))'
+
     # Example removal:   ', mix_mode = "aiv"' → ''
     REMOVE_MIX_MODE_REGEX = r', mix_mode\s*=\s*"[^"]*"'
     # Note: Compiled Kernel requires to estimate size of shared memory to occupy
@@ -696,6 +709,11 @@ def _parse_linalg_metadata(linalg: str, metadata: dict):
     metadata["tensor_kinds"] = [
         int(kind) for _, kind in re.findall(TENSOR_KIND_REGEX, linalg)
     ]
+
+    # Parse all bitcode paths
+    bitcodes = re.findall(BITCODES_REGEX, linalg)
+    metadata["bitcodes"] = [val for group in bitcodes for val in group if val]
+
     # remove the mix_mode attribute
     linalg = re.sub(REMOVE_MIX_MODE_REGEX, "", linalg)
     return linalg, metadata
@@ -729,6 +747,12 @@ def linalg_to_bin_enable_npu_compile(linalg: str, metadata, opt):
             _compile_option_list += ["--enable-sanitizer=true"]
         if _is_auto_map_parallel_blocks_enabled():
             _compile_option_list += ["--enable-auto-blockify-loop"]
+
+        bitcodes = metadata["bitcodes"]
+        if bitcodes is not None:
+            for bitcodes in bitcodes:
+                _compile_option_list += [f"--link-aicore-bitcode={bitcodes}"]
+
         npu_compiler_path = _get_npucompiler_path()
 
         # support bishengir-compile more version

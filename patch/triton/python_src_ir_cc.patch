@@ -1,5 +1,5 @@
 diff --git a/python/src/ir.cc b/python/src/ir.cc
-index 4c8a4233b..2932bad97 100644
+index 4c8a4233b..b88942c30 100644
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
 @@ -339,6 +339,10 @@ void init_triton_ir(py::module &&m) {
@@ -21,7 +21,7 @@ index 4c8a4233b..2932bad97 100644
  
    // Ops
    py::class_<OpState>(m, "OpState", py::module_local())
-@@ -1740,6 +1745,90 @@ void init_triton_ir(py::module &&m) {
+@@ -1740,6 +1745,110 @@ void init_triton_ir(py::module &&m) {
        .def("create_gather",
             [](TritonOpBuilder &self, Value src, Value indices, int axis)
                 -> Value { return self.create<GatherOp>(src, indices, axis); })
@@ -109,6 +109,24 @@ index 4c8a4233b..2932bad97 100644
 +                 self.getBuilder().getStringAttr(mode_or_sender),
 +                 self.getBuilder().getI32IntegerAttr(id));
 +           })
++      .def("create_custom_op",
++            [](TritonOpBuilder &self,
++                const std::string &name,
++                const py::dict &attrs,
++                const std::vector<Value> &ins,
++                const std::vector<Value> &outs) -> std::vector<Value> {
++              ValueRange inputs{ins};
++              ValueRange outputs{outs};
++              TypeRange res_types{outputs};
++              auto op = self.create<triton::CustomOp>(res_types, name, inputs, outputs);
++              for (auto &attr : attrs) {
++                std::string attr_name = py::cast<std::string>(attr.first);
++                std::string attr_value = py::cast<std::string>(attr.second);
++                op->setAttr(attr_name, self.getBuilder().getStringAttr(attr_value));
++              }
++              auto results = op->getResults();
++              return std::vector<Value>(results.begin(), results.end());
++            })
        // Force GPU barrier
        .def("create_barrier",
             [](TritonOpBuilder &self) { self.create<mlir::gpu::BarrierOp>(); })

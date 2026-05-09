@@ -21,6 +21,14 @@ from .core import (
     L0C,
     SyncFlag,
 )
+from .custom_op import (
+    custom,
+    custom_semantic,
+    register_custom_op,
+    CORE,
+    PIPE,
+    MODE,
+)
 
 __all__ = [
     "libdevice",
@@ -43,6 +51,12 @@ __all__ = [
     "L0C",
     "SyncFlag",
     "async_task",
+    "custom",
+    "custom_semantic",
+    "register_custom_op",
+    "CORE",
+    "PIPE",
+    "MODE",
 ]
 
 init_dicp_driver()

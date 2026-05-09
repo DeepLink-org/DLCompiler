@@ -2,7 +2,7 @@ diff --git a/include/triton/Dialect/Triton/IR/TritonOps.td b/include/triton/Dial
 index e9f892da0..07b83751f 100644
 --- a/include/triton/Dialect/Triton/IR/TritonOps.td
 +++ b/include/triton/Dialect/Triton/IR/TritonOps.td
-@@ -1410,5 +1410,30 @@ def TT_DescriptorScatterOp : TT_Op<"descriptor_scatter", [TT_DescriptorStoreLike
+@@ -1410,5 +1410,83 @@ def TT_DescriptorScatterOp : TT_Op<"descriptor_scatter", [TT_DescriptorStoreLike
    let hasVerifier = 1;
  }
  
@@ -31,5 +31,58 @@ index e9f892da0..07b83751f 100644
 +  let arguments = (ins StrAttr:$op_name, StrAttr:$mode_or_sender, I32Attr:$id);
 +  let assemblyFormat = "$op_name attr-dict";
 +}
- 
++
++//===----------------------------------------------------------------------===//
++// CustomOp
++//===----------------------------------------------------------------------===//
++def TT_CustomOp : TT_Op<"custom_op", [AttrSizedOperandSegments, MemoryEffects<[MemRead, MemWrite]>]> {
++  let summary = [{
++    Custom operation is a generic op interface for users to write their own custom implementation.
++
++    Scenarios:
++      1. Existing operations could not fulfill the desired functionality.
++      2. Existing operations could fulfill the functionality, but overall performance is not optimal.
++      3. Desire for private operation.
++  }];
++
++  let description = [{
++    General interface for custom op, where:
++      - name : unique op name.
++
++              Note : there are names reserved for builtins, usually starts with "__builtin".
++                      Compiler will link these builtins to self-contained template library,
++                      which comes together within bishengir-compile.
++
++                      For normal names/cases, user needs to specify implementation location/compilation commands (TODO),
++                      and all ther necessary informations.
++
++              Available builtin names:
++                "__builtin_gather_load"
++
++      - inputs : input parameters.
++      - outputs : output results, designated "init" operands, which act as initial values for the results
++                  of the operation or the init locations to which the results of the op will be written.
++
++    In order to adapt to future enhancements quickly and dynamically, custom op relies on attributes
++    to retreive necessary information, required informations are:
++      - CoreType : which core type to execute on, refer to TCoreTypeAttr.
++      - Pipe     : which pipe to execute on, refer to PipeAttr.
++      - VFMode   : which mode to run on vector units, refer to VFModeAttr.
++                  this attribute is ignored when core type is cube.
++
++                  Note : for builtins, user could specify these informations or not,
++                          compiler will help to check the correctness and canonicalize.
++
++    TODO:
++      - Impl : user provided implementation.
++      - Multi Pipe : custom op wants to use multiple pipes, which is a MacroOp in HIVM's context.
++  }];
++
++  let arguments = (ins StrAttr:$name, Variadic<AnyType>:$inputs,
++      Variadic<AnyType>:$outputs);
++
++  let results = (outs Variadic<AnyType>:$results);
++
++}
+
  #endif // Triton_OPS

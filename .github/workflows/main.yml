@@ -59,6 +59,7 @@ jobs:
           echo "=== 切换前用户信息 ==="
           echo "whoami: $(whoami)"
           echo "user id: $(id)"
+          echo "PATH: $PATH"
           echo "======================"
           
           source /home/dlc_ci/.bashrc
@@ -70,6 +71,11 @@ jobs:
           export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
           export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
           export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
+          
+          # 保存 CANN 相关环境变量，供 root 用户使用
+          export ASCEND_TOOLKIT_HOME=$ASCEND_TOOLKIT_HOME
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+          export PATH=$PATH
 
           rm -rf ./third_party/*
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/ascendnpu-ir
@@ -78,12 +84,27 @@ jobs:
           git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton ./third_party/triton
           echo "whoami before compile: $(whoami)"
           echo "which python? $(which python)"
+          echo "npu-smi path: $(which npu-smi 2>/dev/null || echo 'not found')"
           git submodule update --init
           echo "git submodule update done."
           pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
           
           echo "=== 切换到 root 执行编译 ==="
-          sudo -E bash -c 'echo "切换到 root 后: $(whoami)"; bash compile_shared.sh apply_patch=true'
+          sudo -E bash -c '
+            echo "=== Root 环境信息 ===";
+            echo "whoami: $(whoami)";
+            echo "PATH: $PATH";
+            echo "===================";
+            
+            # 重新加载 CANN 环境（确保 npu-smi 可用）
+            if [ -f /usr/local/Ascend/cann-8.5.0/set_env.sh ]; then
+              echo "重新加载 CANN 环境...";
+              source /usr/local/Ascend/cann-8.5.0/set_env.sh;
+              echo "npu-smi location: $(which npu-smi 2>/dev/null || echo "not found")";
+            fi
+            
+            bash compile_shared.sh apply_patch=true
+          '
 
       - name: Build and install tilelang-dlc
         run: |

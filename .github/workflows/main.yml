@@ -57,6 +57,7 @@ jobs:
         run: |
           set -ex
           source /home/dlc_ci/.bashrc
+          sudo su
           which conda
           echo "which conda? $(which conda)"
           conda activate dlcompiler

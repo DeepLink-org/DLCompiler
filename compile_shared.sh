@@ -40,8 +40,12 @@ is_npu=false
 check_npu() {
     if command -v npu-smi info &> /dev/null && npu-smi info &> /dev/null; then
         is_npu=true
+        echo "ZMZ debug 1111111111 ascend加速卡"
     else
         is_npu=false
+        echo "ZMZ debug 2222222222 非ascend加速卡"
+        echo "cmd: npu-smi info"
+        echo "whoami $(whoami)"
     fi
 }
 

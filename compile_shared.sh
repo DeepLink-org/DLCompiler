@@ -47,29 +47,37 @@ check_npu() {
 
 check_npu
 
+echo "is_npu: $is_npu"
+echo "=============apply_patch========================================="
 if [[ $apply_patch == true ]]; then
+    echo "ZMZ debug 0000000000000000 apply patch"
     # do dangerous stuff
     echo "Apply triton and triton_shared patch"
     echo "当前环境检测为：$([[ $is_npu == true ]] && echo 'ascend加速卡，使用适配patch' || echo '非ascend加速卡，不使用适配patch')"
+    echo "ZMZ debug 1111111111 apply patch/ttshared/*.patch"
     if [[ $is_npu == true ]]; then
+        echo "ZMZ debug 222222 apply patch/ttshared/ttshared.patch"
         cd $TRITON_PLUGIN_DIRS/third_party/triton_shared/
         git checkout .
-        echo "ZMZ debug 1111 apply patch/ttshared/*.patch"
+        echo "ZMZ debug 3333333 apply patch/ttshared/*.patch"
         ls $TRITON_PLUGIN_DIRS/patch/ttshared/*.patch | xargs -n1 git apply
         if [ $? -ne 0 ]; then
             echo "Error: triton_shared git apply failed." >&2
             exit 1
         fi
-        echo "ZMZ debug 1111 0000 apply patch/ttshared/ttshared.patch"
+        echo "ZMZ debug 444444444 0000 apply patch/ttshared/ttshared.patch"
     fi
     cd $TRITON_PLUGIN_DIRS/third_party/triton/
+    echo "ZMZ debug 5555555555 apply patch/triton/*.patch"
     git checkout .
     ls $TRITON_PLUGIN_DIRS/patch/triton/*.patch | xargs -n1 git apply
     if [ $? -ne 0 ]; then
         echo "Error: triton git apply failed." >&2
         exit 1
     fi
+    echo "Apply triton patch success!"
 fi
+echo "=============apply_patch========================================="
 
 notify_apply_patch() {
     if [[ $apply_patch == true ]]; then

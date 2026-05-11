@@ -60,7 +60,7 @@ if [[ $apply_patch == true ]]; then
             echo "Error: triton_shared git apply failed." >&2
             exit 1
         fi
-        echo "ZMZ debug 1111 apply patch/ttshared/ttshared.patch"
+        echo "ZMZ debug 1111 0000 apply patch/ttshared/ttshared.patch"
     fi
     cd $TRITON_PLUGIN_DIRS/third_party/triton/
     git checkout .

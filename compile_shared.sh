@@ -54,11 +54,13 @@ if [[ $apply_patch == true ]]; then
     if [[ $is_npu == true ]]; then
         cd $TRITON_PLUGIN_DIRS/third_party/triton_shared/
         git checkout .
+        echo "ZMZ debug apply patch/ttshared/*.patch"
         ls $TRITON_PLUGIN_DIRS/patch/ttshared/*.patch | xargs -n1 git apply
         if [ $? -ne 0 ]; then
             echo "Error: triton_shared git apply failed." >&2
             exit 1
         fi
+        echo "ZMZ debug apply patch/ttshared/ttshared.patch"
     fi
     cd $TRITON_PLUGIN_DIRS/third_party/triton/
     git checkout .

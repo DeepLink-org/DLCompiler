@@ -172,11 +172,14 @@ jobs:
       - name: Clear workfile
         if: always()
         run: |
-          export workdir=$(pwd)
-          cd ..
-          rm -rf $workdir
-          mkdir $workdir
-          chmod -R 777 $workdir  
-          if [ -d "${{ env.CI_PATH }}" ]; then
-            rm -rf ${{ env.CI_PATH }}
-          fi
+          # 使用 root 权限清理，确保能删除之前以 root 创建的文件
+          sudo bash -c '
+            export workdir=$(pwd)
+            cd ..
+            rm -rf $workdir
+            mkdir $workdir
+            chmod -R 777 $workdir  
+            if [ -d "${{ env.CI_PATH }}" ]; then
+              rm -rf ${{ env.CI_PATH }}
+            fi
+          '

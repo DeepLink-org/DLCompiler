@@ -35,64 +35,39 @@ echo "apply patch/ascendnpu-ir.patch success!"
 # export LLVM_BUILD_DIR=/path/to/your/llvm-project/build
 # export LLVM_TGZ_PATH=/path/to/your/llvm-86b69c31-ubuntu-arm64.tar.gz      # 可选，用于指定LLVM的tgz包路径
 export TRITON_PLUGIN_DIRS=$home_path
-source /usr/local/Ascend/cann-8.5.0/set_env.sh
 
 is_npu=false
 check_npu() {
-    # 打印当前用户身份，便于排查权限问题
-    echo "ZMZ debug: Current user before check: $(whoami)"
-    
-    if command -v npu-smi &> /dev/null; then
-        # 尝试以 root 权限执行 npu-smi info
-        if sudo -E bash -c 'source /usr/local/Ascend/cann-*/set_env.sh && npu-smi info' &> /dev/null; then
-            is_npu=true
-            echo "ZMZ debug 1111111111 ascend加速卡"
-        else
-            is_npu=false
-            echo "ZMZ debug 2222222222 非ascend加速卡或无权限访问"
-            echo "cmd: sudo bash -c 'source /usr/local/Ascend/cann-*/set_env.sh && npu-smi info'"
-            echo "whoami $(whoami)"
-        fi
+    if command -v npu-smi info &> /dev/null && npu-smi info &> /dev/null; then
+        is_npu=true
     else
         is_npu=false
-        echo "ZMZ debug 2222222222 npu-smi 命令不存在"
-        echo "whoami $(whoami)"
     fi
 }
 
 check_npu
 
-echo "is_npu: $is_npu"
-echo "=============apply_patch========================================="
 if [[ $apply_patch == true ]]; then
-    echo "ZMZ debug 0000000000000000 apply patch"
     # do dangerous stuff
     echo "Apply triton and triton_shared patch"
     echo "当前环境检测为：$([[ $is_npu == true ]] && echo 'ascend加速卡，使用适配patch' || echo '非ascend加速卡，不使用适配patch')"
-    echo "ZMZ debug 1111111111 apply patch/ttshared/*.patch"
     if [[ $is_npu == true ]]; then
-        echo "ZMZ debug 222222 apply patch/ttshared/ttshared.patch"
         cd $TRITON_PLUGIN_DIRS/third_party/triton_shared/
         git checkout .
-        echo "ZMZ debug 3333333 apply patch/ttshared/*.patch"
         ls $TRITON_PLUGIN_DIRS/patch/ttshared/*.patch | xargs -n1 git apply
         if [ $? -ne 0 ]; then
             echo "Error: triton_shared git apply failed." >&2
             exit 1
         fi
-        echo "ZMZ debug 444444444 0000 apply patch/ttshared/ttshared.patch"
     fi
     cd $TRITON_PLUGIN_DIRS/third_party/triton/
-    echo "ZMZ debug 5555555555 apply patch/triton/*.patch"
     git checkout .
     ls $TRITON_PLUGIN_DIRS/patch/triton/*.patch | xargs -n1 git apply
     if [ $? -ne 0 ]; then
         echo "Error: triton git apply failed." >&2
         exit 1
     fi
-    echo "Apply triton patch success!"
 fi
-echo "=============apply_patch========================================="
 
 notify_apply_patch() {
     if [[ $apply_patch == true ]]; then

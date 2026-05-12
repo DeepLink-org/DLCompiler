@@ -1,0 +1,4 @@
+[submodule "third_party/fComp"]
+        path = third_party/fComp
+	url = ssh://jenkins_mafe_bot@gerrit.metax-internal.com:29418/MXDT/fComp
+        branch = mlir4tritonf6ded0

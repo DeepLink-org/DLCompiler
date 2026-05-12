@@ -1,0 +1,7 @@
+set(LLVM_TARGET_DEFINITIONS Passes.td)
+if(TRITON_USE_MACA)
+    mlir_tablegen(Passes.h.inc -gen-pass-decls --name TritonDistributedToLLVM -DUSE_MACA)
+else()
+    mlir_tablegen(Passes.h.inc -gen-pass-decls --name TritonDistributedToLLVM)
+endif()
+add_public_tablegen_target(TritonDistributedToLLVMConversionPassIncGen)

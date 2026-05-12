@@ -56,101 +56,130 @@ jobs:
       - name: Build and install DLCompiler
         run: |
           set -ex
-          source /home/dlc_ci/.bashrc
-          which conda
-          echo "which conda? $(which conda)"
-          conda activate dlcompiler
-          source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{ env.CI_PATH }}
-          export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
-          export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
-          export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
-
-          rm -rf ./third_party/*
-          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/ascendnpu-ir
-          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/json ./third_party/json
-          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton_shared ./third_party/triton_shared
-          git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton ./third_party/triton
-          echo "whoami? $(whoami)"
-          echo "which python? $(which python)"
-          git submodule update --init
-          echo "git submodule update done."
-          pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
-          bash compile_shared.sh apply_patch=true
+          echo "=== 切换前用户信息 ==="
+          echo "whoami: $(whoami)"
+          echo "user id: $(id)"
+          echo "PATH: $PATH"
+          echo "======================"
+          
+          # 切换到 root 用户执行，确保有权限访问 NPU 设备
+          sudo -E bash -c '
+            source /home/dlc_ci/.bashrc
+            which conda
+            echo "which conda? $(which conda)"
+            conda activate dlcompiler
+            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            cd ${{ env.CI_PATH }}
+            export JSON_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/include.zip
+            export GOOGLETEST_DIR34=${{ vars.CI_BASE_PATH }}/data/v34/googletest
+            export LLVM_TGZ_PATH34=${{ vars.CI_BASE_PATH }}/data/v34/llvm-064f02da-ubuntu-arm64.tar.gz
+            
+            rm -rf ./third_party/*
+            git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/ascendnpu-ir ./third_party/ascendnpu-ir
+            git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/json ./third_party/json
+            git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton_shared ./third_party/triton_shared
+            git clone --no-hardlinks ${{ env.THIRD_PARTY_PATH }}/triton ./third_party/triton
+            echo "whoami before compile: $(whoami)"
+            echo "which python? $(which python)"
+            echo "npu-smi path: $(which npu-smi 2>/dev/null || echo "not found")"
+            git submodule update --init
+            echo "git submodule update done."
+            pip install nanobind -i https://mirrors.huaweicloud.com/repository/pypi/simple
+            
+            bash compile_shared.sh apply_patch=true
+          '
 
       - name: Build and install tilelang-dlc
         run: |
           set -ex
-          source /home/dlc_ci/.bashrc
-          conda activate dlcompiler
-          source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{ env.CI_PATH }}
-          export TILELANG_DLC_PATH=${{ vars.CI_BASE_PATH }}/data/tilelang-dlc
-          export DLCOMPILER_SOURCE=${{ env.CI_PATH }}
-          export TILELANG_USE_DLCOMPILER=1
-          echo "whoami? $(whoami)"
-          echo "which python? $(which python)"
-          bash scripts/install_tilelang-dlc.sh
+          # 切换到 root 用户执行
+          sudo -E bash -c '
+            source /home/dlc_ci/.bashrc
+            conda activate dlcompiler
+            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            cd ${{ env.CI_PATH }}
+            export TILELANG_DLC_PATH=${{ vars.CI_BASE_PATH }}/data/tilelang-dlc
+            export DLCOMPILER_SOURCE=${{ env.CI_PATH }}
+            export TILELANG_USE_DLCOMPILER=1
+            echo "whoami? $(whoami)"
+            echo "which python? $(which python)"
+            bash scripts/install_tilelang-dlc.sh
+          '
 
       - name: Run tilelang-dlc tests on ascend
         run: |
           set -ex
-          source /home/dlc_ci/.bashrc
-          conda activate dlcompiler
-          source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
-          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
-          export ASCEND_RT_VISIBLE_DEVICES=7
-          export TILELANG_USE_DLCOMPILER=1
-          bash test/commonir/run_tests.sh
+          # 切换到 root 用户执行
+          sudo -E bash -c '
+            source /home/dlc_ci/.bashrc
+            conda activate dlcompiler
+            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            cd ${{env.CI_PATH }}
+            export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+            export ASCEND_RT_VISIBLE_DEVICES=7
+            export TILELANG_USE_DLCOMPILER=1
+            bash test/commonir/run_tests.sh
+          '
 
       - name: Run triton tests on ascend
         run: |
           set -ex
-          source /home/dlc_ci/.bashrc
-          conda activate dlcompiler
-          source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
-          echo "whoami? $(whoami)"
-          echo "which python? $(which python)"
-          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
-          export ASCEND_RT_VISIBLE_DEVICES=7
-          bash test/ascend/run_tests.sh
+          # 切换到 root 用户执行
+          sudo -E bash -c '
+            source /home/dlc_ci/.bashrc
+            conda activate dlcompiler
+            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            cd ${{env.CI_PATH }}
+            echo "whoami? $(whoami)"
+            echo "which python? $(which python)"
+            export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+            export ASCEND_RT_VISIBLE_DEVICES=7
+            bash test/ascend/run_tests.sh
+          '
 
       - name: Run MLIR tests
         run: |
           set -ex
-          source /home/dlc_ci/.bashrc
-          conda activate dlcompiler
-          source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
-          echo "whoami? $(whoami)"
-          echo "which python? $(which python)"
-          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
-          export ASCEND_RT_VISIBLE_DEVICES=7
-          bash test/ascend/test_mlir.sh
+          # 切换到 root 用户执行
+          sudo -E bash -c '
+            source /home/dlc_ci/.bashrc
+            conda activate dlcompiler
+            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            cd ${{env.CI_PATH }}
+            echo "whoami? $(whoami)"
+            echo "which python? $(which python)"
+            export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+            export ASCEND_RT_VISIBLE_DEVICES=7
+            bash test/ascend/test_mlir.sh
+          '
 
       - name: Run DSL tests
         run: |
           set -ex
-          source /home/dlc_ci/.bashrc
-          conda activate dlcompiler
-          source /usr/local/Ascend/cann-8.5.0/set_env.sh
-          cd ${{env.CI_PATH }}
-          echo "whoami? $(whoami)"
-          echo "which python? $(which python)"
-          export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
-          export ASCEND_RT_VISIBLE_DEVICES=7
-          bash test/dsl/run_tests.sh
+          # 切换到 root 用户执行
+          sudo -E bash -c '
+            source /home/dlc_ci/.bashrc
+            conda activate dlcompiler
+            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            cd ${{env.CI_PATH }}
+            echo "whoami? $(whoami)"
+            echo "which python? $(which python)"
+            export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+            export ASCEND_RT_VISIBLE_DEVICES=7
+            bash test/dsl/run_tests.sh
+          '
 
       - name: Clear workfile
         if: always()
         run: |
-          export workdir=$(pwd)
-          cd ..
-          rm -rf $workdir
-          mkdir $workdir
-          chmod -R 777 $workdir  
-          if [ -d "${{ env.CI_PATH }}" ]; then
-            rm -rf ${{ env.CI_PATH }}
-          fi
+          # 使用 root 权限清理，确保能删除之前以 root 创建的文件
+          sudo bash -c '
+            export workdir=$(pwd)
+            cd ..
+            rm -rf $workdir
+            mkdir $workdir
+            chmod -R 777 $workdir  
+            if [ -d "${{ env.CI_PATH }}" ]; then
+              rm -rf ${{ env.CI_PATH }}
+            fi
+          '

@@ -67,6 +67,34 @@ index ce55e7f..089f75e 100644
      getRegionBuilder();
  
      // Used for AggregateOpInterface to decompose into legal operations
+diff --git a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMAttrs.td b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMAttrs.td
+index f245841..47db011 100644
+--- a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMAttrs.td
++++ b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMAttrs.td
+@@ -783,6 +783,23 @@ def HIVM_StorageAligned : HIVM_Attr<"StorageAligned", "storage_aligned"> {
+ // Misc.
+ //===----------------------------------------------------------------------===//
+ 
++//SH
++def HIVM_VF_SIMD : I32EnumAttrCase<"SIMD", 0>;
++def HIVM_VF_SIMT : I32EnumAttrCase<"SIMT", 1>;
++def HIVM_VF_MIX : I32EnumAttrCase<"MIX", 2>;
++
++def HIVM_VFModeEnum
++    : HIVM_I32Enum<"VFMode",
++                  "HIVM VF Mode", [HIVM_VF_SIMD, HIVM_VF_SIMT, HIVM_VF_MIX]>;
++
++def HIVM_VFModeAttr : HIVM_I32EnumAttr<"vf_mode", HIVM_VFModeEnum> {
++  let description = [{
++    HIVM VF mode attribute.
++  }];
++}
++//SH
++
++
+ def HIVM_MultiBufferAttr : HIVM_Attr<"MultiBuffer", "multi_buffer"> {
+   let description = [{
+     HIVM multi-buffer attribute.
 diff --git a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h
 index cfd9f28..945c6b8 100644
 --- a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMImpl.h
@@ -98,6 +126,112 @@ index f039870..5271c3c 100644
        }]
      >,
      InterfaceMethod<
+diff --git a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMOps.td b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMOps.td
+index 9c16c24..aea8554 100644
+--- a/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMOps.td
++++ b/bishengir/include/bishengir/Dialect/HIVM/IR/HIVMOps.td
+@@ -219,4 +219,101 @@ def FinishDebugOp : HIVM_Op<"finish_debug", [CubeVectorCoreTypeTrait]> {
+   }];
+ }
+ 
++//===----------------------------------------------------------------------===//
++// CustomOp
++//===----------------------------------------------------------------------===//
++
++def CustomOp
++    : HIVM_StructuredOp<
++          "custom", [AttrSizedOperandSegments,
++                    MemoryEffects<[MemRead, MemWrite]>, SinglePipeOpTrait,
++                    DeclareOpInterfaceMethods<
++                        HIVMInferCoreTypeInterface, ["inferCoreType"]>]> {
++  let summary = [{
++    Custom operation is a generic op interface for users to write their own custom implementation.
++
++    Scenarios:
++      1. Existing operations could not fulfill the desired functionality.
++      2. Existing operations could fulfill the functionality, but overall performance is not optimal.
++      3. Desire for private operation.
++  }];
++
++  let description = [{
++    General interface for custom op, where:
++      - name : unique op name.
++
++              Note : there are names reserved for builtins, usually starts with "__builtin".
++                      Compiler will link these builtins to self-contained template library,
++                      which comes together within bishengir-compile.
++
++                      For normal names/cases, user needs to specify implementation location/compilation commands (TODO),
++                      and all ther necessary informations.
++
++              Available builtin names:
++                "__builtin_gather_load"
++
++      - inputs : input parameters.
++      - outputs : output results, designated "init" operands, which act as initial values for the results
++                  of the operation or the init locations to which the results of the op will be written.
++
++    In order to adapt to future enhancements quickly and dynamically, custom op relies on attributes
++    to retreive necessary information, required informations are:
++      - CoreType : which core type to execute on, refer to TCoreTypeAttr.
++      - Pipe     : which pipe to execute on, refer to PipeAttr.
++      - VFMode   : which mode to run on vector units, refer to VFModeAttr.
++                  this attribute is ignored when core type is cube.
++
++                  Note : for builtins, user could specify these informations or not,
++                          compiler will help to check the correctness and canonicalize.
++
++    TODO:
++      - Impl : user provided implementation.
++      - Multi Pipe : custom op wants to use multiple pipes, which is a MacroOp in HIVM's context.
++  }];
++
++  let arguments = (ins StrAttr:$name, Variadic<AnyType>:$inputs,
++      Variadic<AnyType>:$outputs);
++
++  let results = (outs Variadic<AnyType>:$results);
++
++  let extraClassDeclaration = [{
++      // TODO: Customize
++      static int getOpLibraryMaxRankImpl() { return 5; }
++
++      PIPE getPipe();
++
++      ::mlir::MutableOperandRange getDpsInitsMutable() {
++          return getOutputsMutable();
++      }
++
++      // Helper functions
++      void setPipe(PIPE);
++
++      std::optional<TCoreType> getCoreType();
++      void setCoreType(TCoreType);
++
++      std::optional<VFMode> getVFMode();
++      void setVFMode(VFMode);
++
++      bool isBuiltin();
++
++      // Builtins helpers
++      struct BuiltinInfo {
++        TCoreType coreType;
++        PIPE pipe;
++        VFMode vfMode;
++      };
++
++      // Map <builtin in name> <-> {CORE_TYPE, PIPE, VF_MODE}
++      static const DenseMap<StringRef, BuiltinInfo> kBuiltins;
++  }];
++
++  let hasVerifier = 1;
++  let hasCustomAssemblyFormat = 1;
++  let hasCanonicalizer = 1;
++}
++
++// TODO: Add CustomMacroOp
++//SH
++
+ #endif // BISHENGIR_DIALECT_HIVM_IR_HIVMOPS_TD
 diff --git a/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp b/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp
 index 9309262..cdd81b9 100644
 --- a/bishengir/lib/Dialect/HFusion/IR/HFusionOps.cpp
@@ -210,6 +344,54 @@ index d3ad5f2..f190405 100644
            [](auto) -> OpPattern { return OpPattern::kReduceScatter; })
        .Case<hfusion::InterleaveOp, hfusion::DeinterleaveOp>(
            [](auto) -> OpPattern { return OpPattern::kInterleave; })
+diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMCanonicalizations.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMCanonicalizations.cpp
+index 968b75d..9dce8dd 100644
+--- a/bishengir/lib/Dialect/HIVM/IR/HIVMCanonicalizations.cpp
++++ b/bishengir/lib/Dialect/HIVM/IR/HIVMCanonicalizations.cpp
+@@ -558,4 +558,41 @@ LogicalResult StoreOp::fold(hivm::StoreOp::FoldAdaptor adaptor,
+ void mlir::hivm::HIVMDialect::getCanonicalizationPatterns(
+     ::mlir::RewritePatternSet &results) const {
+   results.add<EliminateTrivialInlineBrc>(getContext());
+-}
+\ No newline at end of file
++}
++
++//SH
++struct CustomOpCanonicalizer : public OpRewritePattern<CustomOp> {
++  using OpRewritePattern<CustomOp>::OpRewritePattern;
++
++  LogicalResult matchAndRewrite(CustomOp customOp,
++                                PatternRewriter &rewriter) const final {
++    if (!customOp.isBuiltin())
++      return failure();
++
++    const auto &builtinInfo = CustomOp::kBuiltins.at(customOp.getName());
++    const auto &coreType = customOp.getCoreType();
++    if (!coreType || *coreType != builtinInfo.coreType) {
++      customOp.setCoreType(builtinInfo.coreType);
++      return success();
++    }
++
++    if (customOp.getPipe() != builtinInfo.pipe) {
++      customOp.setPipe(builtinInfo.pipe);
++      return success();
++    }
++
++    const auto &vfMode = customOp.getVFMode();
++    if (!vfMode || *vfMode != builtinInfo.vfMode) {
++      customOp.setVFMode(builtinInfo.vfMode);
++      return success();
++    }
++
++    return failure();
++  }
++};
++
++void CustomOp::getCanonicalizationPatterns(::mlir::RewritePatternSet &results,
++                                          ::mlir::MLIRContext *context) {
++  results.add<CustomOpCanonicalizer>(context);
++}
++//SH
 diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
 index b3d7807..2e8b56c 100644
 --- a/bishengir/lib/Dialect/HIVM/IR/HIVMImpl.cpp
@@ -223,6 +405,215 @@ index b3d7807..2e8b56c 100644
    llvm::SmallVector<int64_t> alignedStrides(rank, 1);
    for (int64_t i = 0; i < rank; i++) {
      if (strideAlignElems[i] == 1) {
+diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMOps.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMOps.cpp
+index e663a2c..827ac4f 100644
+--- a/bishengir/lib/Dialect/HIVM/IR/HIVMOps.cpp
++++ b/bishengir/lib/Dialect/HIVM/IR/HIVMOps.cpp
+@@ -412,3 +412,204 @@ std::string hivm::detail::getTypeName(Location loc, Type type) {
+   return unknown;
+ }
+ 
++
++//SH===----------------------------------------------------------------------===//
++// CustomOp
++//===----------------------------------------------------------------------===//
++
++// Helper functions
++void CustomOp::setPipe(PIPE pipe) {
++  getOperation()->setAttr(PipeAttr::name, PipeAttr::get(getContext(), pipe));
++}
++
++std::optional<TCoreType> CustomOp::getCoreType() {
++  if (const auto coreTypeAttr =
++          getOperation()->template getAttrOfType<TCoreTypeAttr>(
++              TCoreTypeAttr::name)) {
++    return coreTypeAttr.getTcoretype();
++  }
++
++  return {};
++}
++
++void CustomOp::setCoreType(TCoreType coreType) {
++  getOperation()->setAttr(TCoreTypeAttr::name,
++                          TCoreTypeAttr::get(getContext(), coreType));
++}
++
++std::optional<VFMode> CustomOp::getVFMode() {
++  if (const auto vfModeAttr =
++          getOperation()->template getAttrOfType<VFModeAttr>(
++              VFModeAttr::name)) {
++    return vfModeAttr.getValue();
++  }
++
++  return {};
++}
++
++void CustomOp::setVFMode(VFMode vfMode) {
++  getOperation()->setAttr(VFModeAttr::name,
++                          VFModeAttr::get(getContext(), vfMode));
++}
++
++bool CustomOp::isBuiltin() { return kBuiltins.contains(getName()); }
++
++ParseResult CustomOp::parse(OpAsmParser &parser, OperationState &result) {
++  if (succeeded(parser.parseOptionalLess())) {
++    if (parser.parseAttribute(result.propertiesAttr) || parser.parseGreater())
++      return failure();
++  }
++
++  // Parse attributes
++  SMLoc attrsLoc = parser.getCurrentLocation();
++  if (parser.parseOptionalAttrDict(result.attributes))
++    return failure();
++
++  { // Parse name
++    std::string name{};
++    if (parser.parseString(&name))
++      return failure();
++
++    result.addAttribute("name", parser.getBuilder().getStringAttr(name));
++  }
++
++  { // Parse variadic args
++    SmallVector<int32_t, 3> variadicArgsSizes;
++    auto parseVariadicArgs = [&](const std::string &nameHint) {
++      SMLoc loc;
++      SmallVector<Type, 1> types;
++      SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
++
++      if (succeeded(parser.parseOptionalKeyword(nameHint))) {
++        loc = parser.getCurrentLocation();
++        if (parser.parseLParen() || parser.parseOperandList(operands) ||
++            parser.parseColonTypeList(types) || parser.parseRParen())
++          return failure();
++      }
++
++      if (parser.resolveOperands(operands, types, loc, result.operands)) {
++        return failure();
++      }
++
++      variadicArgsSizes.push_back(static_cast<int32_t>(operands.size()));
++      return success();
++    };
++
++    if (failed(parseVariadicArgs("ins")) || failed(parseVariadicArgs("outs"))) {
++      return failure();
++    }
++
++    // Update operandSegmentSizes attribute
++    const auto operandSegmentSizesAttr =
++        parser.getBuilder().getDenseI32ArrayAttr(variadicArgsSizes);
++    // This is a bit complex because we're trying to be backward compatible with
++    // operation syntax that mix the inherent attributes and the discardable
++    // ones in the same dictionary. If the properties are used, we append the
++    // operandSegmentSizes there directly. Otherwise we append it to the
++    // discardable attributes dictionary where it is handled by the generic
++    // Operation::create(...) method.
++    if (result.propertiesAttr) {
++      NamedAttrList attrs = llvm::cast<DictionaryAttr>(result.propertiesAttr);
++      attrs.append("operandSegmentSizes", operandSegmentSizesAttr);
++      result.propertiesAttr = attrs.getDictionary(parser.getContext());
++    } else {
++      result.addAttribute("operandSegmentSizes", operandSegmentSizesAttr);
++      std::optional<RegisteredOperationName> info =
++          result.name.getRegisteredInfo();
++      if (info) {
++        if (failed(info->verifyInherentAttrs(result.attributes, [&]() {
++              return parser.emitError(attrsLoc)
++                    << "'" << result.name.getStringRef() << "' op ";
++            })))
++          return failure();
++      }
++    }
++  }
++
++  { // Parse result types
++    SmallVector<Type, 1> resultTypes;
++    if (parser.parseOptionalArrowTypeList(resultTypes)) {
++      return failure();
++    }
++    result.addTypes(resultTypes);
++  }
++
++  return success();
++}
++
++void CustomOp::print(OpAsmPrinter &p) {
++  p.printOptionalAttrDict(getOperation()->getAttrs(),
++                          /*elidedAttrs=*/{"operandSegmentSizes", "name"});
++
++  p << " ";
++  p.printString(getName());
++
++  auto printVariadicArgs = [&](const auto &args, const std::string &nameHint) {
++    if (!args.empty())
++      p << " " << nameHint << "(" << args << " : " << args.getTypes() << ")";
++  };
++
++  printVariadicArgs(getInputs(), "ins");
++  printVariadicArgs(getOutputs(), "outs");
++
++  if (!getResults().empty())
++    p.printOptionalArrowTypeList(getResultTypes());
++}
++
++static LogicalResult verifyBuiltins(CustomOp op) {
++  const auto &builtinInfo = CustomOp::kBuiltins.at(op.getName());
++
++  const auto &coreType = op.getCoreType();
++  if (coreType && *coreType != builtinInfo.coreType)
++    return op.emitOpError() << "Specified core type conflict with "
++                            << op.getName() << "'s core type.";
++
++  const auto &pipe = op.getPipe();
++  if (pipe != PIPE::PIPE_UNASSIGNED && pipe != builtinInfo.pipe)
++    return op.emitOpError()
++          << "Specified pipe conflict with " << op.getName() << "'s pipe.";
++
++  const auto &vfMode = op.getVFMode();
++  if (vfMode && *vfMode != builtinInfo.vfMode)
++    return op.emitOpError() << "Specified vf mode conflict with "
++                            << op.getName() << "'s vf mode.";
++
++  return success();
++}
++
++LogicalResult CustomOp::verify() {
++  // Check builtins
++  // if (isBuiltin())
++  //   return verifyBuiltins(*this);
++
++  // // Check core type attribute
++  // const auto coreType = getCoreType();
++  // if (!coreType)
++  //   return emitOpError() << "Missing core type information";
++
++  // // Check pipe attribute
++  // if (getPipe() == PIPE::PIPE_UNASSIGNED)
++  //   return emitOpError() << "Missing pipe information";
++
++  // // Check VF mode attribute
++  // if (*coreType != TCoreType::CUBE) {
++  //   if (!getVFMode())
++  //     return emitOpError() << "Missing vf mode information";
++  // } else { // Pure cube
++  //   // Cube function ignores vf mode information
++  // }
++
++  return success();
++}
++
++PIPE CustomOp::getPipe() {
++  if (auto pipAttr =
++          getOperation()->template getAttrOfType<PipeAttr>(PipeAttr::name))
++    return pipAttr.getPipe();
++
++  return PIPE::PIPE_UNASSIGNED;
++}
++
++const DenseMap<StringRef, CustomOp::BuiltinInfo> CustomOp::kBuiltins{
++    {"__builtin_gather_load", {TCoreType::VECTOR, PIPE::PIPE_V, VFMode::SIMT}}};
++//SH
 diff --git a/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp b/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
 index 8c61377..0d2d7d8 100644
 --- a/bishengir/lib/Dialect/HIVM/IR/HIVMSynchronizationOps.cpp
@@ -281,6 +672,29 @@ index 7f9c39f..9775dca 100644
    return strides;
  }
  
+diff --git a/bishengir/lib/Dialect/HIVM/IR/InferCoreTypeInterface/InferCoreType.cpp b/bishengir/lib/Dialect/HIVM/IR/InferCoreTypeInterface/InferCoreType.cpp
+index 39a1231..36a95e6 100644
+--- a/bishengir/lib/Dialect/HIVM/IR/InferCoreTypeInterface/InferCoreType.cpp
++++ b/bishengir/lib/Dialect/HIVM/IR/InferCoreTypeInterface/InferCoreType.cpp
+@@ -111,6 +111,18 @@ inferCoreTypeForGlobalMixMatmulOps(GlobalMixMatmulTy *mixMatmulOp) {
+ // HIVM Ops
+ //===----------------------------------------------------------------------===//
+ 
++//SH
++std::optional<TCoreType> CustomOp::inferCoreType() {
++    if (auto coreTypeAttr = getOperation()->template getAttrOfType<TCoreTypeAttr>(
++            TCoreTypeAttr::name)) {
++      return coreTypeAttr.getTcoretype();
++    }
++  
++    return {};
++  }
++//SH
++
++
+ std::optional<TCoreType> ConvertLayoutOp::inferCoreType() {
+   BaseMemRefType srcMemRefTy = getSource().getType();
+   hivm::AddressSpace addrSpace =
 diff --git a/bishengir/lib/Dialect/Utils/Util.cpp b/bishengir/lib/Dialect/Utils/Util.cpp
 index cd4ccbe..2a2f5ac 100644
 --- a/bishengir/lib/Dialect/Utils/Util.cpp

@@ -35,16 +35,27 @@ echo "apply patch/ascendnpu-ir.patch success!"
 # export LLVM_BUILD_DIR=/path/to/your/llvm-project/build
 # export LLVM_TGZ_PATH=/path/to/your/llvm-86b69c31-ubuntu-arm64.tar.gz      # 可选，用于指定LLVM的tgz包路径
 export TRITON_PLUGIN_DIRS=$home_path
+source /usr/local/Ascend/cann-8.5.0/set_env.sh
 
 is_npu=false
 check_npu() {
-    if command -v npu-smi info &> /dev/null && npu-smi info &> /dev/null; then
-        is_npu=true
-        echo "ZMZ debug 1111111111 ascend加速卡"
+    # 打印当前用户身份，便于排查权限问题
+    echo "ZMZ debug: Current user before check: $(whoami)"
+    
+    if command -v npu-smi &> /dev/null; then
+        # 尝试以 root 权限执行 npu-smi info
+        if sudo -E bash -c 'source /usr/local/Ascend/cann-*/set_env.sh && npu-smi info' &> /dev/null; then
+            is_npu=true
+            echo "ZMZ debug 1111111111 ascend加速卡"
+        else
+            is_npu=false
+            echo "ZMZ debug 2222222222 非ascend加速卡或无权限访问"
+            echo "cmd: sudo bash -c 'source /usr/local/Ascend/cann-*/set_env.sh && npu-smi info'"
+            echo "whoami $(whoami)"
+        fi
     else
         is_npu=false
-        echo "ZMZ debug 2222222222 非ascend加速卡"
-        echo "cmd: npu-smi info"
+        echo "ZMZ debug 2222222222 npu-smi 命令不存在"
         echo "whoami $(whoami)"
     fi
 }

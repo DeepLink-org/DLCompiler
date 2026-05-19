@@ -1430,7 +1430,7 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
   name.append(kernelName);
    {'auto launch_call = [=]()' if enable_taskqueue else ''} {{
     uint32_t blockNum = gridX * gridY * gridZ;
-    {'if (blockNum > (uint32_t)' + str(num_physical_blocks) + ') { std::cout << "WARNING: Grid " << blockNum << " > physical limit ' + str(num_physical_blocks) + ', performance maybe reduced." << std::endl;if (blockNum > 65535 && !' + str(enable_auto_map_parallel_blocks).lower() + ') {std::cout << "Grid " << blockNum << " > 65535, Please set TRITON_ALL_BLOCKS_PARALLEL=1 to enable all blocks parallel execution." << std::endl; } }'}
+    {'if (blockNum > (uint32_t)' + str(num_physical_blocks) + ') { /* std::cout << "WARNING: Grid " << blockNum << " > physical limit ' + str(num_physical_blocks) + ', performance maybe reduced." << std::endl; */ if (blockNum > 65535 && !' + str(enable_auto_map_parallel_blocks).lower() + ') {std::cout << "Grid " << blockNum << " > 65535, Please set TRITON_ALL_BLOCKS_PARALLEL=1 to enable all blocks parallel execution." << std::endl; } }'}
 
     {'blockNum = std::min(blockNum, (uint32_t)' + str(num_physical_blocks) + ');' if enable_auto_map_parallel_blocks else ''}
     {'cce::internal::DebugTunnelData *DTData = cce::internal::DebugTunnel::Open(blockNum);' if enable_device_print else ''}

@@ -7,10 +7,13 @@ The three vector ops (vsub, vexp, vdiv) are dl.custom() calls that link
 against softmax_ops.aiv.bc.  The bitcode path is auto-resolved from the
 name "softmax_ops" — no absolute path needed.
 """
+
 import os
 
 # Ensure bishengir tools are in PATH before triton imports read BISHENG_INSTALL_PATH.
-_BISHENG_INSTALL = "/mnt/data01/zmz/workspace/04ttshared/fordlc/ascendnpu-ir-0514/build/install/bin/"
+_BISHENG_INSTALL = (
+    "/mnt/data01/zmz/workspace/04ttshared/fordlc/ascendnpu-ir-0514/build/install/bin/"
+)
 if os.path.isdir(_BISHENG_INSTALL):
     os.environ.setdefault("BISHENG_INSTALL_PATH", _BISHENG_INSTALL)
     if _BISHENG_INSTALL not in os.environ.get("PATH", ""):
@@ -35,7 +38,7 @@ class vsub_fp32:
     def __init__(self, a, b, out=None):
         assert out is not None, "dl.custom() requires out= parameter"
         self.symbol = "custom_vsub_fp32"
-        self.bitcode = "softmax_ops"   # auto-resolved to softmax_ops.aiv.bc
+        self.bitcode = "softmax_ops"  # auto-resolved to softmax_ops.aiv.bc
 
 
 @dl.register_custom_op
@@ -66,8 +69,8 @@ class vdiv_fp32:
 # Triton kernel
 # ======================================================================
 
-CHUNK_SIZE = 1024          # max vector length for fp32 DSL ops
-MIN_CHUNK_SIZE = 8         # min vector length (SIMD width >= 2)
+CHUNK_SIZE = 1024  # max vector length for fp32 DSL ops
+MIN_CHUNK_SIZE = 8  # min vector length (SIMD width >= 2)
 
 
 @triton.jit
@@ -146,6 +149,7 @@ def softmax_kernel(
 # Public wrapper
 # ======================================================================
 
+
 def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """Softmax using dl.custom() Triton kernel.
 
@@ -184,7 +188,10 @@ def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     output = torch.empty(x.shape, dtype=x.dtype, device=x.device)
     grid = (M,)
     softmax_kernel[grid](
-        x, output, N, N,
+        x,
+        output,
+        N,
+        N,
         BLOCK_SIZE=BLOCK_SIZE,
         CHUNK_SIZE=CS,
     )
@@ -202,7 +209,12 @@ def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
 if __name__ == "__main__":
     print("=== Softmax Triton Kernel Test (dl.custom) ===")
 
-    for shape, dim in [((4, 128), -1), ((4, 1024), -1), ((2, 4096), -1), ((16, 256), 0)]:
+    for shape, dim in [
+        ((4, 128), -1),
+        ((4, 1024), -1),
+        ((2, 4096), -1),
+        ((16, 256), 0),
+    ]:
         x = torch.randn(shape, dtype=torch.float32, device="npu")
         y = softmax(x, dim=dim)
         ref = torch.nn.functional.softmax(x.float(), dim=dim)

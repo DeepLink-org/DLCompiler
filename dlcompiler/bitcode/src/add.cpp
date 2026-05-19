@@ -16,26 +16,25 @@
 #define INTRINSIC(NAME, ...) NAME(__VA_ARGS__)
 
 // MLIR memref 结构：表示一块连续内存（指针 + offset + shape + strides）
-template <typename T, size_t Dim>
-struct memref_t {
-  T *allocated;              // 分配基址
-  T *aligned;                // 对齐后的有效起始地址
-  int64_t offset;            // 元素偏移量
-  int64_t sizes[Dim];        // 各维度长度
-  int64_t strides[Dim];      // 各维度步长
+template <typename T, size_t Dim> struct memref_t {
+  T *allocated;         // 分配基址
+  T *aligned;           // 对齐后的有效起始地址
+  int64_t offset;       // 元素偏移量
+  int64_t sizes[Dim];   // 各维度长度
+  int64_t strides[Dim]; // 各维度步长
 };
 
 // vadd 指令参数结构
 template <size_t OPERANUM, typename SRC_T, typename DST_T = SRC_T>
 struct intrin_args {
-  __ubuf__ DST_T *dst;                     // 输出指针
-  __ubuf__ SRC_T *src[OPERANUM];           // 输入指针数组
-  SRC_T scalar;                            // 标量值（未使用）
-  uint64_t repeat;                         // 重复次数
-  uint16_t dst_block_stride;               // block 内步长
-  uint16_t src_block_stride[OPERANUM];     // 输入 block 内步长
-  uint16_t dst_repeat_stride;              // repeat 间步长
-  uint16_t src_repeat_stride[OPERANUM];    // 输入 repeat 间步长
+  __ubuf__ DST_T *dst;                  // 输出指针
+  __ubuf__ SRC_T *src[OPERANUM];        // 输入指针数组
+  SRC_T scalar;                         // 标量值（未使用）
+  uint64_t repeat;                      // 重复次数
+  uint16_t dst_block_stride;            // block 内步长
+  uint16_t src_block_stride[OPERANUM];  // 输入 block 内步长
+  uint16_t dst_repeat_stride;           // repeat 间步长
+  uint16_t src_repeat_stride[OPERANUM]; // 输入 repeat 间步长
 };
 
 // vadd 模板函数：逐元素向量加法
@@ -48,15 +47,15 @@ vector_eltwise_vadd_intrin(intrin_args<2, SRC_TYPE, DST_TYPE> args) {
       args.dst_repeat_stride, args.src_repeat_stride[0],                       \
       args.src_repeat_stride[1]
 
-  // vadd(dst, src0, src1, repeat, dst_bs, src0_bs, src1_bs, dst_rs, src0_rs, src1_rs)
+  // vadd(dst, src0, src1, repeat, dst_bs, src0_bs, src1_bs, dst_rs, src0_rs,
+  // src1_rs)
   INTRINSIC(vadd, ELTWISE_VV_ARGS);
 }
 
 // vadd 调用包装：处理连续访问的公共逻辑
 template <typename T>
 __aiv__ __attribute__((always_inline)) void
-vadd_impl(memref_t<__ubuf__ T, 1> *src0,
-          memref_t<__ubuf__ T, 1> *src1,
+vadd_impl(memref_t<__ubuf__ T, 1> *src0, memref_t<__ubuf__ T, 1> *src1,
           memref_t<__ubuf__ T, 1> *dst) {
 
   uint16_t block_stride = 1;
@@ -75,8 +74,8 @@ vadd_impl(memref_t<__ubuf__ T, 1> *src0,
   vector_eltwise_vadd_intrin<T>(
       intrin_args<2, T>{dst_ptr,
                         {new_src0_ptr, new_src1_ptr},
-                        0,       // scalar (unused)
-                        1,       // repeat = 1（单次执行，全部元素由 mask 覆盖）
+                        0, // scalar (unused)
+                        1, // repeat = 1（单次执行，全部元素由 mask 覆盖）
                         block_stride,
                         {block_stride, block_stride},
                         repeat_stride,
@@ -102,25 +101,25 @@ vadd_impl(memref_t<__ubuf__ T, 1> *src0,
 
 extern "C" {
 
-__aiv__ __attribute__((always_inline)) void _mlir_ciface_custom_add_int32(
-    memref_t<__ubuf__ int32_t, 1> *src0,
-    memref_t<__ubuf__ int32_t, 1> *src1,
-    memref_t<__ubuf__ int32_t, 1> *dst) {
+__aiv__ __attribute__((always_inline)) void
+_mlir_ciface_custom_add_int32(memref_t<__ubuf__ int32_t, 1> *src0,
+                              memref_t<__ubuf__ int32_t, 1> *src1,
+                              memref_t<__ubuf__ int32_t, 1> *dst) {
   vadd_impl(src0, src1, dst);
 }
 
-__aiv__ __attribute__((always_inline)) void _mlir_ciface_custom_add_fp32(
-    memref_t<__ubuf__ float, 1> *src0,
-    memref_t<__ubuf__ float, 1> *src1,
-    memref_t<__ubuf__ float, 1> *dst) {
+__aiv__ __attribute__((always_inline)) void
+_mlir_ciface_custom_add_fp32(memref_t<__ubuf__ float, 1> *src0,
+                             memref_t<__ubuf__ float, 1> *src1,
+                             memref_t<__ubuf__ float, 1> *dst) {
   vadd_impl(src0, src1, dst);
 }
 
-__aiv__ __attribute__((always_inline)) void _mlir_ciface_custom_add_fp16(
-    memref_t<__ubuf__ __fp16, 1> *src0,
-    memref_t<__ubuf__ __fp16, 1> *src1,
-    memref_t<__ubuf__ __fp16, 1> *dst) {
+__aiv__ __attribute__((always_inline)) void
+_mlir_ciface_custom_add_fp16(memref_t<__ubuf__ __fp16, 1> *src0,
+                             memref_t<__ubuf__ __fp16, 1> *src1,
+                             memref_t<__ubuf__ __fp16, 1> *dst) {
   vadd_impl(src0, src1, dst);
 }
 
-}  // extern "C"
+} // extern "C"

@@ -117,3 +117,17 @@ else
     fi
 fi
 notify_apply_patch
+
+# ============================================================================
+# Compile bitcode libraries for dl.custom() custom ops
+# ============================================================================
+if command -v ccec &> /dev/null; then
+    echo "Compiling bitcode libraries for custom ops..."
+    BITCODE_DIR="$home_path/dlcompiler/bitcode"
+    if [ -f "$BITCODE_DIR/compile_bc.sh" ]; then
+        bash "$BITCODE_DIR/compile_bc.sh" || echo "Warning: bitcode compilation failed (non-fatal)"
+    fi
+else
+    echo "ccec not found, skipping bitcode compilation."
+    echo "  Install CANN toolkit or ensure ccec is in PATH to enable."
+fi

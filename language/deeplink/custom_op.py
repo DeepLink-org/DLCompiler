@@ -167,9 +167,86 @@ def _add_bitcode_attr(op, builder, attrs):
         return
     from pathlib import Path
 
-    bitcode = Path(getattr(op, "bitcode"))
-    assert bitcode.exists(), f"Provided bitcode ({bitcode}) not exist"
-    attrs["bitcode"] = str(bitcode.absolute())
+    bitcode_path = _resolve_bitcode_path(getattr(op, "bitcode"))
+    attrs["bitcode"] = bitcode_path
+
+
+def _get_bitcode_search_paths():
+    """Return list of directories to search for bitcode files, ordered by priority."""
+    import os
+    from pathlib import Path
+
+    paths = []
+
+    # 1. Environment variable override (colon-separated)
+    env_path = os.environ.get("DLCOMPILER_BITCODE_PATH")
+    if env_path:
+        for p in env_path.split(":"):
+            p = p.strip()
+            if p and Path(p).is_dir():
+                paths.append(p)
+
+    # 2. Relative to this file: language/deeplink/bitcode/bc/
+    #    Works both in source tree and after pip install.
+    local_bc = Path(__file__).parent / "bitcode" / "bc"
+    if local_bc.is_dir():
+        paths.append(str(local_bc))
+
+    # 3. DLCOMPILER_SOURCE: project source root (set by set_env.sh)
+    #    Used when this module runs from site-packages but bitcode is in source tree.
+    source_root = os.environ.get("DLCOMPILER_SOURCE")
+    if source_root:
+        builtin_bc = Path(source_root) / "language" / "deeplink" / "bitcode" / "bc"
+        if builtin_bc.is_dir():
+            paths.append(str(builtin_bc))
+        # Also check legacy dlcompiler/ location
+        legacy_bc = Path(source_root) / "dlcompiler" / "bitcode" / "bc"
+        if legacy_bc.is_dir():
+            paths.append(str(legacy_bc))
+
+    # 4. Legacy dsl/ directory for backward compatibility
+    if source_root:
+        legacy_dsl = Path(source_root) / "dsl"
+        if legacy_dsl.is_dir():
+            paths.append(str(legacy_dsl))
+
+    return paths
+
+
+def _resolve_bitcode_path(bitcode_ref):
+    """Resolve a user-provided bitcode reference to an absolute file path.
+
+    Resolution logic:
+      1. If bitcode_ref is an existing file -> return its absolute path
+      2. If bitcode_ref is a name -> search for {name}.aiv.bc in search paths
+    """
+    from pathlib import Path
+
+    bitcode = Path(bitcode_ref)
+
+    # Case 1: Already a valid existing file path
+    if bitcode.is_file():
+        return str(bitcode.absolute())
+
+    # Case 2: Name resolution
+    if bitcode.suffix == ".bc":
+        search_name = bitcode.name
+    else:
+        search_name = f"{bitcode.name}.aiv.bc"
+
+    for search_dir in _get_bitcode_search_paths():
+        candidate = Path(search_dir) / search_name
+        if candidate.is_file():
+            return str(candidate.absolute())
+
+    searched_dirs = "\n  ".join(_get_bitcode_search_paths())
+    raise FileNotFoundError(
+        f"Cannot find bitcode file for '{bitcode_ref}'.\n"
+        f"  Searched for '{search_name}' in:\n"
+        f"  {searched_dirs}\n"
+        f"  Set DLCOMPILER_BITCODE_PATH to add custom search paths, "
+        f"or provide an absolute path to an existing .aiv.bc file."
+    )
 
 
 def _make_attrs(op, builder):

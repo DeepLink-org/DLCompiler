@@ -39,9 +39,9 @@ class add:
     def __init__(self, a, b, out=None):
         assert out, "out is required"
         self.symbol = "custom_add_" + str(a.dtype)
-        # self.bitcode defaults to the Ascend installation directory
-        # Typically it would be a specific bitcode file like /path/to/kernel.aiv.bc
-        self.bitcode = "/usr/local/Ascend/"
+        # bitcode name, auto-resolved via dlcompiler/bitcode/bc/ or
+        # DLCOMPILER_BITCODE_PATH environment variable
+        self.bitcode = "add"
 
 
 @triton.jit

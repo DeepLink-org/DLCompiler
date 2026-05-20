@@ -1,1 +1,0 @@
-add_dicp_compiler_dialect(DICPLinalgExt LinalgExt linalgext)

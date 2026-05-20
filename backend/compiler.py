@@ -27,21 +27,13 @@ def _get_llvm_bin_path(bin_name: str) -> str:
     return os.path.join(path, bin_name)
 
 
-def _get_triton_linalg_opt_path() -> str:
-    # path = os.getenv("TRITON_LINALG_OPT_PATH", "")
-    path = "triton-shared-opt"
-    if path == "":
-        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
-    return path
-
-
 def _ttir_to_linalgdir(mod):
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "tt.mlir")
         dst_path = os.path.join(tmpdir, "triton_linalg.mlir")
         Path(src_path).write_text(ttir_code)
-        triton_linalg_opt_path = _get_triton_linalg_opt_path()
+        triton_linalg_opt_path = _get_dicp_triton_opt_path()
         subprocess.check_call(
             [triton_linalg_opt_path, src_path, "--triton-to-linalg", "-o", dst_path]
         )
@@ -125,8 +117,8 @@ class DICPBackend(BaseBackend):
 
             self._cpu_backend = CPUBackend(target)
             self.binary_ext = "obj"
-        elif self.driver.target == "dicp":
-            self.binary_ext = "ttlinalgdir"
+        elif self.driver.target == "ascend":
+            self.binary_ext = "npubin"
         elif self.driver.target == "mlu":
             self.capability = target.arch
             assert isinstance(self.capability, int)
@@ -134,14 +126,12 @@ class DICPBackend(BaseBackend):
         elif self.driver.target == "maca":
             self.capability = 80
             self.binary_ext = "mcfatbin"
-        elif self.driver.target == "ascend":
-            self.binary_ext = "npubin"
         else:
-            raise RuntimeError(f"Target '{self.target_type}' is not supported.")
+            raise RuntimeError(f"Target '{self.driver.target}' is not supported.")
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ["dicp", "mlu", "maca", "ascend", "cpu"]
+        return target.backend in ["ascend", "mlu", "maca", "cpu"]
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -159,26 +149,37 @@ class DICPBackend(BaseBackend):
         metadata["shared"] = 0
         return mod
 
-    def get_attrs_descriptor(self, params, args):
-        if self.driver.target == "ascend":
-            from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
-
-            return AscendAttrsDescriptor(params, args)
-        else:
-            raise RuntimeError(
-                f"backend {self.driver.target} not supported for get_attrs_descriptor."
-            )
-
     def add_stages(self, stages, options, language=None):
-        if self.driver.target not in ["ascend", "mlu"]:
-            stages["ttir"] = lambda src, metadata: self.make_ttir(
-                src, metadata, options
+        if self.driver.target == "ascend":
+            from triton.backends.dicp_triton.npu import (
+                make_ttir,
+                ttir_to_linalg_dicp,
+                linalg_to_bin_enable_npu_compile_910_95,
+                linalg_to_bin_enable_npu_compile_A2_A3,
+                ttir_to_npubin,
             )
-        if self.driver.target == "dicp":
-            stages["ttlinalgdir"] = lambda src, metadata: _optimize_ttlinalgdir(
-                _ttir_to_linalgdir(src)
+
+            stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
+            if options.force_simt_only:
+                stages["npubin"] = lambda src, metadata: ttir_to_npubin(
+                    src, metadata, options
+                )
+                return
+            stages["dicp"] = lambda src, metadata: ttir_to_linalg_dicp(
+                src, metadata, options, named_ops=True
             )
-            stages["fatbin"] = lambda src, metadata: _linalg_to_fatbin(src, metadata)
+            if options.compile_on_910_95:
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_910_95(
+                        src, metadata, options
+                    )
+                )
+            else:
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+                        src, metadata, options
+                    )
+                )
         elif self.driver.target == "mlu":
             from triton.backends.dicp_triton.mlu import (
                 onchip_mem_analysis,
@@ -236,73 +237,20 @@ class DICPBackend(BaseBackend):
             stages["mcfatbin"] = lambda src, metadata: make_mcfatbin(
                 src, metadata, options, self.capability
             )
-        elif self.driver.target == "ascend":
-            from triton.backends.dicp_triton.npu import (
-                make_ttir,
-                ttir_to_linalg,
-                ttir_to_ttsharedir_ascend,
-                ttsharedir_to_linkedir,
-                linalg_to_bin_enable_npu_compile,
-            )
-
-            stages["ttir"] = lambda src, metadata: make_ttir(src, metadata, options)
-            lower_by_ttshared = os.getenv("LOWER_BY_TTSHARED", "1")
-            if lower_by_ttshared == "0":
-                if options.enable_npu_compile:
-                    stages["ttadapter"] = lambda src, metadata: ttir_to_linalg(
-                        src, metadata, options, named_ops=True
-                    )
-                    stages["npubin"] = (
-                        lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                            src, metadata, options
-                        )
-                    )
-            else:
-                if options.enable_npu_compile:
-                    stages["ttshared"] = (
-                        lambda src, metadata: ttir_to_ttsharedir_ascend(
-                            src, metadata, options, named_ops=True
-                        )
-                    )
-                    stages["linkedir"] = lambda src, metadata: ttsharedir_to_linkedir(
-                        src,
-                        metadata,
-                        options,
-                        named_ops=True,
-                        cpu_verify=self.driver.is_cpu_verify,
-                    )
-                    if self.driver.is_cpu_verify:
-                        from .cpu_backend import (
-                            _ttsharedir_to_llir,
-                            _llir_to_bin,
-                            _optimize_llir,
-                        )
-
-                        stages["llir"] = lambda src, metadata: _optimize_llir(
-                            _ttsharedir_to_llir(src, metadata)
-                        )
-                        stages["obj"] = lambda src, metadata: _llir_to_bin(
-                            src, metadata
-                        )
-                    else:
-                        stages["npubin"] = (
-                            lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                                src, metadata, options
-                            )
-                        )
         else:
-            raise RuntimeError("backend not supported")
+            raise RuntimeError(f"backend {self.driver.target} not supported")
 
     def load_dialects(self, ctx):
         if self.driver.target == "mlu":
             from triton._C.libtriton import mlu
 
             mlu.load_dialects(ctx)
-        return
+        elif self.driver.target == "ascend":
+            from triton._C.libtriton import dicp_triton
 
-    @functools.lru_cache()
-    def hash(self):
-        return self.target
+            dicp_triton.load_dialects(ctx)
+        dicp_triton.ir.load_dialects(ctx)
+        return
 
     def get_driver(self):
         return self.driver
@@ -319,6 +267,7 @@ class DICPBackend(BaseBackend):
                 for k in NPUOptions.__dataclass_fields__.keys()
                 if k in options
             }
+            args.setdefault("arch", self.target.arch)
             options = NPUOptions(**args)
             return options
         elif self.target.backend == "mlu":
@@ -414,30 +363,18 @@ class DICPBackend(BaseBackend):
         if self.driver.is_cpu_verify:
             return self._cpu_backend.pack_metadata(metadata)
         if self.target.backend == "ascend":
-            from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
 
-            # collect necessary metadata to launch kernels
-            # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.
-            # Get this name as the kernel_name to CANN runtime.
-            # kernel_name is unique to Ascend backend and should not be public.
-            # CANN runtime limits the length of kernel name <= 50.
-            # Considering '\n' is appended, thus the real kernel name <= 49.
             KERNEL_NAME_MAX_LEN = 49
-            kernel_name_orig, mix_mode = metadata.name.split()
+            kernel_name_orig = metadata.kernel_name
             if len(kernel_name_orig) > KERNEL_NAME_MAX_LEN:
                 kernel_name = kernel_name_orig[-KERNEL_NAME_MAX_LEN:]
-                # import warnings
-                # # red = "\x1b[31;20m"
-                # # reset = "\x1b[0m"
-                # warnings.warn(kernel_name_orig + " is truncated to " + kernel_name)
-                # warnings.warn("because '" + kernel_name_orig + "' exceeds torchnpu profiler's length limit < 50")
             else:
                 kernel_name = kernel_name_orig
             return {
                 "kernel_name": kernel_name,
                 "hash": metadata.hash,
                 "debug": metadata.debug,
-                "profiler_registered": TRITON_PROFILER_REGISTERED,
+                "tensor_kinds": metadata.tensor_kinds,
             }
         elif self.target.backend == "mlu":
             return (metadata.num_warps,)

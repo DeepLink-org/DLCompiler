@@ -1,7 +1,33 @@
 from typing import List
+from contextlib import contextmanager
 from triton.language import core as tl
 from triton.language import semantic as tl_semantic
-from triton._C.libtriton import ir
+from triton._C.libtriton import ir, dicp_triton
+
+_dry_run = False
+
+
+@contextmanager
+def dry_run_context():
+    global _dry_run
+    _dry_run = True
+    try:
+        yield
+    finally:
+        _dry_run = False
+
+
+_SENDER_RECEIVER_MAP = {
+    "cube": ("vector", dicp_triton.ir.PIPE.PIPE_FIX, dicp_triton.ir.PIPE.PIPE_MTE2),
+    "vector": ("cube", dicp_triton.ir.PIPE.PIPE_MTE3, dicp_triton.ir.PIPE.PIPE_MTE2),
+}
+
+
+def create_address_space(
+    address_space: dicp_triton.ir.AddressSpace,
+    builder,
+) -> ir.attribute:
+    return builder.get_target_attribute(address_space)
 
 
 def insert_slice(
@@ -46,15 +72,23 @@ def extract_slice(
 
 
 def compile_hint(ptr: tl.tensor, hint_name: str, hint_val, builder: ir.builder):
-    if not hint_val:
-        hint_val = builder.get_unit_attr()
-    elif isinstance(hint_val, bool):
+    # TODO: simt mode does not support hint annotations
+    # if builder.is_simt_mode():
+    #     return
+    # Check isinstance(hint_val, bool) first to handle False explicitly
+    if isinstance(hint_val, bool):
         hint_val = builder.get_bool_attr(hint_val)
+    elif not hint_val:
+        hint_val = builder.get_unit_attr()
     elif isinstance(hint_val, int):
         hint_val = builder.get_int32_attr(hint_val)
+    elif isinstance(hint_val, tl.constexpr):
+        hint_val = builder.get_string_attr(hint_val.value)
+    elif isinstance(hint_val, (list, tl.tuple)):
+        hint_val = builder.get_i64_array_attr(hint_val)
     else:
         raise ValueError(f"Unsupported hint value type: {type(hint_val)}")
-    builder.create_annotation(ptr.handle, hint_name, hint_val)
+    builder.create_annotation_mark(ptr.handle, hint_name, hint_val)
 
 
 def alloc(
@@ -78,30 +112,38 @@ def alloc(
     ret_ty = tl.block_type(value.dtype, shape)
     x = tl.tensor(builder.create_splat(value.handle, shape), ret_ty)
     if layout is not None:
-        builder.create_annotation(
+        builder.create_annotation_mark(
             x.handle, "layout", builder.get_string_attr(str(layout))
         )
     if scope is not None:
-        builder.create_annotation(
+        builder.create_annotation_mark(
             x.handle, "scope", builder.get_string_attr(str(scope))
         )
     return x
 
 
 def custom_sync_op(builder: ir.builder, op_name: str, **kwargs):
+    if _dry_run:
+        return None
     if op_name == "sync_block_all":
-        return builder.create_custom_op_for_inter_core_sync(
-            op_name, kwargs["mode"], kwargs["event_id"]
-        )
+        return builder.sync_block_all(kwargs["mode"], kwargs["event_id"])
 
     elif op_name == "sync_block_set":
-        return builder.create_custom_op_for_inter_core_sync(
-            op_name, kwargs["sender"], kwargs["event_id"]
+        sender = kwargs["sender"]
+        receiver, sender_pipe, receiver_pipe = _SENDER_RECEIVER_MAP[sender]
+        event_id = kwargs["event_id"]
+        id_value = builder.get_int64(event_id)
+        return builder.sync_block_set(
+            sender, receiver, id_value, sender_pipe, receiver_pipe
         )
 
     elif op_name == "sync_block_wait":
-        return builder.create_custom_op_for_inter_core_sync(
-            op_name, kwargs["sender"], kwargs["event_id"]
+        sender = kwargs["sender"]
+        receiver, sender_pipe, receiver_pipe = _SENDER_RECEIVER_MAP[sender]
+        event_id = kwargs["event_id"]
+        id_value = builder.get_int64(event_id)
+        return builder.sync_block_wait(
+            sender, receiver, id_value, sender_pipe, receiver_pipe
         )
 
     raise ValueError(f"Unsupported custom op: {op_name}")

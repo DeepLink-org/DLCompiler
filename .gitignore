@@ -99,6 +99,4 @@ fusion_result.json
 launcher_cxx11abi*
 
 # package
-backend/triton-shared-opt-v3*
 backend/dicp_opt
-third_party/triton-shared-opt

@@ -6,8 +6,8 @@ index 064dc8860..4ba22f32a 100644
  include(FetchContent)
  
 -set(GOOGLETEST_DIR "" CACHE STRING "Location of local GoogleTest repo to build against")
-+if(DEFINED ENV{GOOGLETEST_DIR34})
-+    set(GOOGLETEST_DIR $ENV{GOOGLETEST_DIR34})
++if(DEFINED ENV{GOOGLETEST_DIR35})
++    set(GOOGLETEST_DIR $ENV{GOOGLETEST_DIR35})
 +else()
 +    set(GOOGLETEST_DIR "")
 +endif()

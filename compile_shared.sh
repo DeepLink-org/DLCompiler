@@ -3,7 +3,7 @@ export LANG="zh_CN.UTF-8"
 export LC_ALL="zh_CN.UTF-8"
 
 home_path=$(pwd)
-# compile triton shared library with patch
+# compile DLCompiler
 apply_patch=false
 build_package=false
 
@@ -23,12 +23,6 @@ echo "start compile ========================================"
 echo apply_patch: $apply_patch
 echo "======================================================"
 
-echo "start apply ascendnpu-ir patch"
-cd $home_path/third_party/ascendnpu-ir
-git checkout .
-git apply ../../patch/ascendnpu-ir.patch
-echo "apply patch/ascendnpu-ir.patch success!"
-
 # SET ENV
 # export JSON_PATH=/path/to/your/json/file
 # export GOOGLETEST_DIR=/path/to/your/googletest/directory
@@ -36,30 +30,11 @@ echo "apply patch/ascendnpu-ir.patch success!"
 # export LLVM_TGZ_PATH=/path/to/your/llvm-86b69c31-ubuntu-arm64.tar.gz      # 可选，用于指定LLVM的tgz包路径
 export TRITON_PLUGIN_DIRS=$home_path
 
-is_npu=false
-check_npu() {
-    if command -v npu-smi info &> /dev/null && npu-smi info &> /dev/null; then
-        is_npu=true
-    else
-        is_npu=false
-    fi
-}
 
-check_npu
 
 if [[ $apply_patch == true ]]; then
     # do dangerous stuff
-    echo "Apply triton and triton_shared patch"
-    echo "当前环境检测为：$([[ $is_npu == true ]] && echo 'ascend加速卡，使用适配patch' || echo '非ascend加速卡，不使用适配patch')"
-    if [[ $is_npu == true ]]; then
-        cd $TRITON_PLUGIN_DIRS/third_party/triton_shared/
-        git checkout .
-        ls $TRITON_PLUGIN_DIRS/patch/ttshared/*.patch | xargs -n1 git apply
-        if [ $? -ne 0 ]; then
-            echo "Error: triton_shared git apply failed." >&2
-            exit 1
-        fi
-    fi
+    echo "Apply triton patch"
     cd $TRITON_PLUGIN_DIRS/third_party/triton/
     git checkout .
     ls $TRITON_PLUGIN_DIRS/patch/triton/*.patch | xargs -n1 git apply

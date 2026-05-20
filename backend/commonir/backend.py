@@ -12,44 +12,36 @@ class CommonIRBackend:
     def __init__(self) -> None:
         target = get_current_backend()
         self.driver = DICPDriver(target)
-        if self.driver.target == "dicp":
-            self.binary_ext = "ttlinalgdir"
-        elif self.driver.target == "mlu":
+        if self.driver.target == "mlu":
             self.capability = target.arch
             assert isinstance(self.capability, int)
             self.binary_ext = "cnbin"
         elif self.driver.target == "maca":
             self.capability = 80
             self.binary_ext = "mcfatbin"
-        elif self.driver.target == "ascend":
-            self.binary_ext = "npubin"
         else:
             raise RuntimeError(f"Target '{self.target_type}' is not supported.")
-
-    def get_attrs_descriptor(self, params, args):
-        if self.driver.target == "ascend":
-            from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
-
-            return AscendAttrsDescriptor(params, args)
-        else:
-            raise RuntimeError(
-                f"backend {self.driver.target} not supported for get_attrs_descriptor."
-            )
 
     def add_stages(self, stages, options, language=None):
 
         if self.driver.target == "ascend":
             from triton.backends.dicp_triton.npu import (
-                commonir_to_linkedir,
-                linalg_to_bin_enable_npu_compile,
+                linalg_to_bin_enable_npu_compile_910_95,
+                linalg_to_bin_enable_npu_compile_A2_A3,
             )
 
-            stages["linkedir"] = lambda src, metadata: commonir_to_linkedir(
-                src, metadata, options, named_ops=True
-            )
-            stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                src, metadata, options
-            )
+            if options.compile_on_910_95:
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_910_95(
+                        src, metadata, options
+                    )
+                )
+            else:
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+                        src, metadata, options
+                    )
+                )
         else:
             raise RuntimeError("backend not supported")
 
@@ -164,30 +156,17 @@ class CommonIRBackend:
 
     def pack_metadata(self, metadata):
         if self.driver.target == "ascend":
-            from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
-
-            # collect necessary metadata to launch kernels
-            # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.
-            # Get this name as the kernel_name to CANN runtime.
-            # kernel_name is unique to Ascend backend and should not be public.
-            # CANN runtime limits the length of kernel name <= 50.
-            # Considering '\n' is appended, thus the real kernel name <= 49.
             KERNEL_NAME_MAX_LEN = 49
-            kernel_name_orig, mix_mode = metadata.name.split()
+            kernel_name_orig = metadata.kernel_name
             if len(kernel_name_orig) > KERNEL_NAME_MAX_LEN:
                 kernel_name = kernel_name_orig[-KERNEL_NAME_MAX_LEN:]
-                # import warnings
-                # # red = "\x1b[31;20m"
-                # # reset = "\x1b[0m"
-                # warnings.warn(kernel_name_orig + " is truncated to " + kernel_name)
-                # warnings.warn("because '" + kernel_name_orig + "' exceeds torchnpu profiler's length limit < 50")
             else:
                 kernel_name = kernel_name_orig
             return {
                 "kernel_name": kernel_name,
                 "hash": metadata.hash,
                 "debug": metadata.debug,
-                "profiler_registered": TRITON_PROFILER_REGISTERED,
+                "tensor_kinds": metadata.tensor_kinds,
             }
         elif self.driver.target == "mlu":
             return (metadata.num_warps,)

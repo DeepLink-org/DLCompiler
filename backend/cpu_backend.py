@@ -1,5 +1,4 @@
 # CPU Backend for verification
-# Merged from triton_shared backend/compiler.py and backend/driver.py
 
 from triton.backends.compiler import BaseBackend, GPUTarget
 from triton._C.libtriton import ir, passes
@@ -22,14 +21,13 @@ import importlib.util
 import sys
 import platform
 import triton.backends.dicp_triton.utils as dicp_utils
+from triton.backends.dicp_triton.utils import dump_ir
 
-dump_ir = os.environ.get("DLC_DUMP_IR", "0") == "1"
 
-
-def _get_triton_shared_opt_path() -> str:
-    path = os.getenv("TRITON_SHARED_OPT_PATH", "")
+def _get_dicp_triton_opt_path() -> str:
+    path = os.getenv("DICP_TRITON_OPT_PATH", "")
     if path == "":
-        raise Exception("TRITON_SHARED_OPT_PATH is not set.")
+        raise Exception("DICP_TRITON_OPT_PATH is not set.")
     return path
 
 
@@ -41,7 +39,7 @@ def _get_llvm_bin_path(bin_name: str) -> str:
 
 
 def _dump_ir_if_needed(files):
-    path = os.getenv("TRITON_SHARED_DUMP_PATH", "")
+    path = os.getenv("DLC_DUMP_PATH", "")
     if not path:
         return
     for f in files:
@@ -49,21 +47,21 @@ def _dump_ir_if_needed(files):
 
 
 def _get_sanitizer_type():
-    sanitizer_type = os.getenv("TRITON_SHARED_SANITIZER_TYPE", "")
+    sanitizer_type = os.getenv("DLC_SANITIZER_TYPE", "")
     if sanitizer_type != "" and sanitizer_type != "asan" and sanitizer_type != "tsan":
-        raise Exception(f"TRITON_SHARED_SANITIZER_TYPE {sanitizer_type} is invalid.")
+        raise Exception(f"DLC_SANITIZER_TYPE {sanitizer_type} is invalid.")
     return sanitizer_type
 
 
-def _ttir_to_ttsharedir(mod, metadata):
+def _ttir_to_linalg(mod, metadata):
     ttir_code = str(mod)
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, "tt.mlir")
-        dst_path = os.path.join(tmpdir, "ttshared.mlir")
+        dst_path = os.path.join(tmpdir, "linalg.mlir")
         Path(src_path).write_text(ttir_code)
-        triton_shared_opt_path = _get_triton_shared_opt_path()
+        triton_opt_path = _get_dicp_triton_opt_path()
         subprocess_args = [
-            triton_shared_opt_path,
+            triton_opt_path,
             src_path,
             "--triton-to-linalg-experimental",
             "--mlir-print-debuginfo",
@@ -76,27 +74,25 @@ def _ttir_to_ttsharedir(mod, metadata):
         subprocess.check_call(subprocess_args)
         result = Path(dst_path).read_text()
         if dump_ir:
-            dicp_utils._dump_stage_ir(
-                result, metadata["hash"], "kernel.ttsharedir.mlir"
-            )
+            dicp_utils._dump_stage_ir(result, metadata["hash"], "kernel.linalg.mlir")
         return result
 
 
-def _optimize_ttsharedir(ttsharedir: str):
-    return ttsharedir
+def _optimize_linalg(linalg_ir: str):
+    return linalg_ir
 
 
-def _ttsharedir_to_llir(ttsharedir: str, metadata):
+def _linalg_to_llir(linalg_ir: str, metadata):
     with tempfile.TemporaryDirectory() as tmpdir:
-        ttshared_path = os.path.join(tmpdir, "ttshared.mlir")
+        linalg_path = os.path.join(tmpdir, "linalg.mlir")
         llmlir_path = os.path.join(tmpdir, "ll.mlir")
         llir_path = os.path.join(tmpdir, "ll.ir")
-        Path(ttshared_path).write_text(ttsharedir)
+        Path(linalg_path).write_text(linalg_ir)
         mlir_opt_path = _get_llvm_bin_path("mlir-opt")
         subprocess.check_call(
             [
                 mlir_opt_path,
-                ttshared_path,
+                linalg_path,
                 "--convert-elementwise-to-linalg",
                 "--convert-linalg-to-affine-loops",
                 "--empty-tensor-to-alloc-tensor",
@@ -316,11 +312,11 @@ class CPUBackend(BaseBackend):
 
     def add_stages(self, stages, options, language):
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        stages["ttsharedir"] = lambda src, metadata: _optimize_ttsharedir(
-            _ttir_to_ttsharedir(src, metadata)
+        stages["linalg"] = lambda src, metadata: _optimize_linalg(
+            _ttir_to_linalg(src, metadata)
         )
         stages["llir"] = lambda src, metadata: _optimize_llir(
-            _ttsharedir_to_llir(src, metadata)
+            _linalg_to_llir(src, metadata)
         )
         stages["obj"] = lambda src, metadata: _llir_to_bin(src, metadata)
 
@@ -539,13 +535,13 @@ static PyMethodDef ModuleMethods[] = {{
 
 static struct PyModuleDef ModuleDef = {{
   PyModuleDef_HEAD_INIT,
-  \"__triton_shared_ref_cpu_kernel_launcher\",
+  \"__dicp_cpu_kernel_launcher\",
   NULL, //documentation
   -1, //size
   ModuleMethods
 }};
 
-PyMODINIT_FUNC PyInit___triton_shared_ref_cpu_kernel_launcher(void) {{
+PyMODINIT_FUNC PyInit___dicp_cpu_kernel_launcher(void) {{
   PyObject *m = PyModule_Create(&ModuleDef);
   if(m == NULL) {{
     return NULL;
@@ -594,7 +590,7 @@ def compile_module(launcher_src, kernel_placeholder_name):
         src = launcher_src.replace(kernel_placeholder_name, kernel_name)
         key = hashlib.sha256(src.encode("utf-8") + kernel_obj).hexdigest()
         cache = get_cache_manager(key)
-        name = "__triton_shared_ref_cpu_kernel_launcher"
+        name = "__dicp_cpu_kernel_launcher"
         if platform.system() == "Windows":
             filename = f"{name}.pyd"
         else:
@@ -606,7 +602,7 @@ def compile_module(launcher_src, kernel_placeholder_name):
                 if platform.system() == "Windows":
                     if sanitizer_type != "":
                         raise Exception(
-                            "Sanitizers are not supported on Windows with triton-shared."
+                            "Sanitizers are not supported on Windows with DLC."
                         )
                     obj_path = os.path.join(tmpdir, "kernel.obj")
                     launcher_src_path = os.path.join(tmpdir, "main.cxx")

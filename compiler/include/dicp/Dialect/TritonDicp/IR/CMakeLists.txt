@@ -1,0 +1,15 @@
+set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
+
+set(LLVM_TARGET_DEFINITIONS TritonDicpOps.td)
+mlir_tablegen(TritonDicpDialect.h.inc -gen-dialect-decls -dialect=dicp)
+mlir_tablegen(TritonDicpDialect.cpp.inc -gen-dialect-defs -dialect=dicp)
+mlir_tablegen(TritonDicpOps.h.inc -gen-op-decls)
+mlir_tablegen(TritonDicpOps.cpp.inc -gen-op-defs)
+add_mlir_doc(TritonDicpDialect TritonDicpDialect dialects/ -gen-dialect-doc)
+add_mlir_doc(TritonDicpOps TritonDicpOps dialects/ -gen-op-doc)
+add_public_tablegen_target(TritonDicpTableGen)
+
+set(LLVM_TARGET_DEFINITIONS TritonDicpAttrDefs.td)
+mlir_tablegen(TritonDicpOpsAttrDefs.h.inc -gen-attrdef-decls)
+mlir_tablegen(TritonDicpOpsAttrDefs.cpp.inc -gen-attrdef-defs)
+add_public_tablegen_target(TritonDicpAttrDefsIncGen)

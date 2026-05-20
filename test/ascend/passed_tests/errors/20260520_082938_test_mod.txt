@@ -1,0 +1,93 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /usr/local/python3.11.15/bin/python
+rootdir: /mnt/data01/kezengxiang/work/new/0512/DLCompiler
+plugins: forked-1.6.0, rerunfailures-16.1, xdist-3.8.0
+collecting ... collected 3 items
+
+test_mod.py::test_case[param_list0] FAILED                               [ 33%]
+test_mod.py::test_case[param_list1] FAILED                               [ 66%]
+test_mod.py::test_case[param_list2] PASSED                               [100%]
+
+=================================== FAILURES ===================================
+____________________________ test_case[param_list0] ____________________________
+
+param_list = ['float32', (2, 4096, 8), 2, 32768, 1024]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            ["float32", (2, 4096, 8), 2, 32768, 1024],
+            ["float16", (2, 4096, 8), 2, 32768, 1024],
+            ["int8", (2, 4096, 8), 2, 32768, 1024],
+        ],
+    )
+    def test_case(param_list):
+        dtype, shape, ncore, xblock, xblock_sub = param_list
+        if dtype == "int8":
+            x0 = torch.randint(
+                low=1, high=127, size=shape, dtype=eval("torch." + dtype)
+            ).npu()
+            x1 = torch.randint(
+                low=1, high=127, size=shape, dtype=eval("torch." + dtype)
+            ).npu()
+        else:
+            x0 = test_common.generate_tensor(shape, dtype).npu()
+            x1 = test_common.generate_tensor(shape, dtype).npu()
+        y_ref = torch_pointwise(x0.cpu(), x1.cpu())
+        y_ref = y_ref.npu()
+        y_cal = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
+        triton_mod[ncore, 1, 1](x0, x1, y_cal, xblock, xblock_sub)
+        # test_common.validate_cmp(dtype, y_cal, y_ref.npu())
+        if dtype == "int8":
+            torch.equal(y_cal, y_ref)
+        else:
+            res = torch.isclose(y_cal, y_ref, rtol=1e-3, atol=1e-3, equal_nan=True)
+            if not res.all():
+                max_diff = torch.max((y_ref - y_cal)).item()
+>               raise ValueError(f"Tensors are not close, diff is {max_diff}")
+E               ValueError: Tensors are not close, diff is 4.559937477111816
+
+test_mod.py:81: ValueError
+____________________________ test_case[param_list1] ____________________________
+
+param_list = ['float16', (2, 4096, 8), 2, 32768, 1024]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            ["float32", (2, 4096, 8), 2, 32768, 1024],
+            ["float16", (2, 4096, 8), 2, 32768, 1024],
+            ["int8", (2, 4096, 8), 2, 32768, 1024],
+        ],
+    )
+    def test_case(param_list):
+        dtype, shape, ncore, xblock, xblock_sub = param_list
+        if dtype == "int8":
+            x0 = torch.randint(
+                low=1, high=127, size=shape, dtype=eval("torch." + dtype)
+            ).npu()
+            x1 = torch.randint(
+                low=1, high=127, size=shape, dtype=eval("torch." + dtype)
+            ).npu()
+        else:
+            x0 = test_common.generate_tensor(shape, dtype).npu()
+            x1 = test_common.generate_tensor(shape, dtype).npu()
+        y_ref = torch_pointwise(x0.cpu(), x1.cpu())
+        y_ref = y_ref.npu()
+        y_cal = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
+        triton_mod[ncore, 1, 1](x0, x1, y_cal, xblock, xblock_sub)
+        # test_common.validate_cmp(dtype, y_cal, y_ref.npu())
+        if dtype == "int8":
+            torch.equal(y_cal, y_ref)
+        else:
+            res = torch.isclose(y_cal, y_ref, rtol=1e-3, atol=1e-3, equal_nan=True)
+            if not res.all():
+                max_diff = torch.max((y_ref - y_cal)).item()
+>               raise ValueError(f"Tensors are not close, diff is {max_diff}")
+E               ValueError: Tensors are not close, diff is nan
+
+test_mod.py:81: ValueError
+=========================== short test summary info ============================
+FAILED test_mod.py::test_case[param_list0] - ValueError: Tensors are not clos...
+FAILED test_mod.py::test_case[param_list1] - ValueError: Tensors are not clos...
+==================== 2 failed, 1 passed in 65.95s (0:01:05) ====================

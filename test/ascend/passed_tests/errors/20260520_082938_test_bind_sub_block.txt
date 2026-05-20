@@ -1,0 +1,54 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /usr/local/python3.11.15/bin/python
+rootdir: /mnt/data01/kezengxiang/work/new/0512/DLCompiler
+plugins: forked-1.6.0, rerunfailures-16.1, xdist-3.8.0
+collecting ... collected 1 item
+
+test_bind_sub_block.py::test_matmul FAILED                               [100%]
+
+=================================== FAILURES ===================================
+_________________________________ test_matmul __________________________________
+
+    def test_matmul():
+        torch.manual_seed(0)
+        a = torch.randn((128, 128), device=DEV, dtype=torch.float16)
+        b = torch.randn((128, 128), device=DEV, dtype=torch.float16)
+        triton_output = matmul(a, b, activation)
+        torch_output = torch_matmul(a, b, activation)
+        print(f"triton_output_with_fp16_inputs={triton_output}")
+        print(f"torch_output_with_fp16_inputs={torch_output}")
+>       torch.testing.assert_close(triton_output, torch_output, rtol=0.01, atol=1e-03)
+E       AssertionError: Tensor-likes are not close!
+E       
+E       Mismatched elements: 758 / 16384 (4.6%)
+E       Greatest absolute difference: nan at index (0, 78) (up to 0.001 allowed)
+E       Greatest relative difference: nan at index (0, 78) (up to 0.01 allowed)
+
+test_bind_sub_block.py:199: AssertionError
+----------------------------- Captured stdout call -----------------------------
+triton_output_with_fp16_inputs=tensor([[ 3.1543e+00,  8.4521e-01,  3.6777e+00,  ...,  2.5195e+00,
+          1.5430e-01, -1.4346e+00],
+        [-5.9400e+03,  2.3867e+00, -3.8934e-04,  ...,  8.9844e-01,
+          8.7891e-01,  9.6436e-01],
+        [ 4.0483e-04, -1.5498e+00, -1.5752e+00,  ...,  9.3848e-01,
+          5.9531e+00,  1.3398e+01],
+        ...,
+        [ 1.6172e+01,  8.9648e-01,  8.5938e-01,  ...,  1.6221e+00,
+          1.2988e+00,  1.0016e+01],
+        [ 5.4336e+00,  1.1883e+01,  9.4922e-01,  ...,  1.0605e+00,
+          9.8584e-01,  1.2750e+01],
+        [ 7.6406e+00,  8.8965e-01,  8.3496e-01,  ...,  5.6172e+00,
+          5.6992e+00,  1.5844e+01]], device='npu:0', dtype=torch.float16)
+torch_output_with_fp16_inputs=tensor([[ 3.1543,  0.8452,  3.6777,  ..., 16.4531,  0.9355, 12.6172],
+        [19.7812,  6.8438,  0.9395,  ...,  0.9834,  3.2051,  0.9189],
+        [14.4609,  3.1309, 15.4609,  ...,  0.9385,  5.9531, 13.3984],
+        ...,
+        [16.1719,  0.8965,  0.8594,  ...,  1.6211,  1.2988, 10.0156],
+        [ 5.4336, 11.8828,  0.9492,  ...,  1.0605,  0.9858, 12.7500],
+        [ 7.6406,  0.8896,  0.8350,  ...,  5.6172,  5.6992, 15.8438]],
+       device='npu:0', dtype=torch.float16)
+----------------------------- Captured stderr call -----------------------------
+[W520 08:30:12.358723060 ToKernelNpu.cpp:41] Warning: Device do not support double dtype now, dtype cast replace with float. (function operator())
+=========================== short test summary info ============================
+FAILED test_bind_sub_block.py::test_matmul - AssertionError: Tensor-likes are...
+============================== 1 failed in 34.13s ==============================

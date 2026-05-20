@@ -8,7 +8,7 @@ TRITON_PATH=$(python -c "import triton; import os; print(os.path.dirname(triton.
 export PATH="$TRITON_PATH:$TRITON_PATH/_C:$PATH"
 
 # 检查必要工具
-for tool in dicp_opt "triton-shared-opt-v3_4" FileCheck; do
+for tool in dicp_opt FileCheck; do
     if ! command -v "$tool" &> /dev/null; then
         echo "Error: $tool is not available in PATH" >&2
         exit 1
@@ -56,7 +56,6 @@ run_test() {
     # 替换占位符
     local cmd=$(echo "$run_line" | sed "s|%s|$mlir_file|g" | \
                            sed 's|%dicp_opt|dicp_opt|g' | \
-                           sed 's|%triton-shared-opt-v3_4|triton-shared-opt-v3_4|g' | \
                            sed 's|%FileCheck|FileCheck|g')
     
     echo "TEST: $filename"

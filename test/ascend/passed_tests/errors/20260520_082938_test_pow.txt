@@ -1,0 +1,1062 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /usr/local/python3.11.15/bin/python
+rootdir: /mnt/data01/kezengxiang/work/new/0512/DLCompiler
+plugins: forked-1.6.0, rerunfailures-16.1, xdist-3.8.0
+collecting ... collected 18 items
+
+test_pow.py::test_pow_vv[16-float32] PASSED                              [  5%]
+test_pow.py::test_pow_vv[16-float16] FAILED                              [ 11%]
+test_pow.py::test_pow_vv[16-bfloat16] FAILED                             [ 16%]
+test_pow.py::test_pow_vv[256-float32] PASSED                             [ 22%]
+test_pow.py::test_pow_vv[256-float16] FAILED                             [ 27%]
+test_pow.py::test_pow_vv[256-bfloat16] FAILED                            [ 33%]
+test_pow.py::test_pow_vs_dynamic[16-float32] SKIPPED (waiting for bi...) [ 38%]
+test_pow.py::test_pow_vs_dynamic[16-float16] SKIPPED (waiting for bi...) [ 44%]
+test_pow.py::test_pow_vs_dynamic[16-bfloat16] SKIPPED (waiting for b...) [ 50%]
+test_pow.py::test_pow_vs_dynamic[256-float32] SKIPPED (waiting for b...) [ 55%]
+test_pow.py::test_pow_vs_dynamic[256-float16] SKIPPED (waiting for b...) [ 61%]
+test_pow.py::test_pow_vs_dynamic[256-bfloat16] SKIPPED (waiting for ...) [ 66%]
+test_pow.py::test_pow_vs_const[16-float32] PASSED                        [ 72%]
+test_pow.py::test_pow_vs_const[16-float16] FAILED                        [ 77%]
+test_pow.py::test_pow_vs_const[16-bfloat16] FAILED                       [ 83%]
+test_pow.py::test_pow_vs_const[256-float32] PASSED                       [ 88%]
+test_pow.py::test_pow_vs_const[256-float16] FAILED                       [ 94%]
+test_pow.py::test_pow_vs_const[256-bfloat16] FAILED                      [100%]
+
+=================================== FAILURES ===================================
+___________________________ test_pow_vv[16-float16] ____________________________
+
+sigtype = 'float16', N = 16
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vv(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, in_ptr1, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            x1 = tl.load(in_ptr1 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:59: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:321: in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/compiler.py:179: in <lambda>
+    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/npu.py:953: in linalg_to_bin_enable_npu_compile_A2_A3
+    ret = subprocess.run(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmploub0cck/kernel.dicp.mlir', '--target...-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', ...],)
+kwargs = {'env': {'ASCEND_AICPU_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_HOME_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_OPP_PATH': '/usr/local/Ascend/cann-9.0.0/opp', 'ASCEND_RT_VISIBLE_DEVICES': '6', ...}, 'stderr': -1, 'stdout': -1}
+process = <Popen: returncode: 1 args: ['/usr/local/Ascend/cann-9.0.0/tools/bishengir/b...>
+stdout = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): loc("ret"("/mnt/d...py":50:0): loc("ret"("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":54:18)): '
+stderr = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): error: Failed to ...ed to legalize operation \'linalg.map\' that was explicitly marked illegal\n[ERROR] Failed to run BiShengIR pipeline\n'
+retcode = 1
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmploub0cck/kernel.dicp.mlir', '--target=Ascend910B2', '--enable-auto-multi-buffer=True', '--enable-auto-bind-sub-block=True', '--link-aicore-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', '--enable-hfusion-compile=true', '--enable-hivm-compile=true', '--enable-triton-kernel-compile=true', '-o', '/tmp/tmploub0cck/kernel']' returned non-zero exit status 1.
+
+/usr/local/python3.11.15/lib/python3.11/subprocess.py:571: CalledProcessError
+___________________________ test_pow_vv[16-bfloat16] ___________________________
+
+sigtype = 'bfloat16', N = 16
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vv(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, in_ptr1, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            x1 = tl.load(in_ptr1 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:59: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:321: in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/compiler.py:179: in <lambda>
+    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/npu.py:953: in linalg_to_bin_enable_npu_compile_A2_A3
+    ret = subprocess.run(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmp_4qr647s/kernel.dicp.mlir', '--target...-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', ...],)
+kwargs = {'env': {'ASCEND_AICPU_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_HOME_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_OPP_PATH': '/usr/local/Ascend/cann-9.0.0/opp', 'ASCEND_RT_VISIBLE_DEVICES': '6', ...}, 'stderr': -1, 'stdout': -1}
+process = <Popen: returncode: 1 args: ['/usr/local/Ascend/cann-9.0.0/tools/bishengir/b...>
+stdout = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): loc("ret"("/mnt/d...py":50:0): loc("ret"("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":54:18)): '
+stderr = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): error: Failed to ...ed to legalize operation \'linalg.map\' that was explicitly marked illegal\n[ERROR] Failed to run BiShengIR pipeline\n'
+retcode = 1
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmp_4qr647s/kernel.dicp.mlir', '--target=Ascend910B2', '--enable-auto-multi-buffer=True', '--enable-auto-bind-sub-block=True', '--link-aicore-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', '--enable-hfusion-compile=true', '--enable-hivm-compile=true', '--enable-triton-kernel-compile=true', '-o', '/tmp/tmp_4qr647s/kernel']' returned non-zero exit status 1.
+
+/usr/local/python3.11.15/lib/python3.11/subprocess.py:571: CalledProcessError
+___________________________ test_pow_vv[256-float16] ___________________________
+
+sigtype = 'float16', N = 256
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vv(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, in_ptr1, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            x1 = tl.load(in_ptr1 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:59: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:321: in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/compiler.py:179: in <lambda>
+    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/npu.py:953: in linalg_to_bin_enable_npu_compile_A2_A3
+    ret = subprocess.run(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmpj5v_xmit/kernel.dicp.mlir', '--target...-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', ...],)
+kwargs = {'env': {'ASCEND_AICPU_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_HOME_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_OPP_PATH': '/usr/local/Ascend/cann-9.0.0/opp', 'ASCEND_RT_VISIBLE_DEVICES': '6', ...}, 'stderr': -1, 'stdout': -1}
+process = <Popen: returncode: 1 args: ['/usr/local/Ascend/cann-9.0.0/tools/bishengir/b...>
+stdout = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): loc("ret"("/mnt/d...py":50:0): loc("ret"("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":54:18)): '
+stderr = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): error: Failed to ...ed to legalize operation \'linalg.map\' that was explicitly marked illegal\n[ERROR] Failed to run BiShengIR pipeline\n'
+retcode = 1
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmpj5v_xmit/kernel.dicp.mlir', '--target=Ascend910B2', '--enable-auto-multi-buffer=True', '--enable-auto-bind-sub-block=True', '--link-aicore-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', '--enable-hfusion-compile=true', '--enable-hivm-compile=true', '--enable-triton-kernel-compile=true', '-o', '/tmp/tmpj5v_xmit/kernel']' returned non-zero exit status 1.
+
+/usr/local/python3.11.15/lib/python3.11/subprocess.py:571: CalledProcessError
+__________________________ test_pow_vv[256-bfloat16] ___________________________
+
+sigtype = 'bfloat16', N = 256
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vv(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, in_ptr1, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            x1 = tl.load(in_ptr1 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:65: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:59: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:321: in compile
+    next_module = compile_ir(module, metadata)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/compiler.py:179: in <lambda>
+    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/npu.py:953: in linalg_to_bin_enable_npu_compile_A2_A3
+    ret = subprocess.run(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmp7b_w6udl/kernel.dicp.mlir', '--target...-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', ...],)
+kwargs = {'env': {'ASCEND_AICPU_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_HOME_PATH': '/usr/local/Ascend/cann-9.0.0', 'ASCEND_OPP_PATH': '/usr/local/Ascend/cann-9.0.0/opp', 'ASCEND_RT_VISIBLE_DEVICES': '6', ...}, 'stderr': -1, 'stdout': -1}
+process = <Popen: returncode: 1 args: ['/usr/local/Ascend/cann-9.0.0/tools/bishengir/b...>
+stdout = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): loc("ret"("/mnt/d...py":50:0): loc("ret"("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":54:18)): '
+stderr = b'loc("/mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py":50:0): error: Failed to ...ed to legalize operation \'linalg.map\' that was explicitly marked illegal\n[ERROR] Failed to run BiShengIR pipeline\n'
+retcode = 1
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['/usr/local/Ascend/cann-9.0.0/tools/bishengir/bin/bishengir-compile', '/tmp/tmp7b_w6udl/kernel.dicp.mlir', '--target=Ascend910B2', '--enable-auto-multi-buffer=True', '--enable-auto-bind-sub-block=True', '--link-aicore-bitcode=/usr/local/python3.11.15/lib/python3.11/site-packages/triton/backends/dicp_triton/lib/libdevice.10.bc', '--enable-hfusion-compile=true', '--enable-hivm-compile=true', '--enable-triton-kernel-compile=true', '-o', '/tmp/tmp7b_w6udl/kernel']' returned non-zero exit status 1.
+
+/usr/local/python3.11.15/lib/python3.11/subprocess.py:571: CalledProcessError
+________________________ test_pow_vs_const[16-float16] _________________________
+
+args = (<triton.language.core.tensor object at 0xfffcd6194310>, constexpr[1.279296875])
+kwargs = {'_semantic': <triton.language.semantic.TritonSemantic object at 0xfffcd64efe50>}
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "_semantic" not in kwargs or kwargs["_semantic"] is None:
+            raise ValueError("Did you forget to add @triton.jit ? "
+                             "(`_semantic` argument must be provided outside of JIT functions.)")
+>       return fn(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/extra/deeplink/libdevice.py:164: in pow
+    return core.extern_elementwise(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+lib_name = '', lib_path = ''
+args = [<triton.language.core.tensor object at 0xfffcd6194310>, constexpr[1.279296875]]
+arg_type_symbol_dict = {(triton.language.float32, triton.language.float32): ('__hmf_powf', triton.language.float32), (triton.language.float16...ton.language.float16), (triton.language.bfloat16, triton.language.bfloat16): ('__hmf_powDb', triton.language.bfloat16)}
+is_pure = True
+_semantic = <triton.language.semantic.TritonSemantic object at 0xfffcd64efe50>
+
+    @builtin
+    def extern_elementwise(lib_name: str, lib_path: str, args: list, arg_type_symbol_dict: dict, is_pure: bool,
+                           _semantic=None):
+        '''
+            Dispatch an elementwise function to a library
+            :param lib_name: the name of the library
+            :param lib_path: the path of the library
+            :param args: the arguments of the function
+            :param arg_type_symbol_dict: the type of the arguments
+            :param is_pure: whether the function is pure
+            :return: the return value of the function
+        '''
+        dispatch_args = args.copy()
+        all_scalar = True
+        arg_types = []
+        for i in builtins.range(len(dispatch_args)):
+            dispatch_args[i] = _semantic.to_tensor(dispatch_args[i])
+            arg_types.append(dispatch_args[i].dtype)
+            if dispatch_args[i].type.is_block():
+                all_scalar = False
+    
+        arg_types = tuple(arg_types)
+>       ret_type = arg_type_symbol_dict[arg_types][1]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: (triton.language.float16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:3372: KeyError
+
+The above exception was the direct cause of the following exception:
+
+sigtype = 'float16', N = 16
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vs_const(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(1,), dtype=sigtype).item()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:116: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:301: in compile
+    module = src.make_ir(target, options, codegen_fns, module_map, context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <triton.compiler.compiler.ASTSource object at 0xfffcd64edf50>
+target = GPUTarget(backend='ascend', arch='Ascend910B2', warp_size=0)
+options = NPUOptions(debug=False, sanitize_overflow=True, llvm_version=22, kernel_name='triton_', arch='Ascend910B2', cluster_di...n=0, compile_mode='simd', mix_mode='', simt_stack_limit=None, enable_simt_reorder_instruction=False, disable_fma=False)
+codegen_fns = {'min_dot_size': <function min_dot_size.<locals>.<lambda> at 0xfffce61beac0>}
+module_map = {}
+context = <triton._C.libtriton.ir.context object at 0xfffcd63b7670>
+
+    def make_ir(self, target: GPUTarget, options, codegen_fns, module_map, context):
+        from .code_generator import ast_to_ttir
+>       return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
+                           module_map=module_map)
+E       triton.compiler.errors.CompilationError: at 4:10:
+E       def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+E           idx = tl.arange(0, N)
+E           x0 = tl.load(in_ptr0 + idx)
+E           ret = pow(x0, x1)
+E                 ^
+E       (triton.language.float16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:81: CompilationError
+________________________ test_pow_vs_const[16-bfloat16] ________________________
+
+args = (<triton.language.core.tensor object at 0xfffcd61b6d10>, constexpr[-1.8359375])
+kwargs = {'_semantic': <triton.language.semantic.TritonSemantic object at 0xfffcfb6be3d0>}
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "_semantic" not in kwargs or kwargs["_semantic"] is None:
+            raise ValueError("Did you forget to add @triton.jit ? "
+                             "(`_semantic` argument must be provided outside of JIT functions.)")
+>       return fn(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/extra/deeplink/libdevice.py:164: in pow
+    return core.extern_elementwise(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+lib_name = '', lib_path = ''
+args = [<triton.language.core.tensor object at 0xfffcd61b6d10>, constexpr[-1.8359375]]
+arg_type_symbol_dict = {(triton.language.float32, triton.language.float32): ('__hmf_powf', triton.language.float32), (triton.language.float16...ton.language.float16), (triton.language.bfloat16, triton.language.bfloat16): ('__hmf_powDb', triton.language.bfloat16)}
+is_pure = True
+_semantic = <triton.language.semantic.TritonSemantic object at 0xfffcfb6be3d0>
+
+    @builtin
+    def extern_elementwise(lib_name: str, lib_path: str, args: list, arg_type_symbol_dict: dict, is_pure: bool,
+                           _semantic=None):
+        '''
+            Dispatch an elementwise function to a library
+            :param lib_name: the name of the library
+            :param lib_path: the path of the library
+            :param args: the arguments of the function
+            :param arg_type_symbol_dict: the type of the arguments
+            :param is_pure: whether the function is pure
+            :return: the return value of the function
+        '''
+        dispatch_args = args.copy()
+        all_scalar = True
+        arg_types = []
+        for i in builtins.range(len(dispatch_args)):
+            dispatch_args[i] = _semantic.to_tensor(dispatch_args[i])
+            arg_types.append(dispatch_args[i].dtype)
+            if dispatch_args[i].type.is_block():
+                all_scalar = False
+    
+        arg_types = tuple(arg_types)
+>       ret_type = arg_type_symbol_dict[arg_types][1]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: (triton.language.bfloat16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:3372: KeyError
+
+The above exception was the direct cause of the following exception:
+
+sigtype = 'bfloat16', N = 16
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vs_const(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(1,), dtype=sigtype).item()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:116: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:301: in compile
+    module = src.make_ir(target, options, codegen_fns, module_map, context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <triton.compiler.compiler.ASTSource object at 0xfffcd6480e10>
+target = GPUTarget(backend='ascend', arch='Ascend910B2', warp_size=0)
+options = NPUOptions(debug=False, sanitize_overflow=True, llvm_version=22, kernel_name='triton_', arch='Ascend910B2', cluster_di...n=0, compile_mode='simd', mix_mode='', simt_stack_limit=None, enable_simt_reorder_instruction=False, disable_fma=False)
+codegen_fns = {'min_dot_size': <function min_dot_size.<locals>.<lambda> at 0xfffcda0b7ce0>}
+module_map = {}
+context = <triton._C.libtriton.ir.context object at 0xfffcd6481af0>
+
+    def make_ir(self, target: GPUTarget, options, codegen_fns, module_map, context):
+        from .code_generator import ast_to_ttir
+>       return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
+                           module_map=module_map)
+E       triton.compiler.errors.CompilationError: at 4:10:
+E       def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+E           idx = tl.arange(0, N)
+E           x0 = tl.load(in_ptr0 + idx)
+E           ret = pow(x0, x1)
+E                 ^
+E       (triton.language.bfloat16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:81: CompilationError
+________________________ test_pow_vs_const[256-float16] ________________________
+
+args = (<triton.language.core.tensor object at 0xfffef93928d0>, constexpr[0.681640625])
+kwargs = {'_semantic': <triton.language.semantic.TritonSemantic object at 0xfffcd64ece10>}
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "_semantic" not in kwargs or kwargs["_semantic"] is None:
+            raise ValueError("Did you forget to add @triton.jit ? "
+                             "(`_semantic` argument must be provided outside of JIT functions.)")
+>       return fn(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/extra/deeplink/libdevice.py:164: in pow
+    return core.extern_elementwise(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+lib_name = '', lib_path = ''
+args = [<triton.language.core.tensor object at 0xfffef93928d0>, constexpr[0.681640625]]
+arg_type_symbol_dict = {(triton.language.float32, triton.language.float32): ('__hmf_powf', triton.language.float32), (triton.language.float16...ton.language.float16), (triton.language.bfloat16, triton.language.bfloat16): ('__hmf_powDb', triton.language.bfloat16)}
+is_pure = True
+_semantic = <triton.language.semantic.TritonSemantic object at 0xfffcd64ece10>
+
+    @builtin
+    def extern_elementwise(lib_name: str, lib_path: str, args: list, arg_type_symbol_dict: dict, is_pure: bool,
+                           _semantic=None):
+        '''
+            Dispatch an elementwise function to a library
+            :param lib_name: the name of the library
+            :param lib_path: the path of the library
+            :param args: the arguments of the function
+            :param arg_type_symbol_dict: the type of the arguments
+            :param is_pure: whether the function is pure
+            :return: the return value of the function
+        '''
+        dispatch_args = args.copy()
+        all_scalar = True
+        arg_types = []
+        for i in builtins.range(len(dispatch_args)):
+            dispatch_args[i] = _semantic.to_tensor(dispatch_args[i])
+            arg_types.append(dispatch_args[i].dtype)
+            if dispatch_args[i].type.is_block():
+                all_scalar = False
+    
+        arg_types = tuple(arg_types)
+>       ret_type = arg_type_symbol_dict[arg_types][1]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: (triton.language.float16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:3372: KeyError
+
+The above exception was the direct cause of the following exception:
+
+sigtype = 'float16', N = 256
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vs_const(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(1,), dtype=sigtype).item()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:116: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:301: in compile
+    module = src.make_ir(target, options, codegen_fns, module_map, context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <triton.compiler.compiler.ASTSource object at 0xfffcda0f2d10>
+target = GPUTarget(backend='ascend', arch='Ascend910B2', warp_size=0)
+options = NPUOptions(debug=False, sanitize_overflow=True, llvm_version=22, kernel_name='triton_', arch='Ascend910B2', cluster_di...n=0, compile_mode='simd', mix_mode='', simt_stack_limit=None, enable_simt_reorder_instruction=False, disable_fma=False)
+codegen_fns = {'min_dot_size': <function min_dot_size.<locals>.<lambda> at 0xfffce61b87c0>}
+module_map = {}
+context = <triton._C.libtriton.ir.context object at 0xfffcda0f2070>
+
+    def make_ir(self, target: GPUTarget, options, codegen_fns, module_map, context):
+        from .code_generator import ast_to_ttir
+>       return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
+                           module_map=module_map)
+E       triton.compiler.errors.CompilationError: at 4:10:
+E       def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+E           idx = tl.arange(0, N)
+E           x0 = tl.load(in_ptr0 + idx)
+E           ret = pow(x0, x1)
+E                 ^
+E       (triton.language.float16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:81: CompilationError
+_______________________ test_pow_vs_const[256-bfloat16] ________________________
+
+args = (<triton.language.core.tensor object at 0xfffcda09b7d0>, constexpr[0.08544921875])
+kwargs = {'_semantic': <triton.language.semantic.TritonSemantic object at 0xfffcda0c4390>}
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "_semantic" not in kwargs or kwargs["_semantic"] is None:
+            raise ValueError("Did you forget to add @triton.jit ? "
+                             "(`_semantic` argument must be provided outside of JIT functions.)")
+>       return fn(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/extra/deeplink/libdevice.py:164: in pow
+    return core.extern_elementwise(
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:43: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+lib_name = '', lib_path = ''
+args = [<triton.language.core.tensor object at 0xfffcda09b7d0>, constexpr[0.08544921875]]
+arg_type_symbol_dict = {(triton.language.float32, triton.language.float32): ('__hmf_powf', triton.language.float32), (triton.language.float16...ton.language.float16), (triton.language.bfloat16, triton.language.bfloat16): ('__hmf_powDb', triton.language.bfloat16)}
+is_pure = True
+_semantic = <triton.language.semantic.TritonSemantic object at 0xfffcda0c4390>
+
+    @builtin
+    def extern_elementwise(lib_name: str, lib_path: str, args: list, arg_type_symbol_dict: dict, is_pure: bool,
+                           _semantic=None):
+        '''
+            Dispatch an elementwise function to a library
+            :param lib_name: the name of the library
+            :param lib_path: the path of the library
+            :param args: the arguments of the function
+            :param arg_type_symbol_dict: the type of the arguments
+            :param is_pure: whether the function is pure
+            :return: the return value of the function
+        '''
+        dispatch_args = args.copy()
+        all_scalar = True
+        arg_types = []
+        for i in builtins.range(len(dispatch_args)):
+            dispatch_args[i] = _semantic.to_tensor(dispatch_args[i])
+            arg_types.append(dispatch_args[i].dtype)
+            if dispatch_args[i].type.is_block():
+                all_scalar = False
+    
+        arg_types = tuple(arg_types)
+>       ret_type = arg_type_symbol_dict[arg_types][1]
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: (triton.language.bfloat16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/language/core.py:3372: KeyError
+
+The above exception was the direct cause of the following exception:
+
+sigtype = 'bfloat16', N = 256
+
+    @pytest.mark.parametrize("sigtype", types)
+    @pytest.mark.parametrize("N", shapes)
+    def test_pow_vs_const(sigtype, N):
+    
+        def torch_func(x0, x1):
+            res = torch.pow(x0, x1)
+            return res
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+            idx = tl.arange(0, N)
+            x0 = tl.load(in_ptr0 + idx)
+            ret = pow(x0, x1)
+            tl.store(out_ptr0 + idx, ret)
+    
+        def triton_func(x0, x1, N):
+            out = torch.empty_like(x0)
+            triton_kernel[1, 1, 1](out, x0, x1, N)
+            return out
+    
+        x0 = test_common.generate_tensor(shape=(N,), dtype=sigtype).npu()
+        x1 = test_common.generate_tensor(shape=(1,), dtype=sigtype).item()
+    
+>       triton_cal = triton_func(x0, x1, N)
+                     ^^^^^^^^^^^^^^^^^^^^^^
+
+test_pow.py:122: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_pow.py:116: in triton_func
+    triton_kernel[1, 1, 1](out, x0, x1, N)
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:419: in <lambda>
+    return lambda *args, **kwargs: self.run(grid=grid, warmup=False, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:733: in run
+    kernel = self._do_compile(key, signature, device, constexprs, options, attrs, warmup)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/runtime/jit.py:861: in _do_compile
+    kernel = self.compile(src, target=target, options=options.__dict__)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:301: in compile
+    module = src.make_ir(target, options, codegen_fns, module_map, context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <triton.compiler.compiler.ASTSource object at 0xfffcda0c5350>
+target = GPUTarget(backend='ascend', arch='Ascend910B2', warp_size=0)
+options = NPUOptions(debug=False, sanitize_overflow=True, llvm_version=22, kernel_name='triton_', arch='Ascend910B2', cluster_di...n=0, compile_mode='simd', mix_mode='', simt_stack_limit=None, enable_simt_reorder_instruction=False, disable_fma=False)
+codegen_fns = {'min_dot_size': <function min_dot_size.<locals>.<lambda> at 0xfffcd651f560>}
+module_map = {}
+context = <triton._C.libtriton.ir.context object at 0xfffcda0c5130>
+
+    def make_ir(self, target: GPUTarget, options, codegen_fns, module_map, context):
+        from .code_generator import ast_to_ttir
+>       return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
+                           module_map=module_map)
+E       triton.compiler.errors.CompilationError: at 4:10:
+E       def triton_kernel(out_ptr0, in_ptr0, x1: tl.constexpr, N: tl.constexpr):
+E           idx = tl.arange(0, N)
+E           x0 = tl.load(in_ptr0 + idx)
+E           ret = pow(x0, x1)
+E                 ^
+E       (triton.language.bfloat16 ,triton.language.float32)
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/triton/compiler/compiler.py:81: CompilationError
+=============================== warnings summary ===============================
+test/ascend/passed_tests/test_pow.py::test_pow_vv[16-float32]
+  /mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_pow.py:58: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:340.)
+    out = torch.empty_like(x0)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_pow.py::test_pow_vv[16-float16] - subprocess.CalledProcessError: ...
+FAILED test_pow.py::test_pow_vv[16-bfloat16] - subprocess.CalledProcessError:...
+FAILED test_pow.py::test_pow_vv[256-float16] - subprocess.CalledProcessError:...
+FAILED test_pow.py::test_pow_vv[256-bfloat16] - subprocess.CalledProcessError...
+FAILED test_pow.py::test_pow_vs_const[16-float16] - triton.compiler.errors.Co...
+FAILED test_pow.py::test_pow_vs_const[16-bfloat16] - triton.compiler.errors.C...
+FAILED test_pow.py::test_pow_vs_const[256-float16] - triton.compiler.errors.C...
+FAILED test_pow.py::test_pow_vs_const[256-bfloat16] - triton.compiler.errors....
+========= 8 failed, 4 passed, 6 skipped, 1 warning in 78.88s (0:01:18) =========

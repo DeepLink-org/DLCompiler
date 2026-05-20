@@ -22,10 +22,9 @@ from triton.runtime.cache import (
 
 from triton.backends.dicp_triton.npu import (
     make_ttir,
-    ttir_to_linalg,
-    ttir_to_ttsharedir_ascend,
-    ttsharedir_to_linkedir,
-    linalg_to_bin_enable_npu_compile,
+    ttir_to_linalg_dicp,
+    linalg_to_bin_enable_npu_compile_910_95,
+    linalg_to_bin_enable_npu_compile_A2_A3,
     NPUOptions,
 )
 
@@ -218,8 +217,7 @@ if __name__ == "__main__":
         "enable_fp_fusion": True,
         "allow_fp8e4nv": False,
         "allowed_dot_input_precisions": ("ieee", "hf32"),
-        "enable_npu_compile": True,
-        "max_num_imprecise_acc_default": None,
+        "max_num_imprecise_acc_default": 0,
         "extern_libs": None,
         "multibuffer": True,
         "inject_barrier_all": False,

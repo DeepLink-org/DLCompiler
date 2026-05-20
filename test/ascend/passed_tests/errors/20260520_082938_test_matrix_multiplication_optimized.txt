@@ -1,0 +1,724 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /usr/local/python3.11.15/bin/python
+rootdir: /mnt/data01/kezengxiang/work/new/0512/DLCompiler
+plugins: forked-1.6.0, rerunfailures-16.1, xdist-3.8.0
+collecting ... collected 4 items
+
+test_matrix_multiplication_optimized.py::test_matmul_shape[param_list0] FAILED [ 25%]
+test_matrix_multiplication_optimized.py::test_matmul_shape[param_list1] FAILED [ 50%]
+test_matrix_multiplication_optimized.py::test_matmul_shape[param_list2] FAILED [ 75%]
+test_matrix_multiplication_optimized.py::test_matmul_shape[param_list3] FAILED [100%]
+
+=================================== FAILURES ===================================
+________________________ test_matmul_shape[param_list0] ________________________
+
+param_list = [48, 7168, 16384]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+>           print(f"[ERROR] golden: {golden}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:247: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1109: in __format__
+    return object.__format__(self, format_spec)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:568: in __repr__
+    return torch._tensor_str._str(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:722: in _str
+    return _str_intern(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:643: in _str_intern
+    tensor_str = _tensor_str(self, indent)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:375: in _tensor_str
+    formatter = _Formatter(get_summarized_data(self) if summarize else self)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch._tensor_str._Formatter object at 0xfffb48230b10>
+tensor = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb32d05df0>
+
+    def __init__(self, tensor):
+        self.floating_dtype = tensor.dtype.is_floating_point
+        self.int_mode = True
+        self.sci_mode = False
+        self.max_width = 1
+    
+        with torch.no_grad():
+            tensor_view = tensor.reshape(-1)
+    
+        if not self.floating_dtype:
+            for value in tensor_view:
+                value_str = f"{value}"
+                self.max_width = max(self.max_width, len(value_str))
+    
+        else:
+            if tensor.dtype == torch.float4_e2m1fn_x2:  # type: ignore[attr-defined]
+                # torch.float4_e2m1fn_x2 is special and does not support the casts necessary
+                # to print it, we choose to display the uint8 representation here for
+                # convenience of being able to print a tensor.
+                # TODO(#146647): extend this to other dtypes without casts defined, such
+                # as the bits, uint1..7 and int1..7 dtypes.
+                tensor_view = tensor_view.view(torch.uint8)
+    
+>           nonzero_finite_vals = torch.masked_select(
+                tensor_view, torch.isfinite(tensor_view) & tensor_view.ne(0)
+            )
+E           RuntimeError: The Inner error is reported as above. The process exits for this inner error, and the current working operator name is aclnnMaskedSelect.
+E           Since the operator is called asynchronously, the stacktrace may be inaccurate. If you want to get the accurate stacktrace, please set the environment variable ASCEND_LAUNCH_BLOCKING=1.
+E           Note: ASCEND_LAUNCH_BLOCKING=1 will force ops to run in synchronous mode, resulting in performance degradation. Please unset ASCEND_LAUNCH_BLOCKING in time after debugging.
+E           [ERROR] 2026-05-20-08:32:39 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:154: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+param_list = [48, 7168, 16384]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+            print(f"[ERROR] golden: {golden}")
+            torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
+            torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
+            print("run matmul success")
+        except:
+            print(f"[ERROR] M={M} ,K={K}, N={N}存在精度问题")
+            # max diff
+            max_diff = torch.max(torch.abs(result - golden))
+>           print(f"[ERROR] max diff: {max_diff}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb32d059d0>
+format_spec = ''
+
+    def __format__(self, format_spec):
+        if has_torch_function_unary(self):
+            return handle_torch_function(Tensor.__format__, (self,), self, format_spec)
+        if self.dim() == 0 and not self.is_meta and type(self) is Tensor:
+            # Use detach() here to avoid the warning when converting a scalar Tensor that
+            # requires gradients to a python number. It is ok for formatting.
+>           return self.detach().item().__format__(format_spec)
+                   ^^^^^^^^^^^^^^^^^^^^
+E           RuntimeError: operator():../torch_npu/csrc/aten/common/LocalScalarDenseNpu.cpp:23 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(copy_stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:39 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:39.599.108 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1108: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ERROR] M=48 ,K=7168, N=16384存在精度问题
+----------------------------- Captured stderr call -----------------------------
+[E520 08:32:39.643571850 OpParamMaker.cpp:454] operator():../third_party/op-plugin/op_plugin/ops/opapi/MaskedSelectKernelNpuOpApi.cpp:52 NPU function error: call aclnnMaskedSelect failed, error code is 507035
+[ERROR] 2026-05-20-08:32:39 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+[Error]: The vector core execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EZ9999: Inner Error!
+EZ9999[PID: 3519664] 2026-05-20-08:32:39.559.985 (EZ9999):  The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 2, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e00001080, vec error info: 0x1600000060, mte error info: 0x2037c160b, ifu error info: 0x2028931326fc0, ccu error info: 0x40a00e030200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+        TraceBack (most recent call last):
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37c160b, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:1, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 3, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x1600000060, mte error info: 0x2037f3b12, ifu error info: 0x202893133afc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37f3b12, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:2, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 4, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x1600000060, mte error info: 0x2037e7d12, ifu error info: 0x2028931342fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37e7d12, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:3, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 6, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x1600000060, mte error info: 0xfdc7c8c6d3, ifu error info: 0x20289312b2fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x7c8c6d3, fixp_error1 info: 0xfd, fsmId:0, tslot:0, thread:0, ctxid:0, blk:5, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 8, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x5a1745eb00, mte error info: 0xc1a6cf0fd4, ifu error info: 0x202893134afc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x6cf0fd4, fixp_error1 info: 0xc1, fsmId:0, tslot:0, thread:0, ctxid:0, blk:7, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 10, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x6a0357f016, mte error info: 0x2037cdb12, ifu error info: 0x20289312aafc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37cdb12, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:9, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 11, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x690d1d0f6f, mte error info: 0x2037c1d12, ifu error info: 0x20289312aefc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37c1d12, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:10, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 15, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x4318d3e411, mte error info: 0x2037b4312, ifu error info: 0x202893132afc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37b4312, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:14, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 16, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x33095f0f21, mte error info: 0x2037a8512, ifu error info: 0x20289312f2fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37a8512, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:15, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 18, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x601031a12b, mte error info: 0x20379bc12, ifu error info: 0x202893129afc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x379bc12, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:17, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 21, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x2b07b232a1, mte error info: 0x1062c2ff77, ifu error info: 0x20289312c2fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x2c2ff77, fixp_error1 info: 0x10, fsmId:0, tslot:0, thread:0, ctxid:0, blk:20, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 24, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x2d1dd92c05, mte error info: 0xb84481439d, ifu error info: 0x20289312c6fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x481439d, fixp_error1 info: 0xb8, fsmId:0, tslot:0, thread:0, ctxid:0, blk:21, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 25, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x6013232800, mte error info: 0x203782512, ifu error info: 0x20289312cafc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x3782512, fixp_error1 info: 0x2, fsmId:0, tslot:0, thread:0, ctxid:0, blk:22, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 1, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e00001080, vec error info: 0x1600000060, mte error info: 0x2037c200b, ifu error info: 0x2028931336fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37c200b, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:0, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 5, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x1600000060, mte error info: 0x2037e7412, ifu error info: 0x2028931292fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37e7412, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:4, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 7, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x1600000060, mte error info: 0x2037dac12, ifu error info: 0x2028931296fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37dac12, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:6, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 9, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x6a1d14fc8e, mte error info: 0x20379b60b, ifu error info: 0x202893129efc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x379b60b, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:8, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 12, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x311bf80de4, mte error info: 0xabf0f587a, ifu error info: 0x20289312a2fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0xf0f587a, fixp_error1 info: 0xa, fsmId:1, tslot:0, thread:0, ctxid:0, blk:11, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 13, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x720e3230f7, mte error info: 0x20378270b, ifu error info: 0x20289312a6fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x378270b, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:12, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 14, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0xfb1c9349cc, mte error info: 0x2037b4c12, ifu error info: 0x20289312cefc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37b4c12, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:13, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 17, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x8b19971965, mte error info: 0x2037a7b12, ifu error info: 0x20289312bafc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x37a7b12, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:16, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 19, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0xf911d4c044, mte error info: 0x20379b412, ifu error info: 0x20289312b6fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x379b412, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:18, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 20, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013ac, vec error info: 0x491125227b, mte error info: 0x20375c70b, ifu error info: 0x20289312befc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x375c70b, fixp_error1 info: 0x2, fsmId:1, tslot:0, thread:0, ctxid:0, blk:19, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       The error from device(chipId:7, dieId:0), serial number is 14, there is an exception of aivec error, core id is 26, error code = 0x10, dump info: pc start: 0x124e00001000, current: 0x124e000013b0, vec error info: 0x1600000060, mte error info: 0xf773b9a20d, ifu error info: 0x20289312e6fc0, ccu error info: 0x40a00e000200001f, cube error info: 0, biu error info: 0, aic error mask: 0x6500020bd00028c, para base: 0x12c100601800.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:645]
+       The extend info: errcode:(0x10, 0, 0) errorStr: Illegal instruction, which is usually caused by unaligned UUB addresses. fixp_error0 info: 0x3b9a20d, fixp_error1 info: 0xf7, fsmId:1, tslot:0, thread:0, ctxid:0, blk:23, sublk:0, subErrType:4.[FUNC:PrintCoreInfo][FILE:device_error_core_proc.cc][LINE:658]
+       Kernel task happen error, retCode=0x31, [vector core exception].[FUNC:PreCheckTaskErr][FILE:davinci_kernel_task.cc][LINE:1729]
+       rtStreamSynchronize execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+       synchronize stream failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+       aclrtSynchronizeStream failed. stream: 0xaaac0cfce0a0
+       Kernel Run failed. opType: 14, MaskedSelectV3
+       launch failed for MaskedSelectV3, errno:507035.
+
+Exception raised from operator() at ../third_party/op-plugin/op_plugin/ops/opapi/MaskedSelectKernelNpuOpApi.cpp:52 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0xb0 (0xfffd44a4c700 in /usr/local/python3.11.15/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) + 0x68 (0xfffd449ea860 in /usr/local/python3.11.15/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #2: <unknown function> + 0x21598f4 (0xfffb8a4398f4 in /usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
+frame #3: <unknown function> + 0x3a66464 (0xfffb8bd46464 in /usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
+frame #4: <unknown function> + 0xca70c0 (0xfffb88f870c0 in /usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
+frame #5: <unknown function> + 0xca7c9c (0xfffb88f87c9c in /usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
+frame #6: <unknown function> + 0xca5bb8 (0xfffb88f85bb8 in /usr/local/python3.11.15/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
+frame #7: <unknown function> + 0x289da4 (0xfffb88219da4 in /usr/local/Ascend/cann-9.0.0/lib64/libhccl.so)
+frame #8: <unknown function> + 0x80398 (0xfffd48280398 in /lib/aarch64-linux-gnu/libc.so.6)
+frame #9: <unknown function> + 0xe9e9c (0xfffd482e9e9c in /lib/aarch64-linux-gnu/libc.so.6)
+
+________________________ test_matmul_shape[param_list1] ________________________
+
+param_list = [96, 4096, 4096]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+>           print(f"[ERROR] golden: {golden}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:247: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1109: in __format__
+    return object.__format__(self, format_spec)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:568: in __repr__
+    return torch._tensor_str._str(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:722: in _str
+    return _str_intern(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:643: in _str_intern
+    tensor_str = _tensor_str(self, indent)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:375: in _tensor_str
+    formatter = _Formatter(get_summarized_data(self) if summarize else self)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch._tensor_str._Formatter object at 0xfffb481d4290>
+tensor = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb32d052b0>
+
+    def __init__(self, tensor):
+        self.floating_dtype = tensor.dtype.is_floating_point
+        self.int_mode = True
+        self.sci_mode = False
+        self.max_width = 1
+    
+        with torch.no_grad():
+            tensor_view = tensor.reshape(-1)
+    
+        if not self.floating_dtype:
+            for value in tensor_view:
+                value_str = f"{value}"
+                self.max_width = max(self.max_width, len(value_str))
+    
+        else:
+            if tensor.dtype == torch.float4_e2m1fn_x2:  # type: ignore[attr-defined]
+                # torch.float4_e2m1fn_x2 is special and does not support the casts necessary
+                # to print it, we choose to display the uint8 representation here for
+                # convenience of being able to print a tensor.
+                # TODO(#146647): extend this to other dtypes without casts defined, such
+                # as the bits, uint1..7 and int1..7 dtypes.
+                tensor_view = tensor_view.view(torch.uint8)
+    
+>           nonzero_finite_vals = torch.masked_select(
+                tensor_view, torch.isfinite(tensor_view) & tensor_view.ne(0)
+            )
+E           RuntimeError: RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:41 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:41.188.402 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:154: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+param_list = [96, 4096, 4096]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+            print(f"[ERROR] golden: {golden}")
+            torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
+            torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
+            print("run matmul success")
+        except:
+            print(f"[ERROR] M={M} ,K={K}, N={N}存在精度问题")
+            # max diff
+            max_diff = torch.max(torch.abs(result - golden))
+>           print(f"[ERROR] max diff: {max_diff}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb26c3e630>
+format_spec = ''
+
+    def __format__(self, format_spec):
+        if has_torch_function_unary(self):
+            return handle_torch_function(Tensor.__format__, (self,), self, format_spec)
+        if self.dim() == 0 and not self.is_meta and type(self) is Tensor:
+            # Use detach() here to avoid the warning when converting a scalar Tensor that
+            # requires gradients to a python number. It is ok for formatting.
+>           return self.detach().item().__format__(format_spec)
+                   ^^^^^^^^^^^^^^^^^^^^
+E           RuntimeError: operator():../torch_npu/csrc/aten/common/LocalScalarDenseNpu.cpp:23 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(copy_stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:41 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:41.199.597 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1108: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ERROR] M=96 ,K=4096, N=4096存在精度问题
+________________________ test_matmul_shape[param_list2] ________________________
+
+param_list = [96, 18432, 7168]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+>           print(f"[ERROR] golden: {golden}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:247: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1109: in __format__
+    return object.__format__(self, format_spec)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:568: in __repr__
+    return torch._tensor_str._str(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:722: in _str
+    return _str_intern(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:643: in _str_intern
+    tensor_str = _tensor_str(self, indent)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:375: in _tensor_str
+    formatter = _Formatter(get_summarized_data(self) if summarize else self)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch._tensor_str._Formatter object at 0xfffb484870d0>
+tensor = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb23097fb0>
+
+    def __init__(self, tensor):
+        self.floating_dtype = tensor.dtype.is_floating_point
+        self.int_mode = True
+        self.sci_mode = False
+        self.max_width = 1
+    
+        with torch.no_grad():
+            tensor_view = tensor.reshape(-1)
+    
+        if not self.floating_dtype:
+            for value in tensor_view:
+                value_str = f"{value}"
+                self.max_width = max(self.max_width, len(value_str))
+    
+        else:
+            if tensor.dtype == torch.float4_e2m1fn_x2:  # type: ignore[attr-defined]
+                # torch.float4_e2m1fn_x2 is special and does not support the casts necessary
+                # to print it, we choose to display the uint8 representation here for
+                # convenience of being able to print a tensor.
+                # TODO(#146647): extend this to other dtypes without casts defined, such
+                # as the bits, uint1..7 and int1..7 dtypes.
+                tensor_view = tensor_view.view(torch.uint8)
+    
+>           nonzero_finite_vals = torch.masked_select(
+                tensor_view, torch.isfinite(tensor_view) & tensor_view.ne(0)
+            )
+E           RuntimeError: RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:42 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:42.844.783 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:154: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+param_list = [96, 18432, 7168]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+            print(f"[ERROR] golden: {golden}")
+            torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
+            torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
+            print("run matmul success")
+        except:
+            print(f"[ERROR] M={M} ,K={K}, N={N}存在精度问题")
+            # max diff
+            max_diff = torch.max(torch.abs(result - golden))
+>           print(f"[ERROR] max diff: {max_diff}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb23095cd0>
+format_spec = ''
+
+    def __format__(self, format_spec):
+        if has_torch_function_unary(self):
+            return handle_torch_function(Tensor.__format__, (self,), self, format_spec)
+        if self.dim() == 0 and not self.is_meta and type(self) is Tensor:
+            # Use detach() here to avoid the warning when converting a scalar Tensor that
+            # requires gradients to a python number. It is ok for formatting.
+>           return self.detach().item().__format__(format_spec)
+                   ^^^^^^^^^^^^^^^^^^^^
+E           RuntimeError: operator():../torch_npu/csrc/aten/common/LocalScalarDenseNpu.cpp:23 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(copy_stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:42 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:42.876.316 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1108: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ERROR] M=96 ,K=18432, N=7168存在精度问题
+________________________ test_matmul_shape[param_list3] ________________________
+
+param_list = [46, 2048, 768]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+>           print(f"[ERROR] golden: {golden}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:247: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1109: in __format__
+    return object.__format__(self, format_spec)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:568: in __repr__
+    return torch._tensor_str._str(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:722: in _str
+    return _str_intern(self, tensor_contents=tensor_contents)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:643: in _str_intern
+    tensor_str = _tensor_str(self, indent)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:375: in _tensor_str
+    formatter = _Formatter(get_summarized_data(self) if summarize else self)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <torch._tensor_str._Formatter object at 0xfffb26bce110>
+tensor = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb23095550>
+
+    def __init__(self, tensor):
+        self.floating_dtype = tensor.dtype.is_floating_point
+        self.int_mode = True
+        self.sci_mode = False
+        self.max_width = 1
+    
+        with torch.no_grad():
+            tensor_view = tensor.reshape(-1)
+    
+        if not self.floating_dtype:
+            for value in tensor_view:
+                value_str = f"{value}"
+                self.max_width = max(self.max_width, len(value_str))
+    
+        else:
+            if tensor.dtype == torch.float4_e2m1fn_x2:  # type: ignore[attr-defined]
+                # torch.float4_e2m1fn_x2 is special and does not support the casts necessary
+                # to print it, we choose to display the uint8 representation here for
+                # convenience of being able to print a tensor.
+                # TODO(#146647): extend this to other dtypes without casts defined, such
+                # as the bits, uint1..7 and int1..7 dtypes.
+                tensor_view = tensor_view.view(torch.uint8)
+    
+>           nonzero_finite_vals = torch.masked_select(
+                tensor_view, torch.isfinite(tensor_view) & tensor_view.ne(0)
+            )
+E           RuntimeError: RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:44 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:44.539.413 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor_str.py:154: RuntimeError
+
+During handling of the above exception, another exception occurred:
+
+param_list = [46, 2048, 768]
+
+    @pytest.mark.parametrize(
+        "param_list",
+        [
+            #  [2048, 7168, 16384],
+            #  [4096, 4096, 4096],
+            #  [4096, 18432, 7168],
+            #  [8246, 2048, 768],
+            [48, 7168, 16384],
+            [96, 4096, 4096],
+            [96, 18432, 7168],
+            [46, 2048, 768],
+        ],
+    )
+    def test_matmul_shape(param_list):
+        M, K, N = param_list
+        mat_a = torch.randn([M, K], dtype=torch.bfloat16, device="npu")
+        mat_b = torch.randn([K, N], dtype=torch.bfloat16, device="npu")
+    
+        result = triton_matmul(mat_a, mat_b)
+        golden = torch.matmul(mat_a, mat_b)
+    
+        mask = golden.abs() < 1.0
+        tmpatol = tmprtol = 2**-6
+        try:
+            print(f"[ERROR] golden: {golden}")
+            torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)
+            torch.testing.assert_close(result[~mask], golden[~mask], atol=0, rtol=tmprtol)
+            print("run matmul success")
+        except:
+            print(f"[ERROR] M={M} ,K={K}, N={N}存在精度问题")
+            # max diff
+            max_diff = torch.max(torch.abs(result - golden))
+>           print(f"[ERROR] max diff: {max_diff}")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test_matrix_multiplication_optimized.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <[RuntimeError('RunOpApiV2:../torch_npu/csrc/framework/OpCommand.cpp:281 NPU function error: c10_npu::acl::AclrtSynchr...ult = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]\n') raised in repr()] Tensor object at 0xfffb23094410>
+format_spec = ''
+
+    def __format__(self, format_spec):
+        if has_torch_function_unary(self):
+            return handle_torch_function(Tensor.__format__, (self,), self, format_spec)
+        if self.dim() == 0 and not self.is_meta and type(self) is Tensor:
+            # Use detach() here to avoid the warning when converting a scalar Tensor that
+            # requires gradients to a python number. It is ok for formatting.
+>           return self.detach().item().__format__(format_spec)
+                   ^^^^^^^^^^^^^^^^^^^^
+E           RuntimeError: operator():../torch_npu/csrc/aten/common/LocalScalarDenseNpu.cpp:23 NPU function error: c10_npu::acl::AclrtSynchronizeStreamWithTimeout(copy_stream), error code is 507035
+E           [ERROR] 2026-05-20-08:32:44 (PID:3519664, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: The vector core execution is abnormal. 
+E                   Rectify the fault based on the error information in the ascend log.
+E           EE9999: Inner Error!
+E           EE9999[PID: 3519664] 2026-05-20-08:32:44.551.785 (EE9999):  rtStreamSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+E                   TraceBack (most recent call last):
+E                  synchronize stream with timeout failed, runtime result = 507035[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/usr/local/python3.11.15/lib/python3.11/site-packages/torch/_tensor.py:1108: RuntimeError
+----------------------------- Captured stdout call -----------------------------
+[ERROR] M=46 ,K=2048, N=768存在精度问题
+=========================== short test summary info ============================
+FAILED test_matrix_multiplication_optimized.py::test_matmul_shape[param_list0]
+FAILED test_matrix_multiplication_optimized.py::test_matmul_shape[param_list1]
+FAILED test_matrix_multiplication_optimized.py::test_matmul_shape[param_list2]
+FAILED test_matrix_multiplication_optimized.py::test_matmul_shape[param_list3]
+============================== 4 failed in 45.89s ==============================
+[W520 08:32:45.889518790 NPUStream.cpp:596] Warning: NPU warning, error code is 507035[Error]: 
+[Error]: The vector core execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EE9999: Inner Error!
+EE9999[PID: 3519664] 2026-05-20-08:32:45.788.083 (EE9999):  rtDeviceSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+        TraceBack (most recent call last):
+       wait for compute device to finish failed, runtime result = 507035.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+ (function npuSynchronizeUsedDevices)
+[W520 08:32:45.926816480 NPUStream.cpp:578] Warning: NPU warning, error code is 507035[Error]: 
+[Error]: The vector core execution is abnormal. 
+        Rectify the fault based on the error information in the ascend log.
+EE9999: Inner Error!
+EE9999[PID: 3519664] 2026-05-20-08:32:45.822.264 (EE9999):  rtDeviceSynchronizeWithTimeout execution failed, reason=vector core exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:65]
+        TraceBack (most recent call last):
+       wait for compute device to finish failed, runtime result = 507035.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+ (function npuSynchronizeDevice)

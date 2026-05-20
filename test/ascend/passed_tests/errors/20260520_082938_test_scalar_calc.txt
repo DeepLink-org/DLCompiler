@@ -1,0 +1,111 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0 -- /usr/local/python3.11.15/bin/python
+rootdir: /mnt/data01/kezengxiang/work/new/0512/DLCompiler
+plugins: forked-1.6.0, rerunfailures-16.1, xdist-3.8.0
+collecting ... collected 26 items
+
+test_scalar_calc.py::test_scalar_add_calc[param_list0] PASSED            [  3%]
+test_scalar_calc.py::test_scalar_sub_calc[param_list0] PASSED            [  7%]
+test_scalar_calc.py::test_scalar_mul_calc[param_list0] PASSED            [ 11%]
+test_scalar_calc.py::test_scalar_div_calc[param_list0] PASSED            [ 15%]
+test_scalar_calc.py::test_scalar_remf_calc[param_list0] [W520 08:34:58.790728550 ToKernelNpu.cpp:41] Warning: Device do not support double dtype now, dtype cast replace with float. (function operator())
+FAILED           [ 19%]
+test_scalar_calc.py::test_scalar_negf_calc[param_list0] PASSED           [ 23%]
+test_scalar_calc.py::test_scalar_cmpf_calc[param_list0] PASSED           [ 26%]
+test_scalar_calc.py::test_scalar_ceil_calc[param_list0] PASSED           [ 30%]
+test_scalar_calc.py::test_scalar_floor_calc[param_list0] PASSED          [ 34%]
+test_scalar_calc.py::test_scalar_maximum_nanall_calc[param_list0] PASSED [ 38%]
+test_scalar_calc.py::test_scalar_maximum_nannone_calc[param_list0] PASSED [ 42%]
+test_scalar_calc.py::test_scalar_minimum_nanall_calc[param_list0] PASSED [ 46%]
+test_scalar_calc.py::test_scalar_minimum_nannone_calc[param_list0] PASSED [ 50%]
+test_scalar_calc.py::test_scalar_extf_calc[param_list0] PASSED           [ 53%]
+test_scalar_calc.py::test_scalar_truncf_calc[param_list0] PASSED         [ 57%]
+test_scalar_calc.py::test_scalar_exp_calc[param_list0] PASSED            [ 61%]
+test_scalar_calc.py::test_scalar_log_calc[param_list0] PASSED            [ 65%]
+test_scalar_calc.py::test_scalar_log2_calc[param_list0] PASSED           [ 69%]
+test_scalar_calc.py::test_scalar_sin_calc[param_list0] PASSED            [ 73%]
+test_scalar_calc.py::test_scalar_cos_calc[param_list0] PASSED            [ 76%]
+test_scalar_calc.py::test_scalar_abs_calc[param_list0] PASSED            [ 80%]
+test_scalar_calc.py::test_scalar_erf_calc[param_list0] PASSED            [ 84%]
+test_scalar_calc.py::test_scalar_sqrt_calc[param_list0] PASSED           [ 88%]
+test_scalar_calc.py::test_scalar_rsqrt_calc[param_list0] PASSED          [ 92%]
+test_scalar_calc.py::test_scalar_tanh_calc[param_list0] PASSED           [ 96%]
+test_scalar_calc.py::test_scalar_sum_calc[param_list0] PASSED            [100%]
+
+=================================== FAILURES ===================================
+______________________ test_scalar_remf_calc[param_list0] ______________________
+
+param_list = ['float32', 16]
+
+    @pytest.mark.parametrize("param_list", [["float32", 16]])
+    def test_scalar_remf_calc(param_list):
+    
+        @triton.jit
+        def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
+            idx = 0
+            tmp0 = tl.load(in_ptr0 + idx)
+            tmp1 = tmp0 % 2.0
+            tl.store(out_ptr0 + idx, tmp1)
+    
+        def torch_func(x0):
+            y = x0[0]
+            y = y % 2.0
+            return y
+    
+        dtype, N = param_list
+        x0 = test_common.generate_tensor((N,), dtype).npu()
+        y_ref = torch_func(x0)
+        y_cal = test_common.generate_tensor((1,), dtype).npu()
+        triton_kernel[1, 1, 1](y_cal, x0, N=N)
+>       test_common.validate_cmp(dtype, y_cal[0], y_ref)
+
+test_scalar_calc.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+dtype = 'float32', y_cal = tensor(-0.2510, device='npu:0')
+y_ref = tensor(1.7490, device='npu:0'), overflow_mode = None
+
+    def validate_cmp(dtype, y_cal, y_ref, overflow_mode: Optional[str] = None):
+        y_cal = y_cal.npu()
+        y_ref = y_ref.npu()
+        if overflow_mode == "saturate":
+            if dtype in ["float32", "float16"]:
+                min_value = -torch.finfo(dtype).min
+                max_value = torch.finfo(dtype).max
+            elif dtype in ["int32", "int16", "int8"]:
+                min_value = torch.iinfo(dtype).min
+                max_value = torch.iinfo(dtype).max
+            elif dtype == "bool":
+                min_value = 0
+                max_value = 1
+            else:
+                raise ValueError('Invalid parameter "dtype" is found : {}'.format(dtype))
+            y_ref = torch.clamp(y_ref, min=min_value, max=max_value)
+        if dtype == "float16":
+            torch.testing.assert_close(y_ref, y_cal, rtol=1e-03, atol=1e-03, equal_nan=True)
+        elif dtype == "bfloat16":
+            torch.testing.assert_close(
+                y_ref.to(torch.float32),
+                y_cal.to(torch.float32),
+                rtol=1e-03,
+                atol=1e-03,
+                equal_nan=True,
+            )
+        elif dtype == "float32":
+>           torch.testing.assert_close(y_ref, y_cal, rtol=1e-04, atol=1e-04, equal_nan=True)
+E           AssertionError: Scalars are not close!
+E           
+E           Expected -0.25095105171203613 but got 1.7490489482879639.
+E           Absolute difference: 2.0 (up to 0.0001 allowed)
+E           Relative difference: 7.96968168236641 (up to 0.0001 allowed)
+
+test_common.py:160: AssertionError
+=============================== warnings summary ===============================
+test/ascend/passed_tests/test_scalar_calc.py::test_scalar_remf_calc[param_list0]
+  /mnt/data01/kezengxiang/work/new/0512/DLCompiler/test/ascend/passed_tests/test_scalar_calc.py:139: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:340.)
+    y = y % 2.0
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_scalar_calc.py::test_scalar_remf_calc[param_list0] - AssertionErr...
+============= 1 failed, 25 passed, 1 warning in 132.58s (0:02:12) ==============

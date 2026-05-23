@@ -1,6 +1,7 @@
 #include "dicp/Utils/Utils.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -13,19 +14,20 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Interfaces/ValueBoundsOpInterface.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -33,37 +35,86 @@
 #include <limits>
 #include <map>
 #include <optional>
-#include <unordered_set>
+#include <utility>
 #include <variant>
 
 #define DEBUG_TYPE "Dicp-Utils"
+#define LDBG(X) LLVM_DEBUG(llvm::dbgs() << "[" DEBUG_TYPE "] " << X << "\n")
 using namespace mlir;
 
 namespace mlir::dicp {
+
+namespace {
+
+/// Collects constant integer folds for a binary OpFoldResult pair.
+static std::pair<std::optional<int64_t>, std::optional<int64_t>>
+getConstantOperands(OpFoldResult lhs, OpFoldResult rhs) {
+  return {getConstantIntValue(lhs), getConstantIntValue(rhs)};
+}
+
+/// Materializes a binary OpFoldResult pair as index-typed SSA values when
+/// folding alone is not sufficient.
+static std::pair<Value, Value> materializeIndexOperands(OpBuilder &builder,
+                                                        Location loc,
+                                                        OpFoldResult lhs,
+                                                        OpFoldResult rhs) {
+  return {getValueOrCreateConstantIndexOp(builder, loc, lhs),
+          getValueOrCreateConstantIndexOp(builder, loc, rhs)};
+}
+
+} // namespace
 
 llvm::StringRef getBackend(ModuleOp module) {
   if (!module)
     return llvm::StringRef();
 
   if (auto strAttr = module->getAttrOfType<StringAttr>("dicp.backend"))
-    return strAttr.getValue(); // StringRef，适配 StringSwitch
+    return strAttr
+        .getValue(); // Keep StringRef to interoperate with StringSwitch.
 
-  return llvm::StringRef(); // 空字符串
+  return llvm::StringRef(); // Empty backend means "not configured".
 }
 
 bool isAscendBackend(ModuleOp module) { return getBackend(module) == "ascend"; }
 
-static Value createConstIndexValueOp(const Location &loc, OpBuilder &b,
-                                     int64_t value) {
+Value createConstIndexValueOp(Location loc, OpBuilder &b, int64_t value) {
   return b.create<arith::ConstantOp>(loc, b.getIndexAttr(value)).getResult();
 }
 
-static std::optional<int64_t> getConstantOfAttr(const OpFoldResult &arg) {
+std::optional<int64_t> getConstantOfAttr(const OpFoldResult &arg) {
   if (isa<Attribute>(arg)) {
     return getConstantIntValue(arg);
   }
 
   return std::nullopt;
+}
+
+Value traceToSourceRoot(Value value) {
+  while (Operation *defOp = value.getDefiningOp()) {
+    if (auto viewLike = dyn_cast<ViewLikeOpInterface>(defOp)) {
+      value = viewLike.getViewSource();
+      continue;
+    }
+    if (auto toTensor = dyn_cast<bufferization::ToTensorOp>(defOp)) {
+      value = toTensor.getBuffer();
+      continue;
+    }
+    if (auto toBuffer = dyn_cast<bufferization::ToBufferOp>(defOp)) {
+      value = toBuffer.getTensor();
+      continue;
+    }
+    if (auto castOp = dyn_cast<memref::CastOp>(defOp)) {
+      value = castOp.getSource();
+      continue;
+    }
+    if (auto reinterpretCast = dyn_cast<memref::ReinterpretCastOp>(defOp)) {
+      value = reinterpretCast.getSource();
+      continue;
+    }
+    break;
+  }
+
+  return value;
 }
 
 std::optional<int64_t>
@@ -75,19 +126,163 @@ getLastStrideOfReinterpretCastOp(memref::ReinterpretCastOp op) {
   }
 
   OpFoldResult lastStride = mixedStrides.back();
-  if (auto attr = dyn_cast<Attribute>(lastStride)) {
-    return getConstantOfAttr(lastStride);
-  } else if (auto value = dyn_cast<Value>(lastStride)) {
-    auto defOp = value.getDefiningOp();
-    if (auto constIndexOp = dyn_cast<arith::ConstantIndexOp>(defOp)) {
-      int64_t constValue = constIndexOp.value();
-      return constValue;
-    } else if (auto constIntOp = dyn_cast<arith::ConstantIntOp>(defOp)) {
-      int64_t constValue = constIntOp.value();
-      return constValue;
-    }
-  }
+  if (std::optional<int64_t> stride = getConstantIntValue(lastStride))
+    return stride;
+
+  LDBG("getLastStrideOfReinterpretCastOp: non-constant last stride in " << *op);
   return std::nullopt;
+}
+
+OpFoldResult addOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(*lhsCst + *rhsCst);
+  if (lhsCst && *lhsCst == 0)
+    return rhs;
+  if (rhsCst && *rhsCst == 0)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::AddIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+OpFoldResult mulOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(*lhsCst * *rhsCst);
+  if ((lhsCst && *lhsCst == 0) || (rhsCst && *rhsCst == 0))
+    return builder.getIndexAttr(0);
+  if (lhsCst && *lhsCst == 1)
+    return rhs;
+  if (rhsCst && *rhsCst == 1)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::MulIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+OpFoldResult subOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(*lhsCst - *rhsCst);
+  if (lhs == rhs)
+    return builder.getIndexAttr(0);
+  if (rhsCst && *rhsCst == 0)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::SubIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+OpFoldResult divOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (rhsCst && *rhsCst == 0) {
+    LDBG("divOfrs: rejected division by zero at " << loc);
+    emitError(loc) << "cannot divide by zero";
+    return OpFoldResult();
+  }
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(*lhsCst / *rhsCst);
+  if (lhsCst && *lhsCst == 0)
+    return lhs;
+  if (rhsCst && *rhsCst == 1)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::DivSIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+OpFoldResult remOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (rhsCst && *rhsCst == 0) {
+    LDBG("remOfrs: rejected remainder by zero at " << loc);
+    emitError(loc) << "cannot compute remainder by zero";
+    return OpFoldResult();
+  }
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(*lhsCst % *rhsCst);
+  if (lhsCst && *lhsCst == 0)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::RemSIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+OpFoldResult minOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(std::min(*lhsCst, *rhsCst));
+  if (lhs == rhs)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::MinSIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+OpFoldResult maxOfrs(OpBuilder &builder, Location loc, OpFoldResult lhs,
+                     OpFoldResult rhs) {
+  auto [lhsCst, rhsCst] = getConstantOperands(lhs, rhs);
+  if (lhsCst && rhsCst)
+    return builder.getIndexAttr(std::max(*lhsCst, *rhsCst));
+  if (lhs == rhs)
+    return lhs;
+
+  auto [lhsValue, rhsValue] = materializeIndexOperands(builder, loc, lhs, rhs);
+  return builder.create<arith::MaxSIOp>(loc, lhsValue, rhsValue).getResult();
+}
+
+//===----------------------------------------------------------------------===//
+// Slice Proof Utilities
+//===----------------------------------------------------------------------===//
+
+FailureOr<bool> proveOfrEqual(OpFoldResult lhs, OpFoldResult rhs) {
+  // Fast path: identical values
+  if (lhs == rhs)
+    return true;
+
+  // Fast path: both are constants
+  auto lhsConst = getConstantIntValue(lhs);
+  auto rhsConst = getConstantIntValue(rhs);
+  if (lhsConst && rhsConst)
+    return *lhsConst == *rhsConst;
+
+  // Symbolic reasoning via ValueBoundsConstraintSet
+  return ValueBoundsConstraintSet::areEqual(
+      ValueBoundsConstraintSet::Variable(lhs),
+      ValueBoundsConstraintSet::Variable(rhs));
+}
+
+FailureOr<bool> proveSlicesEquivalent(MLIRContext *ctx,
+                                      ArrayRef<OpFoldResult> offsetsA,
+                                      ArrayRef<OpFoldResult> sizesA,
+                                      ArrayRef<OpFoldResult> stridesA,
+                                      ArrayRef<OpFoldResult> offsetsB,
+                                      ArrayRef<OpFoldResult> sizesB,
+                                      ArrayRef<OpFoldResult> stridesB) {
+  return ValueBoundsConstraintSet::areEquivalentSlices(
+      ctx, HyperrectangularSlice(offsetsA, sizesA, stridesA),
+      HyperrectangularSlice(offsetsB, sizesB, stridesB));
+}
+
+FailureOr<bool> proveSlicesDisjoint(MLIRContext *ctx,
+                                    ArrayRef<OpFoldResult> offsetsA,
+                                    ArrayRef<OpFoldResult> sizesA,
+                                    ArrayRef<OpFoldResult> stridesA,
+                                    ArrayRef<OpFoldResult> offsetsB,
+                                    ArrayRef<OpFoldResult> sizesB,
+                                    ArrayRef<OpFoldResult> stridesB) {
+  FailureOr<bool> overlap = ValueBoundsConstraintSet::areOverlappingSlices(
+      ctx, HyperrectangularSlice(offsetsA, sizesA, stridesA),
+      HyperrectangularSlice(offsetsB, sizesB, stridesB));
+  if (failed(overlap))
+    return failure();
+  return !*overlap;
 }
 
 Value getTransposedValue(Value source, const Location loc,
@@ -115,72 +310,6 @@ Value getTransposedValue(Value source, const Location loc,
 
 SmallVector<utils::IteratorType> getNParallelLoopsAttrs(unsigned n) {
   return SmallVector<utils::IteratorType>(n, utils::IteratorType::parallel);
-}
-
-Value getScalarValue(Value operand, Location loc,
-                     ConversionPatternRewriter &rewriter) {
-  SmallVector<Operation *> ops;
-  auto reconstructScalarValue = [&](Value src) {
-    for (auto op = ops.rbegin(); op != ops.rend(); ++op) {
-      src = mlir::TypeSwitch<Operation *, Value>(*op)
-                .Case<arith::SIToFPOp>([&](Operation *op) {
-                  auto resType = op->getResults()[0].getType();
-                  if (auto shapedType = dyn_cast<ShapedType>(resType)) {
-                    resType = shapedType.getElementType();
-                  }
-                  return rewriter.create<arith::SIToFPOp>(loc, resType, src);
-                })
-                .Case<arith::TruncFOp>([&](Operation *op) {
-                  auto resType = op->getResults()[0].getType();
-                  if (auto shapedType = dyn_cast<ShapedType>(resType)) {
-                    resType = shapedType.getElementType();
-                  }
-                  return rewriter.create<arith::TruncFOp>(loc, resType, src);
-                })
-                .Default([](Operation *op) {
-                  llvm_unreachable("unsupported op in generating ");
-                  return nullptr;
-                });
-    }
-    return src;
-  };
-
-  while (true) {
-    if (!dyn_cast<ShapedType>(operand.getType())) {
-      return reconstructScalarValue(operand);
-    } else if (auto op = operand.getDefiningOp<arith::ConstantOp>()) {
-      if (auto attr = dyn_cast<DenseElementsAttr>(op.getValue())) {
-        if (!attr.isSplat()) {
-          InFlightDiagnostic diag = emitError(loc)
-                                    << "other value used in masked load "
-                                       "produced by unsupported instruction";
-          return nullptr;
-        }
-        auto elemValue = attr.getSplatValue<Attribute>();
-        auto constOp = arith::ConstantOp::materialize(
-            rewriter, elemValue, attr.getElementType(), op.getLoc());
-        return reconstructScalarValue(constOp.getResult());
-      }
-      InFlightDiagnostic diag = emitError(loc)
-                                << "other value used in masked load produced "
-                                   "by unsupported instruction";
-      return nullptr;
-    } else if (auto op = operand.getDefiningOp<triton::SplatOp>()) {
-      operand = op.getSrc();
-    } else if (auto op = operand.getDefiningOp<arith::SIToFPOp>()) {
-      ops.push_back(op.getOperation());
-      operand = op.getIn();
-    } else if (auto op = operand.getDefiningOp<arith::TruncFOp>()) {
-      ops.push_back(op.getOperation());
-      operand = op.getIn();
-    } else {
-      InFlightDiagnostic diag = emitError(loc)
-                                << "other value used in masked load produced "
-                                   "by unsupported instruction";
-      return nullptr;
-    }
-  }
-  return nullptr;
 }
 
 SmallVector<int64_t> getBroadcastDims(RankedTensorType src,
@@ -213,34 +342,6 @@ SmallVector<int64_t> getUnbroadcastDims(RankedTensorType src,
     }
   }
   return unbroadcastDims;
-}
-
-scf::ForOp createNestedLoops(
-    OpBuilder &builder, Location loc, unsigned currentDim, unsigned totalDims,
-    ValueRange LBs, ValueRange UBs, ValueRange steps, SmallVector<Value> &ivs,
-    ValueRange initArgs,
-    function_ref<void(OpBuilder &, Location, SmallVector<Value> &, ValueRange)>
-        bodyBuilder) {
-
-  if (currentDim >= totalDims) {
-    bodyBuilder(builder, loc, ivs, initArgs);
-    return nullptr;
-  }
-
-  auto loop = builder.create<scf::ForOp>(
-      loc, LBs[currentDim], UBs[currentDim], steps[currentDim], initArgs,
-      [&](OpBuilder &nestedBuilder, Location nestedLoc, Value iv,
-          ValueRange iterArgs) {
-        ivs.push_back(iv);
-        auto innerLoop = createNestedLoops(nestedBuilder, nestedLoc,
-                                           currentDim + 1, totalDims, LBs, UBs,
-                                           steps, ivs, iterArgs, bodyBuilder);
-        if (innerLoop) {
-          nestedBuilder.create<scf::YieldOp>(loc, innerLoop.getResults());
-        }
-      });
-
-  return loop;
 }
 
 FailureOr<TypedAttr> specializeTypelessValueToAttr(TypelessValue value,
@@ -502,6 +603,29 @@ FailureOr<Value> specializeTypelessValueToConstant(TypelessValue value,
     return b.create<mlir::arith::ConstantOp>(loc, *typedAttr).getResult();
   }
   return failure();
+}
+
+LogicalResult verifyStaticShape(Operation *op) {
+  if (!op)
+    return failure();
+
+  // MemRef cast and reinterpret_cast ops are always accepted.
+  if (isa<memref::ReinterpretCastOp, memref::CastOp>(op))
+    return success();
+
+  auto checkType = [](Type t) -> LogicalResult {
+    if (auto shaped = dyn_cast<ShapedType>(t)) {
+      if (!shaped.hasStaticShape())
+        return failure();
+    }
+    return success();
+  };
+
+  if (llvm::any_of(llvm::concat<Value>(op->getOperands(), op->getResults()),
+                   [&](Value v) { return failed(checkType(v.getType())); })) {
+    return failure();
+  }
+  return success();
 }
 
 } // namespace mlir::dicp

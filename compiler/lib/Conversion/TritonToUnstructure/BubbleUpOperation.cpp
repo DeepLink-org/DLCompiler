@@ -193,7 +193,7 @@ Value BubbleUpExtract<tensor::ExtractOp>::createExtractOp(
     PatternRewriter &rewriter) const {
   auto extractedOp =
       rewriter.create<tensor::ExtractOp>(loc, value, op.getIndices());
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   return extractedOp;
 }
@@ -205,7 +205,7 @@ Value BubbleUpExtract<tensor::ExtractSliceOp>::createExtractOp(
   auto extractedOp = rewriter.create<tensor::ExtractSliceOp>(
       loc, value, op.getMixedOffsets(), op.getMixedSizes(),
       op.getMixedStrides());
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   return extractedOp;
 }
@@ -269,7 +269,7 @@ void BubbleUpExtract<tensor::ExtractOp>::bubbleUpOperation(
     }
   }
   auto extractedOp = rewriter.create<tensor::ExtractOp>(loc, src, newIndices);
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   rewriter.replaceOp(op, extractedOp);
 }
@@ -297,7 +297,7 @@ void BubbleUpExtract<tensor::ExtractSliceOp>::bubbleUpOperation(
   }
   auto extractedOp = rewriter.create<tensor::ExtractSliceOp>(
       loc, src, newOffsets, newSizes, op.getMixedStrides());
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   if (isScalarLikeSrc) {
     SmallVector<Value> indices(
@@ -324,7 +324,7 @@ void BubbleUpExtract<tensor::ExtractOp>::bubbleUpOperation(
       newIndices.push_back(index.value());
   }
   auto extractedOp = rewriter.create<tensor::ExtractOp>(loc, src, newIndices);
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   rewriter.replaceOp(op, extractedOp);
 }
@@ -347,7 +347,7 @@ void BubbleUpExtract<tensor::ExtractSliceOp>::bubbleUpOperation(
   }
   auto extractedOp = rewriter.create<tensor::ExtractSliceOp>(
       loc, src, newOffsets, newSizes, newStrides);
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   rewriter.replaceOpWithNewOp<triton::ExpandDimsOp>(op, extractedOp,
                                                     parentOp.getAxisAttr());
@@ -501,7 +501,7 @@ void BubbleUpExtract<tensor::ExtractOp>::bubbleUpOperation(
   rewriter
       .replaceOpWithNewOp<tensor::ExtractOp>(op, parentOp.getSource(),
                                              newIndices)
-      ->setAttr(mlir::dicp::discreteAttrName,
+      ->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                 UnitAttr::get(rewriter.getContext()));
 }
 

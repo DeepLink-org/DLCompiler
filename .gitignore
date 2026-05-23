@@ -91,6 +91,7 @@ tags
 
 *.mlir
 *.ttir
+!test/ascend/mlir/*.mlir
 
 # npu
 kernel_meta/

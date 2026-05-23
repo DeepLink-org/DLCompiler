@@ -1,6 +1,8 @@
 #include "dicp/Conversion/TritonToUnstructure/UnstructureConversionPass.h"
 #include "dicp/Utils/Utils.h"
+
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 
 #include "bishengir/Dialect/Annotation/IR/Annotation.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -65,7 +67,7 @@ Value UnstructuredMemAccessConverter<MemAccOpTy>::createExtractOp(
     }
   }
   auto extractedOp = rewriter.create<tensor::ExtractOp>(loc, value, indices);
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   return extractedOp;
 }
@@ -84,7 +86,7 @@ Value UnstructuredMemAccessConverter<MemAccOpTy>::createExtractOp(
   });
   auto extractedOp = rewriter.create<tensor::ExtractSliceOp>(
       loc, value, offsets, sizes, strides);
-  extractedOp->setAttr(mlir::dicp::discreteAttrName,
+  extractedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                        UnitAttr::get(rewriter.getContext()));
   return extractedOp;
 }
@@ -228,7 +230,7 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
       ptrType = ptrTensorType;
   }
 
-  if (!ptrType || op->hasAttr(mlir::dicp::discreteAttrName))
+  if (!ptrType || op->hasAttr(mlir::dicp::tags::kDiscreteMemAccess))
     return failure();
   if (!offsetMap.contains(ptr))
     return op.emitError() << "PtrOffsetInfo should be computed\n" << ptr;
@@ -257,7 +259,7 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
       return success();
     }
 
-  if (op->hasAttr(mlir::dicp::discreteMaskAttrName)) {
+  if (op->hasAttr(mlir::dicp::tags::kDiscreteMask)) {
     if constexpr (std::is_same_v<MemAccOpTy, triton::StoreOp>) {
       auto selectOp = op.getValue().template getDefiningOp<arith::SelectOp>();
       op = rewriter.replaceOpWithNewOp<triton::StoreOp>(
@@ -437,7 +439,7 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
         createMemAccOp(op, ptrToAccess, loc, rewriter, offsets, sizes, strides);
   }
 
-  accessedOp->setAttr(mlir::dicp::discreteAttrName,
+  accessedOp->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                       UnitAttr::get(rewriter.getContext()));
 
   if (isLoadLike) {
@@ -467,7 +469,7 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
                                                       offsets, sizes, strides);
     }
     rewriter.create<scf::YieldOp>(loc, result)
-        ->setAttr(mlir::dicp::discreteAttrName,
+        ->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                   UnitAttr::get(rewriter.getContext()));
     rewriter.restoreInsertionPoint(insertPoint);
     if constexpr (std::is_same_v<MemAccOpTy, triton::LoadOp>) {
@@ -475,7 +477,7 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
         rewriter
             .replaceOpWithNewOp<arith::SelectOp>(op, op.getMask(), newOpResult,
                                                  op.getOther())
-            ->setAttr(mlir::dicp::discreteAttrName,
+            ->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                       UnitAttr::get(rewriter.getContext()));
       } else {
         rewriter.replaceOp(op, newOpResult);
@@ -495,7 +497,7 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
                loc, accessedOp.getType(), accessedOp.getAtomicRmwOp(),
                accessedOp.getPtr(), accessedOp.getVal(), nullptr,
                accessedOp.getSem(), accessedOp.getScope())
-              ->setAttr(mlir::dicp::discreteAttrName,
+              ->setAttr(mlir::dicp::tags::kDiscreteMemAccess,
                         UnitAttr::get(rewriter.getContext()));
           b.create<scf::YieldOp>(loc);
         });
@@ -680,7 +682,7 @@ void replacePtrLoopArguments(Operation *rootOp,
                     op.getLoc(), rewriter.getI32Type(), ValueRange({}))
                 ->getResult(0);
         if (auto forOp = dyn_cast<scf::ForOp>(op.getOperation())) {
-          newOp = rewriter.create<scf::ForOp>(
+          auto createdFor = rewriter.create<scf::ForOp>(
               forOp.getLoc(), forOp.getLowerBound(), forOp.getUpperBound(),
               forOp.getStep(),
               constructOperands(forOp.getInitArgs(), tempVar, mapping),
@@ -701,6 +703,13 @@ void replacePtrLoopArguments(Operation *rootOp,
                     yieldOp.getLoc(),
                     constructOperands(yieldOp.getOperands(), tempVar, mapping));
               });
+
+          // propagate Triton-specific loop attribute if present on the old for
+          if (forOp->hasAttr(triton::kNumStagesAttrName))
+            createdFor->setAttr(triton::kNumStagesAttrName,
+                                forOp->getAttr(triton::kNumStagesAttrName));
+
+          newOp = createdFor;
         } else if (auto whileOp = dyn_cast<scf::WhileOp>(op.getOperation())) {
           newOp = rewriter.create<scf::WhileOp>(
               whileOp.getLoc(), constructTypes(whileOp->getResultTypes()),

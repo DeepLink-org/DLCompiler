@@ -1,1 +1,6 @@
-dicp_add_all_subdirs()
+# DICP NPU compiler passes
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
+
+add_subdirectory(include)
+add_subdirectory(lib)

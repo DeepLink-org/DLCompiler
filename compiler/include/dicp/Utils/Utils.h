@@ -1,5 +1,7 @@
-#ifndef TRITON_UTILS_H
-#define TRITON_UTILS_H
+
+
+#ifndef DICP_UTILS_UTILS_H
+#define DICP_UTILS_UTILS_H
 
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -8,82 +10,111 @@
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
-
+#include "triton/Dialect/Triton/IR/Dialect.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/LogicalResult.h"
 
 #include <functional>
 #include <optional>
+#include <string>
 
-// Dispatch conversion pattern handlers based on backend string. Executes
-// ASCEND_HANDLER when backend == "ascend", otherwise DEFAULT_HANDLER.
-#define DISPATCH_BACKEND_CONVERSION_PATTERNS(BACKEND_STR, ASCEND_HANDLER,      \
-                                             DEFAULT_HANDLER)                  \
-  do {                                                                         \
-    auto populatePatterns =                                                    \
-        llvm::StringSwitch<std::function<void()>>(BACKEND_STR)                 \
-            .Case("ascend", [&] { ASCEND_HANDLER; })                           \
-            .Default([&] { DEFAULT_HANDLER; });                                \
-    populatePatterns();                                                        \
-  } while (0)
+namespace mlir {
 
-namespace mlir::dicp {
+namespace ConverterUtils {
 
-// Tags used for marking specific operations for later processing or
-// identification.
 const std::string GeneratedByMakeTensorPtrTAG = "GeneratedByMakeTensorPtr";
-const std::string MayImplicitTransposeWithLastAxisTAG =
-    "MayImplicitTransposeWithLastAxis";
 const std::string discreteMaskAttrName = "DiscreteMask";
 const std::string discreteAttrName = "DiscreteMemAccess";
-
-// Gets the string attribute "dicp.backend" from the module if it exists.
-llvm::StringRef getBackend(ModuleOp module);
-
-bool isAscendBackend(ModuleOp module);
+const std::string continuousAttrName = "ContinuousMemAccess";
+const std::string customSrcPtrIndexAttrName = "SrcPtrIndex";
 
 bool isaPermutedMemRefType(MemRefType);
 
-// Retrieves the last (innermost) stride of a memref::ReinterpretCastOp if it is
-// a constant.
 std::optional<int64_t>
 getLastStrideOfReinterpretCastOp(memref::ReinterpretCastOp op);
 
-// Creates a new tensor by transposing the 'source' value according to the
-// 'order'.
 Value getTransposedValue(Value source, const Location loc,
                          ConversionPatternRewriter &rewriter,
                          llvm::ArrayRef<int> order);
 
-// Returns a vector of `n` `utils::IteratorType::parallel` attributes.
 SmallVector<utils::IteratorType> getNParallelLoopsAttrs(unsigned n);
 
-// Reconstructs the scalar value from an operand that might be a tensor/vector
-// containing a single splat value, handling implicit casts like `sitofp` or
-// `truncf`.
 Value getScalarValue(Value operand, Location loc,
                      ConversionPatternRewriter &rewriter);
 
-// Identifies the dimensions in the source tensor that are broadcast to match
-// the destination tensor's shape (where source dim size is 1).
+memref::SubViewOp makeSubViewOp(Value src,
+                                const llvm::SmallVector<OpFoldResult> &offsets,
+                                const llvm::SmallVector<OpFoldResult> &sizes,
+                                const Location &loc,
+                                ConversionPatternRewriter &rewriter);
+
+tensor::ExtractSliceOp
+makeExtractSliceOp(Value src, const llvm::SmallVector<OpFoldResult> &offsets,
+                   const llvm::SmallVector<OpFoldResult> &sizes,
+                   const Location &loc, ConversionPatternRewriter &rewriter);
+
+std::optional<Operation *> getFullShapeOp(Value val,
+                                          ConversionPatternRewriter &rewriter);
+
+SmallVector<OpFoldResult>
+getBoundarySizes(llvm::ArrayRef<int32_t> boundaryCheck, Value ptr,
+                 const Location &loc, ConversionPatternRewriter &rewriter);
+
 SmallVector<int64_t> getBroadcastDims(RankedTensorType src,
                                       RankedTensorType dst);
 
-// Identifies the dimensions that are NOT broadcast (i.e., source shape matches
-// destination shape).
 SmallVector<int64_t> getUnbroadcastDims(RankedTensorType src,
                                         RankedTensorType dst);
 
-// Enumeration for types of operations that interact with memory indirectly
-// (e.g., loads/computations on pointers).
+} // namespace ConverterUtils
+
+class ConversionPatternRewriter;
+
+namespace triton {
+
 enum class IndirectLoadInterfaceOpType { Undefined = 0, Load = 1, Calc = 2 };
 
-// Traces back from a 'rootOp' through its operands' definitions to find the
-// first operation that satisfies the specified 'condFn'.
+// Traceback from rootOp to find the targetOp with the specified condition
 mlir::Operation *
 findFirstMatchingOperandDef(mlir::Operation *rootOp,
                             const std::function<bool(Operation *)> &condFn);
+
+void traverseBackwardUpdateOperandChainIf(
+    Operation *op, std::function<bool(Operation *)> conditionFn,
+    std::function<bool(Operation *)> stopFn,
+    std::function<void(OpBuilder &, Operation *)> actionFn, OpBuilder &builder,
+    DenseSet<Operation *> &handledOperation);
+
+void traverseBackwardUpdateOperandChainIf(
+    Operation *rootOp, std::function<bool(Operation *)> conditionFn,
+    std::function<bool(Operation *)> stopFn,
+    std::function<void(OpBuilder &, Operation *)> actionFn);
+
+void traverseForwardUpdateUserChainIf(
+    Operation *op, std::function<bool(Operation *)> conditionFn,
+    std::function<bool(Operation *)> stopFn,
+    std::function<void(OpBuilder &, Operation *)> actionFn, OpBuilder &builder,
+    llvm::SmallPtrSet<Operation *, 16> &stopOps);
+
+void traverseForwardUpdateUserChainIf(
+    Operation *rootOp, std::function<bool(Operation *)> conditionFn,
+    std::function<bool(Operation *)> stopFn,
+    std::function<void(OpBuilder &, Operation *)> actionFn,
+    llvm::SmallPtrSet<Operation *, 16> &stopOps);
+
+// UseAnalysis will tag operations whose results are used only as meta-data
+// with "MetaUse" tag.
+bool isMetaUse(Operation *op);
+
+bool isMixUse(Operation *op);
+
+IndirectLoadInterfaceOpType getIndirectLoadInterfaceOpType(Operation *op);
+
+bool opIsIndirectLoad(Operation *op);
+
+bool opIsIndirectCalc(Operation *op);
 
 /// Maximum expected rank for loop tiling in tensor operations.
 static constexpr int kMaxTiledRank = 4;
@@ -105,14 +136,36 @@ static constexpr int kMaxTiledRank = 4;
 template <typename Func>
 void createSimpleNestedLoops(OpBuilder &rewriter, Location loc, Value target,
                              ArrayRef<int> loopDims, Func bodyFunc) {
-  // Implementation details omitted in header but provided in the question's
-  // context.
-  // ...
+  MemRefType type = cast<MemRefType>(target.getType());
+  int rank = type.getRank();
+
+  Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+  Value one = rewriter.create<arith::ConstantIndexOp>(loc, 1);
+
+  llvm::SmallVector<scf::ForOp, kMaxTiledRank> loops;
+  llvm::SmallVector<Value, kMaxTiledRank> ivs;
+
+  for (int dim : loopDims) {
+    Value ub;
+    if (type.isDynamicDim(dim)) {
+      ub = rewriter.create<memref::DimOp>(loc, target, dim).getResult();
+    } else {
+      ub = rewriter.create<arith::ConstantIndexOp>(loc, type.getDimSize(dim));
+    }
+
+    auto forOp = rewriter.create<scf::ForOp>(loc, zero, ub, one);
+    rewriter.setInsertionPointToStart(forOp.getBody());
+    loops.push_back(forOp);
+    ivs.push_back(forOp.getInductionVar());
+  }
+
+  bodyFunc(ivs);
+
+  if (!loops.empty()) {
+    rewriter.setInsertionPointAfter(loops.front());
+  }
 }
 
-// Recursively creates a potentially nested structure of `scf.for` loops.
-// This allows for defining complex loop nests where the body is generated by
-// 'bodyBuilder'.
 scf::ForOp createNestedLoops(
     OpBuilder &builder, Location loc, unsigned currentDim, unsigned totalDims,
     ValueRange LBs, ValueRange UBs, ValueRange steps, SmallVector<Value> &ivs,
@@ -120,11 +173,97 @@ scf::ForOp createNestedLoops(
     function_ref<void(OpBuilder &, Location, SmallVector<Value> &, ValueRange)>
         bodyBuilder);
 
+ModuleOp getModuleOpFromOperation(Operation *op);
+
+bool isTensorPtrType(Type type);
+
+} // namespace triton
+
+class OpBuilder;
+
+OpFoldResult addOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+OpFoldResult subOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+OpFoldResult mulOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+OpFoldResult divOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+OpFoldResult remOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+OpFoldResult minOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+OpFoldResult maxOpFoldResult(const OpFoldResult &lhs, const OpFoldResult &rhs,
+                             const Location &loc, OpBuilder &b);
+
+enum class ReduceWithIndexType { MAX, MIN, None };
+enum class TieBreakType { LEFT, RIGHT, None };
+
+struct ReduceWithIndexParams {
+  ReduceWithIndexType withIndexType = ReduceWithIndexType::None;
+  TieBreakType tieBreakType = TieBreakType::None;
+  bool isUnsignedSrc;
+};
+
+llvm::FailureOr<ReduceWithIndexParams>
+getReduceWithIndexParams(triton::ReduceOp op);
+
+void addReduceWithIndexAttr(ReduceWithIndexParams params,
+                            ConversionPatternRewriter &rewriter,
+                            linalg::ReduceOp reduceOp);
+
+OpFoldResult getOpFoldResultOfLayoutInfo(Value value, OpBuilder &builder);
+
 enum class TypelessValue { Undefined = 0, Zero = 1, Min = 2, Max = 3 };
+
+FailureOr<TypedAttr> specializeTypelessValueToAttr(TypelessValue, Type,
+                                                   OpBuilder &);
 
 FailureOr<Value> specializeTypelessValueToConstant(TypelessValue, Type,
                                                    Location, OpBuilder &);
 
+std::optional<int64_t> getIntAttr(const OpFoldResult ofr);
+
+Value materializeValue(OpBuilder &builder, Location loc, OpFoldResult ofr);
+
+bool isZero(const OpFoldResult ofr);
+
+bool isOne(const OpFoldResult ofr);
+
+Value convertToIndexIfNeeded(Value intValue, const Location &loc, OpBuilder &b);
+
+RankedTensorType getExtractSlicedType(ArrayRef<OpFoldResult> shape,
+                                      const llvm::SmallBitVector &droppedDims,
+                                      Type elemType);
+
+bool checkStructureAnnotated(Operation *op, RewriterBase &rewriter);
+
+// Dispatch conversion pattern handlers based on backend string. Executes
+// DICP_HANDLER when backend == "dicp", otherwise DEFAULT_HANDLER.
+#define DISPATCH_BACKEND_CONVERSION_PATTERNS(BACKEND_STR, DICP_HANDLER,        \
+                                             DEFAULT_HANDLER)                  \
+  do {                                                                         \
+    auto populatePatterns =                                                    \
+        llvm::StringSwitch<std::function<void()>>(BACKEND_STR)                 \
+            .Case("dicp", [&] { DICP_HANDLER; })                               \
+            .Default([&] { DEFAULT_HANDLER; });                                \
+    populatePatterns();                                                        \
+  } while (0)
+
+} // namespace mlir
+
+namespace mlir::dicp {
+
+llvm::StringRef getBackend(ModuleOp module);
+
+bool isDicpBackend(ModuleOp module);
+
 } // namespace mlir::dicp
 
-#endif // TRITONNPU_UTILS_UTILS_H
+#endif // DICP_UTILS_UTILS_H

@@ -1,0 +1,750 @@
+#include "dicp/Dialect/CommonIR/Passes.h"
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinDialect.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
+
+using namespace mlir;
+
+namespace mlir::dicp::CommonIR {
+#define GEN_PASS_DEF_VECTORIZEPARALLELLOOPPASS
+#include "dicp/Dialect/CommonIR/Passes.h.inc"
+}
+
+#define DEBUG_TYPE "vectorize-parallel-loop-pass"
+
+namespace {
+
+// 核心 Pattern：将标量并行循环展开为向量化的顺序操作
+struct VectorizeParallelLoopPattern : public OpRewritePattern<scf::ParallelOp> {
+  using OpRewritePattern<scf::ParallelOp>::OpRewritePattern;
+
+private:
+  // 检测值是否为常量或来自常量
+  bool isScalarConstant(Value val) const {
+    if (!val)
+      return false;
+
+    auto defOp = val.getDefiningOp();
+    if (!defOp)
+      return false;
+
+    // 检查是否为常量操作
+    return isa<arith::ConstantOp, arith::ConstantIndexOp, arith::ConstantIntOp,
+               arith::ConstantFloatOp>(defOp);
+  }
+
+  // 将标量广播为向量张量（支持任意维度）
+  Value broadcastScalarToTensor(PatternRewriter &rewriter, Location loc,
+                                Value scalar,
+                                ArrayRef<int64_t> dimSizes) const {
+    Type elemType = scalar.getType();
+    auto tensorType = RankedTensorType::get(dimSizes, elemType);
+    return rewriter.create<tensor::SplatOp>(loc, tensorType, scalar);
+  }
+
+public:
+  LogicalResult matchAndRewrite(scf::ParallelOp op,
+                                PatternRewriter &rewriter) const override {
+    LLVM_DEBUG(llvm::dbgs()
+               << "\n[VectorizeParallelLoop] >>> Start matching scf.parallel"
+               << " numLoops=" << op.getNumLoops() << "\n");
+
+    // 1. 检查循环结构 - 支持任意维度
+    SmallVector<int64_t> dimSizes;
+    for (unsigned dim = 0; dim < op.getNumLoops(); ++dim) {
+      Value lb = op.getLowerBound()[dim];
+      Value ub = op.getUpperBound()[dim];
+      auto lbOp = lb.getDefiningOp<arith::ConstantIndexOp>();
+      auto ubOp = ub.getDefiningOp<arith::ConstantIndexOp>();
+      if (!lbOp || !ubOp) {
+        LLVM_DEBUG(
+            llvm::dbgs()
+            << "[VectorizeParallelLoop] Skip: Bounds not constant on dim "
+            << dim << "\n");
+        return failure();
+      }
+      int64_t dimSize = ubOp.value() - lbOp.value();
+      if (dimSize <= 0) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "[VectorizeParallelLoop] Skip: Size <= 0 on dim " << dim
+                   << "\n");
+        return failure();
+      }
+      dimSizes.push_back(dimSize);
+    }
+
+    LLVM_DEBUG({
+      llvm::dbgs() << "[VectorizeParallelLoop] dimSizes: [";
+      for (auto s : dimSizes)
+        llvm::dbgs() << s << " ";
+      llvm::dbgs() << "]\n";
+    });
+
+    // 2. 准备映射表 - 将所有维度的 IV 映射为各自的 lowerBound
+    IRMapping mapper;
+    Block *body = op.getBody();
+    for (unsigned dim = 0; dim < op.getNumLoops(); ++dim) {
+      Value iv = body->getArgument(dim);
+      mapper.map(iv, op.getLowerBound()[dim]);
+      LLVM_DEBUG(llvm::dbgs() << "[VectorizeParallelLoop] Mapping IV[" << dim
+                              << "] -> lowerBound\n");
+    }
+
+    // size: 用于 1D 全局路径的兼容变量（1D loop = dimSizes[0]）
+    int64_t size = dimSizes[0];
+
+    // scalarToTensorMap: 用于数据流向量化 (标量 Value -> 向量 Tensor Value)
+    DenseMap<Value, Value> scalarToTensorMap;
+
+    // storeTargetToTensor: 记录 local alloc store 的目标 memref → tensor
+    // 用于在循环处理完毕后，将 post-loop memref.copy 替换为 materialize
+    DenseMap<Value, Value> storeTargetToTensor;
+
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "[VectorizeParallelLoop] Starting to process body operations...\n");
+
+    // 3. 遍历原循环体，按顺序生成向量化代码
+    for (Operation &inst : body->getOperations()) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "  -> Visiting Op: " << inst.getName() << "\n");
+
+      // 跳过 terminator
+      if (isa<scf::ReduceOp>(inst) || isa<scf::YieldOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs() << "     Skipping terminator.\n");
+        continue;
+      }
+
+      // --- Case A: 索引计算 (Index Cast, Add, Mul 等) ---
+      // 直接克隆，但使用 mapper 将 IV 替换为常数
+      if (isa<arith::IndexCastOp, arith::AddIOp, arith::MulIOp,
+              arith::ConstantOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "     [Action] Cloning index calculation.\n");
+        Operation *newOp = rewriter.clone(inst, mapper);
+        LLVM_DEBUG(llvm::dbgs()
+                   << "     New Op result: " << newOp->getResult(0) << "\n");
+        // 更新mapper：原结果 -> 新结果
+        for (unsigned i = 0; i < inst.getNumResults(); ++i) {
+          mapper.map(inst.getResult(i), newOp->getResult(i));
+        }
+        continue;
+      }
+
+      // --- Case B: 读取内存 (Load -> Vectorize) ---
+      if (auto loadOp = dyn_cast<memref::LoadOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Vectorizing LoadOp.\n");
+        Value memref = loadOp.getMemRef();
+
+        auto memrefType = dyn_cast<MemRefType>(memref.getType());
+        if (!memrefType) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "[VectorizeParallelLoop] ERROR: MemRef type expected "
+                        "but not found.\n");
+          return failure();
+        }
+
+        // 检查是否为局部 alloc 的 memref
+        bool isLocalAlloc = memref.getDefiningOp<memref::AllocOp>() != nullptr;
+
+        if (isLocalAlloc) {
+          LLVM_DEBUG(llvm::dbgs() << "     LoadOp from local alloc memref.\n");
+          LLVM_DEBUG(llvm::dbgs() << "     MemRef: " << memref << "\n");
+
+          // 检查该 memref 是否已经有向量化的数据（可能通过 store 写入）
+          if (scalarToTensorMap.count(memref)) {
+            LLVM_DEBUG(
+                llvm::dbgs()
+                << "     Using existing vectorized data for this memref.\n");
+            scalarToTensorMap[loadOp.getResult()] = scalarToTensorMap[memref];
+          } else {
+            // 直接将整个局部 memref 转为 tensor（可能是输入数据）
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Converting entire local memref to tensor.\n");
+            auto tensorType = RankedTensorType::get(
+                memrefType.getShape(), memrefType.getElementType());
+            auto toTensor = rewriter.create<bufferization::ToTensorOp>(
+                op.getLoc(), tensorType, memref, /*restrict=*/true);
+            scalarToTensorMap[loadOp.getResult()] = toTensor.getResult();
+            LLVM_DEBUG(llvm::dbgs() << "     Created ToTensorOp (Result: "
+                                    << toTensor.getResult() << ").\n");
+          }
+        } else {
+          // 原有逻辑：处理全局 memref（函数参数）
+          LLVM_DEBUG(llvm::dbgs() << "     LoadOp from global memref.\n");
+
+          // 获取计算好的索引 (通过 mapper 查找)
+          Value index = mapper.lookup(loadOp.getIndices()[0]);
+          LLVM_DEBUG(llvm::dbgs() << "     Base MemRef: " << memref << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "     Mapped Index: " << index << "\n");
+
+          // 1. Alloc Local Buffer
+          auto localType = MemRefType::get({size}, memrefType.getElementType());
+          Value localAlloc =
+              rewriter.create<memref::AllocOp>(op.getLoc(), localType);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Local Alloc: "
+                                  << localAlloc.getType() << "\n");
+
+          // 2. Subview Global Memory
+          SmallVector<OpFoldResult> offsets = {index};
+          SmallVector<OpFoldResult> sizes = {rewriter.getIndexAttr(size)};
+          SmallVector<OpFoldResult> strides = {rewriter.getIndexAttr(1)};
+          Value subview = rewriter.create<memref::SubViewOp>(
+              op.getLoc(), memref, offsets, sizes, strides);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Subview.\n");
+
+          // 3. Copy Global -> Local
+          rewriter.create<memref::CopyOp>(op.getLoc(), subview, localAlloc);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Copy (Global -> Local).\n");
+
+          // 4. Local Buffer -> Tensor
+          auto tensorType =
+              RankedTensorType::get({size}, memrefType.getElementType());
+          auto toTensor = rewriter.create<bufferization::ToTensorOp>(
+              op.getLoc(), tensorType, localAlloc, /*restrict=*/true);
+          LLVM_DEBUG(llvm::dbgs() << "     Created ToTensorOp (Result: "
+                                  << toTensor.getResult() << ").\n");
+
+          // 5. 注册映射：原 Load 的标量结果 -> 新的 Tensor 结果
+          scalarToTensorMap[loadOp.getResult()] = toTensor.getResult();
+        }
+        continue;
+      }
+
+      // --- Case C: 计算逻辑 (Generic Binary Operations -> Vector Binary
+      // Operations) --- 检查是否为二元运算操作
+      bool isBinaryOp =
+          inst.getNumOperands() == 2 &&
+          (isa<arith::AddFOp, arith::MulFOp, arith::AddIOp, arith::MulIOp,
+               arith::SubFOp, arith::SubIOp, arith::DivFOp, arith::DivSIOp,
+               arith::DivUIOp, arith::MinSIOp, arith::MinUIOp, arith::MinNumFOp,
+               arith::MinimumFOp, arith::MaxSIOp, arith::MaxUIOp,
+               arith::MaxNumFOp, arith::MaximumFOp>(inst));
+
+      if (isBinaryOp) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing Binary ArithOp: "
+                                << inst.getName() << "\n");
+
+        Value lhs = inst.getOperand(0);
+        Value rhs = inst.getOperand(1);
+
+        // 检查操作数是否已向量化
+        Value vecLhs =
+            scalarToTensorMap.count(lhs) ? scalarToTensorMap[lhs] : nullptr;
+        Value vecRhs =
+            scalarToTensorMap.count(rhs) ? scalarToTensorMap[rhs] : nullptr;
+
+        bool lhsWasVector = (vecLhs != nullptr);
+        bool rhsWasVector = (vecRhs != nullptr);
+
+        if (vecLhs)
+          LLVM_DEBUG(llvm::dbgs() << "     LHS is vectorized.\n");
+        if (vecRhs)
+          LLVM_DEBUG(llvm::dbgs() << "     RHS is vectorized.\n");
+
+        // 处理标量常量：如果一个操作数未向量化但是常量，则广播
+        if (!vecLhs && isScalarConstant(lhs)) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     LHS is scalar constant, broadcasting.\n");
+          vecLhs =
+              broadcastScalarToTensor(rewriter, op.getLoc(), lhs, dimSizes);
+        }
+
+        if (!vecRhs && isScalarConstant(rhs)) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     RHS is scalar constant, broadcasting.\n");
+          vecRhs =
+              broadcastScalarToTensor(rewriter, op.getLoc(), rhs, dimSizes);
+        }
+
+        // 如果至少一个操作数原本是向量，才进行向量化
+        // （避免纯标量的索引计算被向量化）
+        if (vecLhs && vecRhs && (lhsWasVector || rhsWasVector)) {
+          // 创建一个新的OperationState，使用与原操作相同的操作码
+          OperationState state(op.getLoc(), inst.getName().getStringRef());
+
+          // 添加向量化的操作数
+          state.addOperands({vecLhs, vecRhs});
+
+          // 从原操作复制结果类型，但转换为向量类型
+          llvm::SmallVector<Type> resultTypes;
+          for (auto result : inst.getResults()) {
+            Type scalarType = result.getType();
+            ShapedType vectorType;
+
+            if (auto shapedType = dyn_cast<ShapedType>(scalarType)) {
+              // 如果已经是shaped type，则保持形状但可能更新为tensor类型
+              vectorType = RankedTensorType::get(shapedType.getShape(),
+                                                 shapedType.getElementType());
+            } else {
+              // 标量类型 → 转换为对应维度的 tensor 类型
+              vectorType = RankedTensorType::get(dimSizes, scalarType);
+            }
+
+            resultTypes.push_back(vectorType);
+          }
+          state.addTypes(resultTypes);
+
+          // 创建新的向量化操作
+          auto newOp = rewriter.create(state);
+
+          // 将新操作的结果映射到scalarToTensorMap
+          for (size_t i = 0; i < inst.getNumResults(); ++i) {
+            scalarToTensorMap[inst.getResult(i)] = newOp->getResult(i);
+          }
+
+          LLVM_DEBUG(
+              {
+                llvm::dbgs()
+                    << "     Created Vector Operation: " << inst.getName()
+                    << "\n";
+                if (!lhsWasVector && rhsWasVector) {
+                  llvm::dbgs()
+                      << "     (LHS was broadcasted from scalar constant)\n";
+                } else if (lhsWasVector && !rhsWasVector) {
+                  llvm::dbgs()
+                      << "     (RHS was broadcasted from scalar constant)\n";
+                }
+                llvm::dbgs()
+                    << "     Result Type: " << newOp->getResult(0).getType()
+                    << "\n";
+              });
+        } else {
+          // 如果不是向量操作（可能是索引计算的一部分），则回退到普通 clone
+          LLVM_DEBUG(
+              llvm::dbgs()
+              << "     WARNING: Operands not vectorized, cloning scalar op.\n");
+          rewriter.clone(inst, mapper);
+        }
+        continue;
+      }
+
+      // --- Case C2: 比较运算 (arith.cmpf / arith.cmpi -> tensor<N x i1>) ---
+      bool isCmpOp = inst.getNumOperands() == 2 &&
+                     (isa<arith::CmpFOp, arith::CmpIOp>(inst));
+
+      if (isCmpOp) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing CmpOp: "
+                                << inst.getName() << "\n");
+        Value lhs = inst.getOperand(0);
+        Value rhs = inst.getOperand(1);
+
+        Value vecLhs =
+            scalarToTensorMap.count(lhs) ? scalarToTensorMap[lhs] : nullptr;
+        Value vecRhs =
+            scalarToTensorMap.count(rhs) ? scalarToTensorMap[rhs] : nullptr;
+
+        if (!vecLhs && isScalarConstant(lhs))
+          vecLhs =
+              broadcastScalarToTensor(rewriter, op.getLoc(), lhs, dimSizes);
+        if (!vecRhs && isScalarConstant(rhs))
+          vecRhs =
+              broadcastScalarToTensor(rewriter, op.getLoc(), rhs, dimSizes);
+
+        if (vecLhs && vecRhs) {
+          // result is tensor<dims... x i1>
+          Type i1Ty = rewriter.getI1Type();
+          RankedTensorType resTy = RankedTensorType::get(dimSizes, i1Ty);
+          OperationState state(op.getLoc(), inst.getName().getStringRef());
+          state.addOperands({vecLhs, vecRhs});
+          // copy predicate attribute
+          for (auto attr : inst.getAttrs())
+            state.addAttribute(attr.getName(), attr.getValue());
+          state.addTypes(resTy);
+          auto newOp = rewriter.create(state);
+          scalarToTensorMap[inst.getResult(0)] = newOp->getResult(0);
+          LLVM_DEBUG(llvm::dbgs() << "     Created vectorized CmpOp.\n");
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     WARNING: Cmp operands not vectorized, cloning "
+                        "scalar.\n");
+          rewriter.clone(inst, mapper);
+        }
+        continue;
+      }
+
+      // --- Case C3: arith.select (ternary if_then_else -> vectorized select)
+      // ---
+      if (auto selOp = dyn_cast<arith::SelectOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing arith.select.\n");
+        Value cond = selOp.getCondition();
+        Value trueVal = selOp.getTrueValue();
+        Value falseVal = selOp.getFalseValue();
+
+        Value vecCond =
+            scalarToTensorMap.count(cond) ? scalarToTensorMap[cond] : nullptr;
+        Value vecTrue = scalarToTensorMap.count(trueVal)
+                            ? scalarToTensorMap[trueVal]
+                            : nullptr;
+        Value vecFalse = scalarToTensorMap.count(falseVal)
+                             ? scalarToTensorMap[falseVal]
+                             : nullptr;
+
+        if (!vecTrue && isScalarConstant(trueVal))
+          vecTrue =
+              broadcastScalarToTensor(rewriter, op.getLoc(), trueVal, dimSizes);
+        if (!vecFalse && isScalarConstant(falseVal))
+          vecFalse = broadcastScalarToTensor(rewriter, op.getLoc(), falseVal,
+                                             dimSizes);
+
+        if (vecCond && vecTrue && vecFalse) {
+          Type elemTy = selOp.getType();
+          RankedTensorType resTy = RankedTensorType::get(dimSizes, elemTy);
+          auto newSel = rewriter.create<arith::SelectOp>(
+              op.getLoc(), resTy, vecCond, vecTrue, vecFalse);
+          scalarToTensorMap[selOp.getResult()] = newSel.getResult();
+          LLVM_DEBUG(llvm::dbgs() << "     Created vectorized arith.select.\n");
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     WARNING: select operands not fully vectorized, "
+                        "cloning scalar.\n");
+          rewriter.clone(inst, mapper);
+        }
+        continue;
+      }
+
+      // --- Case C4: 一元 math 运算 (math.exp / exp2 / sqrt / tanh / log /
+      // absf) ---
+      bool isUnaryMathOp =
+          inst.getNumOperands() == 1 && inst.getNumResults() == 1 &&
+          inst.getResult(0).getType() == inst.getOperand(0).getType() &&
+          (inst.getName().getStringRef().starts_with("math."));
+
+      if (isUnaryMathOp) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing UnaryMathOp: "
+                                << inst.getName() << "\n");
+        Value operand = inst.getOperand(0);
+        Value vecOperand = scalarToTensorMap.count(operand)
+                               ? scalarToTensorMap[operand]
+                               : nullptr;
+
+        if (vecOperand) {
+          Type elemTy = operand.getType();
+          RankedTensorType resTy = RankedTensorType::get(dimSizes, elemTy);
+          OperationState state(op.getLoc(), inst.getName().getStringRef());
+          state.addOperands(vecOperand);
+          state.addTypes(resTy);
+          auto newOp = rewriter.create(state);
+          scalarToTensorMap[inst.getResult(0)] = newOp->getResult(0);
+          LLVM_DEBUG(llvm::dbgs() << "     Created vectorized UnaryMathOp.\n");
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     WARNING: UnaryMath operand not vectorized, "
+                        "cloning scalar.\n");
+          rewriter.clone(inst, mapper);
+        }
+        continue;
+      }
+
+      // --- Case D: 写回逻辑 (Materialize) ---
+      if (auto matOp =
+              dyn_cast<bufferization::MaterializeInDestinationOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "     [Action] Processing MaterializeInDestinationOp.\n");
+        Value source = matOp.getSource();
+        Value destMemref = matOp.getDest();
+
+        Value vectorResult = nullptr;
+
+        // 追踪数据来源
+        if (auto insertOp = source.getDefiningOp<tensor::InsertOp>()) {
+          LLVM_DEBUG(
+              llvm::dbgs()
+              << "     Source is tensor.insert, tracing scalar input...\n");
+          Value scalarInput = insertOp.getScalar();
+          if (scalarToTensorMap.count(scalarInput)) {
+            vectorResult = scalarToTensorMap[scalarInput];
+            LLVM_DEBUG(llvm::dbgs() << "     Found vectorized source.\n");
+          }
+        } else if (scalarToTensorMap.count(source)) {
+          vectorResult = scalarToTensorMap[source];
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     Found vectorized source directly.\n");
+        }
+
+        if (vectorResult) {
+          // 1. Alloc Output Buffer
+          auto tensorType = dyn_cast<RankedTensorType>(vectorResult.getType());
+          if (!tensorType) {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "[VectorizeParallelLoop] ERROR: Expected "
+                          "RankedTensorType for vector result.\n");
+            continue;
+          }
+          auto elemType = tensorType.getElementType();
+          auto localOutType = MemRefType::get(dimSizes, elemType);
+          Value localOut =
+              rewriter.create<memref::AllocOp>(op.getLoc(), localOutType);
+          LLVM_DEBUG(llvm::dbgs() << "     Created Local Output Alloc: "
+                                  << localOutType << "\n");
+
+          // 2. Materialize Tensor -> Local Buffer
+          // Fix: capture operation and set writable to true
+          auto newMatOp =
+              rewriter.create<bufferization::MaterializeInDestinationOp>(
+                  op.getLoc(), vectorResult, localOut);
+          newMatOp.setWritable(true);
+          LLVM_DEBUG(
+              llvm::dbgs()
+              << "     Created Vectorized Materialize (writable=true).\n");
+
+          // 3. 处理输出地址 (ReinterpretCast -> Subview)
+          Value baseMemref = destMemref;
+          Value writeOffset = nullptr;
+
+          if (auto castOp =
+                  destMemref.getDefiningOp<memref::ReinterpretCastOp>()) {
+            LLVM_DEBUG(
+                llvm::dbgs()
+                << "     Dest is ReinterpretCast, resolving offset...\n");
+            baseMemref = castOp.getSource();
+            if (!castOp.getOffsets().empty()) {
+              // Fix: Directly use the Value, do not use dyn_cast<Value>
+              Value loopOffset = castOp.getOffsets()[0];
+              writeOffset = mapper.lookup(loopOffset);
+              LLVM_DEBUG(llvm::dbgs() << "     Resolved write offset: "
+                                      << writeOffset << "\n");
+            }
+          } else {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Dest is not ReinterpretCast. Handling logic "
+                          "might be incomplete for simple memrefs.\n");
+          }
+
+          // 如果找到了写入位置，执行 Copy Local -> Global
+          if (baseMemref && writeOffset) {
+            SmallVector<OpFoldResult> offsets = {writeOffset};
+            SmallVector<OpFoldResult> sizes = {rewriter.getIndexAttr(size)};
+            SmallVector<OpFoldResult> strides = {rewriter.getIndexAttr(1)};
+
+            Value outSubview = rewriter.create<memref::SubViewOp>(
+                op.getLoc(), baseMemref, offsets, sizes, strides);
+
+            rewriter.create<memref::CopyOp>(op.getLoc(), localOut, outSubview);
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Created Copy (Local -> Global).\n");
+          }
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     WARNING: Could not find vectorized source for "
+                        "materialize.\n");
+        }
+        continue;
+      }
+
+      // --- Case E: 直接 Store 操作 (Store -> Vectorize) ---
+      if (auto storeOp = dyn_cast<memref::StoreOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs() << "     [Action] Processing memref.store.\n");
+        Value valueToStore = storeOp.getValue();
+        Value destMemref = storeOp.getMemRef();
+
+        LLVM_DEBUG(llvm::dbgs()
+                   << "     Value to store: " << valueToStore << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "     Dest memref: " << destMemref << "\n");
+
+        // 检查是否有向量化的值
+        if (scalarToTensorMap.count(valueToStore)) {
+          Value vectorResult = scalarToTensorMap[valueToStore];
+          LLVM_DEBUG(llvm::dbgs() << "     Found vectorized value to store.\n");
+
+          // 检查 destMemref 是否为局部 alloc
+          bool isLocalAlloc =
+              destMemref.getDefiningOp<memref::AllocOp>() != nullptr;
+
+          if (isLocalAlloc) {
+            LLVM_DEBUG(llvm::dbgs() << "     Storing to local alloc memref.\n");
+
+            // 显式搬运: to_buffer + copy 将 tensor 数据写入 destMemref
+            // 避免 materialize_in_destination(writable=true) 与 post-loop
+            // memref.copy 之间因隐式 aliasing 产生缓冲区冲突
+            auto toBufferOp = rewriter.create<bufferization::ToBufferOp>(
+                op.getLoc(), destMemref.getType(), vectorResult, nullptr);
+            rewriter.create<memref::CopyOp>(op.getLoc(), toBufferOp.getResult(),
+                                            destMemref);
+            LLVM_DEBUG(llvm::dbgs() << "     Created ToBuffer + Copy for "
+                                       "explicit tensor->memref data movement.\n");
+
+            // 记录 store 目标 memref → tensor，后续替换 post-loop memref.copy
+            storeTargetToTensor[destMemref] = vectorResult;
+
+            // 重要：记录这个 memref 现在包含向量化的数据
+            // 后续的 load 可以直接使用这个 tensor
+            scalarToTensorMap[destMemref] = vectorResult;
+            LLVM_DEBUG(llvm::dbgs() << "     Registered memref " << destMemref
+                                    << " with vectorized data.\n");
+          } else {
+            // 写入到全局 memref（函数参数）
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Storing to global memref (not implemented in "
+                          "original store path).\n");
+
+            // 获取写入索引
+            Value index = mapper.lookup(storeOp.getIndices()[0]);
+
+            // 1. Alloc Local Buffer
+            auto tensorType =
+                dyn_cast<RankedTensorType>(vectorResult.getType());
+            if (!tensorType) {
+              LLVM_DEBUG(llvm::dbgs()
+                         << "     ERROR: Expected RankedTensorType "
+                            "for vector result.\n");
+              continue;
+            }
+            auto elemType = tensorType.getElementType();
+            auto localOutType = MemRefType::get(dimSizes, elemType);
+            Value localOut =
+                rewriter.create<memref::AllocOp>(op.getLoc(), localOutType);
+            LLVM_DEBUG(llvm::dbgs() << "     Created Local Output Alloc.\n");
+
+            // 2. Materialize Tensor -> Local Buffer
+            auto matOp =
+                rewriter.create<bufferization::MaterializeInDestinationOp>(
+                    op.getLoc(), vectorResult, localOut);
+            matOp.setWritable(true);
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Created Materialize to local buffer.\n");
+
+            // 3. Copy Local -> Global (Subview)
+            SmallVector<OpFoldResult> offsets = {index};
+            SmallVector<OpFoldResult> sizes = {rewriter.getIndexAttr(size)};
+            SmallVector<OpFoldResult> strides = {rewriter.getIndexAttr(1)};
+
+            Value outSubview = rewriter.create<memref::SubViewOp>(
+                op.getLoc(), destMemref, offsets, sizes, strides);
+
+            rewriter.create<memref::CopyOp>(op.getLoc(), localOut, outSubview);
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Created Copy (Local -> Global).\n");
+          }
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "     WARNING: Value to store is not vectorized, "
+                        "skipping.\n");
+        }
+        continue;
+      }
+
+      // 忽略不需要的操作
+      if (isa<tensor::InsertOp>(inst)) {
+        LLVM_DEBUG(
+            llvm::dbgs()
+            << "     Skipping tensor.insert (handled in materialize).\n");
+        continue;
+      }
+      if (isa<tensor::EmptyOp>(inst)) {
+        LLVM_DEBUG(llvm::dbgs() << "     Skipping tensor.empty.\n");
+        continue;
+      }
+
+      LLVM_DEBUG(llvm::dbgs()
+                 << "     [Unhandled] Operation not handled specifically: "
+                 << inst.getName() << "\n");
+    }
+
+    // 3.5 扫描 post-loop 操作：将 memref.copy(storeTarget -> output) 替换为
+    // materialize_in_destination(tensor -> output)，消除隐式 aliasing
+    if (!storeTargetToTensor.empty()) {
+      Block *parentBlock = op->getBlock();
+      for (auto it = std::next(op->getIterator()); it != parentBlock->end();
+           ++it) {
+        auto copyOp = dyn_cast<memref::CopyOp>(&*it);
+        if (!copyOp)
+          continue;
+        Value copySource = copyOp.getSource();
+        auto tensorIt = storeTargetToTensor.find(copySource);
+        if (tensorIt == storeTargetToTensor.end())
+          continue;
+        // 替换 post-loop memref.copy 为 materialize_in_destination
+        rewriter.setInsertionPoint(copyOp);
+        auto matOp =
+            rewriter.create<bufferization::MaterializeInDestinationOp>(
+                op.getLoc(), tensorIt->second, copyOp.getTarget());
+        matOp.setWritable(true);
+        LLVM_DEBUG(llvm::dbgs()
+                   << "[VectorizeParallelLoop] Replaced post-loop memref.copy "
+                      "with materialize_in_destination (writable=true).\n");
+        rewriter.eraseOp(copyOp);
+        break;
+      }
+    }
+
+    // 打印当前op
+    LLVM_DEBUG({
+      llvm::dbgs() << "[VectorizeParallelLoop] Current Op: ";
+      op.print(llvm::dbgs());
+      llvm::dbgs() << "\n";
+    });
+    // 打印映射表
+    LLVM_DEBUG({
+      llvm::dbgs() << "[VectorizeParallelLoop] Scalar to Tensor Map:\n";
+      for (const auto &kv : scalarToTensorMap) {
+        llvm::dbgs() << "  " << kv.first << " -> " << kv.second << "\n";
+      }
+    });
+
+    // 4. 删除原循环
+    LLVM_DEBUG({
+      llvm::dbgs() << "[VectorizeParallelLoop] scalarToTensorMap size="
+                   << scalarToTensorMap.size() << "\n";
+      llvm::dbgs()
+          << "[VectorizeParallelLoop] Erasing original scf.parallel op.\n";
+    });
+    rewriter.eraseOp(op);
+    LLVM_DEBUG(llvm::dbgs()
+               << "[VectorizeParallelLoop] <<< MatchAndRewrite Done.\n\n");
+    return success();
+  }
+};
+
+struct VectorizeParallelLoopPass
+    : public PassWrapper<VectorizeParallelLoopPass,
+                         OperationPass<func::FuncOp>> {
+  StringRef getArgument() const final { return "vectorize-parallel-loop"; }
+  StringRef getDescription() const final {
+    return "Vectorize scf.parallel loops by unrolling and using bulk memory "
+           "ops.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry &registry) const override {
+    registry.insert<bufferization::BufferizationDialect, tensor::TensorDialect,
+                    arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
+                    func::FuncDialect>();
+  }
+
+  void runOnOperation() override {
+    LLVM_DEBUG(llvm::dbgs()
+               << "[Pass] Starting VectorizeParallelLoopPass on function...\n");
+    RewritePatternSet patterns(&getContext());
+    patterns.add<VectorizeParallelLoopPattern>(&getContext());
+
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
+      LLVM_DEBUG(llvm::dbgs() << "[Pass] Pattern application failed.\n");
+      signalPassFailure();
+    } else {
+      LLVM_DEBUG(llvm::dbgs() << "[Pass] Pattern application succeeded.\n");
+    }
+  }
+
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(VectorizeParallelLoopPass)
+};
+
+} // namespace
+
+namespace mlir::dicp::CommonIR {
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeParallelLoopPass() {
+  return std::make_unique<VectorizeParallelLoopPass>();
+}
+} // namespace mlir::dicp::CommonIR

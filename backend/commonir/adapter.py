@@ -61,7 +61,7 @@ class AdapterWrapper:
 
     @classmethod
     def compile_and_create_adapter(cls, tilelang_module):
-        if os.environ.get("DLC_DUMP_IR", "0") == "1":
+        if os.environ.get("TRITON_DEBUG", "0") == "1":
             with tempfile.TemporaryDirectory() as tmpdir:
                 dst_path = os.path.join(tmpdir, "kernel.tilelangir.mlir")
                 cls._write_mlir_file(dst_path, str(tilelang_module))

@@ -18,19 +18,16 @@
 #ifdef _WIN32
 #ifndef MLIR_CRUNNERUTILS_EXPORT
 #ifdef mlir_c_runner_utils_EXPORTS
-// We are building this library
 #define MLIR_CRUNNERUTILS_EXPORT __declspec(dllexport)
 #define MLIR_CRUNNERUTILS_DEFINE_FUNCTIONS
 #else
-// We are using this library
 #define MLIR_CRUNNERUTILS_EXPORT __declspec(dllimport)
-#endif // mlir_c_runner_utils_EXPORTS
-#endif // MLIR_CRUNNERUTILS_EXPORT
-#else  // _WIN32
-// Non-windows: use visibility attributes.
+#endif
+#endif
+#else
 #define MLIR_CRUNNERUTILS_EXPORT __attribute__((visibility("default")))
 #define MLIR_CRUNNERUTILS_DEFINE_FUNCTIONS
-#endif // _WIN32
+#endif
 
 #include <array>
 #include <cassert>
@@ -38,9 +35,6 @@
 #include <initializer_list>
 #include <vector>
 
-//===----------------------------------------------------------------------===//
-// Codegen-compatible structures for Vector type.
-//===----------------------------------------------------------------------===//
 namespace mlir {
 namespace detail {
 
@@ -64,8 +58,6 @@ private:
   T vector[Dim];
 };
 
-// 1-D vector, padded to the next power of 2 allocation.
-// Specialization occurs to avoid zero size arrays (which fail in -Werror).
 template <typename T, int Dim> struct Vector1D<T, Dim, /*IsPowerOf2=*/false> {
   Vector1D() {
     static_assert(nextPowerOf2(sizeof(T[Dim])) > sizeof(T[Dim]), "size error");
@@ -82,7 +74,6 @@ private:
 } // namespace detail
 } // namespace mlir
 
-// N-D vectors recurse down to 1-D.
 template <typename T, int Dim, int... Dims> struct Vector {
   inline Vector<T, Dims...> &operator[](unsigned i) { return vector[i]; }
   inline const Vector<T, Dims...> &operator[](unsigned i) const {
@@ -93,8 +84,6 @@ private:
   Vector<T, Dims...> vector[Dim];
 };
 
-// 1-D vectors in LLVM are automatically padded to the next power of 2.
-// We insert explicit padding in to account for this.
 template <typename T, int Dim>
 struct Vector<T, Dim>
     : public mlir::detail::Vector1D<T, Dim,
@@ -113,12 +102,8 @@ template <int N> void dropFront(int64_t arr[N], int64_t *res) {
     *(res + i - 1) = arr[i];
 }
 
-//===----------------------------------------------------------------------===//
-// Codegen-compatible structures for StridedMemRef type.
-//===----------------------------------------------------------------------===//
 template <typename T, int Rank> class StridedMemrefIterator;
 
-/// StridedMemRef descriptor type with static rank.
 template <typename T, int N> struct StridedMemRefType {
   T *basePtr;
   T *data;
@@ -143,7 +128,6 @@ template <typename T, int N> struct StridedMemRefType {
   StridedMemrefIterator<T, N> begin() { return {*this, offset}; }
   StridedMemrefIterator<T, N> end() { return {*this, -1}; }
 
-  // This operator[] is extremely slow and only for sugaring purposes.
   StridedMemRefType<T, N - 1> operator[](int64_t idx) {
     StridedMemRefType<T, N - 1> res;
     res.basePtr = basePtr;
@@ -155,7 +139,6 @@ template <typename T, int N> struct StridedMemRefType {
   }
 };
 
-/// StridedMemRef descriptor type specialized for rank 1.
 template <typename T> struct StridedMemRefType<T, 1> {
   T *basePtr;
   T *data;
@@ -177,7 +160,6 @@ template <typename T> struct StridedMemRefType<T, 1> {
   T &operator[](int64_t idx) { return *(data + offset + idx * strides[0]); }
 };
 
-/// StridedMemRef descriptor type specialized for rank 0.
 template <typename T> struct StridedMemRefType<T, 0> {
   T *basePtr;
   T *data;
@@ -195,7 +177,6 @@ template <typename T> struct StridedMemRefType<T, 0> {
   StridedMemrefIterator<T, 0> end() { return {*this, offset + 1}; }
 };
 
-/// Iterate over all elements in a strided memref.
 template <typename T, int Rank> class StridedMemrefIterator {
 public:
   using iterator_category = std::forward_iterator_tag;
@@ -237,18 +218,11 @@ public:
   }
 
 private:
-  /// Offset in the buffer. This can be derived from the indices and the
-  /// descriptor.
   int64_t offset = 0;
-
-  /// Array of indices in the multi-dimensional memref.
   std::array<int64_t, Rank> indices = {};
-
-  /// Descriptor for the strided memref.
   StridedMemRefType<T, Rank> *descriptor;
 };
 
-/// Iterate over all elements in a 0-ranked strided memref.
 template <typename T> class StridedMemrefIterator<T, 0> {
 public:
   using iterator_category = std::forward_iterator_tag;
@@ -268,11 +242,7 @@ public:
   reference operator*() { return *elt; }
   pointer operator->() { return elt; }
 
-  // There are no indices for a 0-ranked memref, but this API is provided for
-  // consistency with the general case.
   const std::array<int64_t, 0> &getIndices() {
-    // Since this is a 0-array of indices we can keep a single global const
-    // copy.
     static const std::array<int64_t, 0> indices = {};
     return indices;
   }
@@ -286,25 +256,16 @@ public:
   }
 
 private:
-  /// Pointer to the single element in the zero-ranked memref.
   T *elt;
 };
 
-//===----------------------------------------------------------------------===//
-// Codegen-compatible structure for UnrankedMemRef type.
-//===----------------------------------------------------------------------===//
-// Unranked MemRef
 template <typename T> struct UnrankedMemRefType {
   int64_t rank;
   void *descriptor;
 };
 
-//===----------------------------------------------------------------------===//
-// DynamicMemRefType type.
-//===----------------------------------------------------------------------===//
 template <typename T> class DynamicMemRefIterator;
 
-// A reference to one of the StridedMemRef types.
 template <typename T> class DynamicMemRefType {
 public:
   int64_t rank;
@@ -351,7 +312,6 @@ public:
   DynamicMemRefIterator<T> begin() { return {*this, offset}; }
   DynamicMemRefIterator<T> end() { return {*this, -1}; }
 
-  // This operator[] is extremely slow and only for sugaring purposes.
   DynamicMemRefType<T> operator[](int64_t idx) {
     assert(rank > 0 && "can't make a subscript of a zero ranked array");
 
@@ -363,15 +323,12 @@ public:
     return res;
   }
 
-  // This operator* can be used in conjunction with the previous operator[] in
-  // order to access the underlying value in case of zero-ranked memref.
   T &operator*() {
     assert(rank == 0 && "not a zero-ranked memRef");
     return data[offset];
   }
 };
 
-/// Iterate over all elements in a dynamic memref.
 template <typename T> class DynamicMemRefIterator {
 public:
   using iterator_category = std::forward_iterator_tag;
@@ -423,27 +380,15 @@ public:
   }
 
 private:
-  /// Offset in the buffer. This can be derived from the indices and the
-  /// descriptor.
   int64_t offset = 0;
-
-  /// Array of indices in the multi-dimensional memref.
   std::vector<int64_t> indices = {};
-
-  /// Descriptor for the dynamic memref.
   DynamicMemRefType<T> *descriptor;
 };
 
-//===----------------------------------------------------------------------===//
-// Small runtime support library for memref.copy lowering during codegen.
-//===----------------------------------------------------------------------===//
 extern "C" MLIR_CRUNNERUTILS_EXPORT void
 memrefCopy(int64_t elemSize, ::UnrankedMemRefType<char> *src,
            ::UnrankedMemRefType<char> *dst);
 
-//===----------------------------------------------------------------------===//
-// Small runtime support library for vector.print lowering during codegen.
-//===----------------------------------------------------------------------===//
 extern "C" MLIR_CRUNNERUTILS_EXPORT void printI64(int64_t i);
 extern "C" MLIR_CRUNNERUTILS_EXPORT void printU64(uint64_t u);
 extern "C" MLIR_CRUNNERUTILS_EXPORT void printF32(float f);
@@ -454,25 +399,13 @@ extern "C" MLIR_CRUNNERUTILS_EXPORT void printClose();
 extern "C" MLIR_CRUNNERUTILS_EXPORT void printComma();
 extern "C" MLIR_CRUNNERUTILS_EXPORT void printNewline();
 
-//===----------------------------------------------------------------------===//
-// Small runtime support library for timing execution and printing GFLOPS
-//===----------------------------------------------------------------------===//
 extern "C" MLIR_CRUNNERUTILS_EXPORT void printFlops(double flops);
 extern "C" MLIR_CRUNNERUTILS_EXPORT double rtclock();
 
-//===----------------------------------------------------------------------===//
-// Runtime support library for random number generation.
-//===----------------------------------------------------------------------===//
-// Uses a seed to initialize a random generator and returns the generator.
 extern "C" MLIR_CRUNNERUTILS_EXPORT void *rtsrand(uint64_t s);
-// Returns a random number in the range of [0, m).
 extern "C" MLIR_CRUNNERUTILS_EXPORT uint64_t rtrand(void *, uint64_t m);
-// Deletes the random number generator.
 extern "C" MLIR_CRUNNERUTILS_EXPORT void rtdrand(void *);
 
-//===----------------------------------------------------------------------===//
-// Runtime support library to allow the use of std::sort in MLIR program.
-//===----------------------------------------------------------------------===//
 extern "C" MLIR_CRUNNERUTILS_EXPORT void
 _mlir_ciface_stdSortI64(uint64_t n, StridedMemRefType<int64_t, 1> *vref);
 extern "C" MLIR_CRUNNERUTILS_EXPORT void

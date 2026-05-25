@@ -41,10 +41,6 @@ template <typename V> void stdSort(uint64_t n, V *p) { std::sort(p, p + n); }
 
 } // namespace
 
-// Small runtime support "lib" for vector.print lowering.
-// By providing elementary printing methods only, this
-// library can remain fully unaware of low-level implementation
-// details of our vectors. Also useful for direct LLVM IR output.
 extern "C" void printI64(int64_t i) { fprintf(stdout, "%" PRId64, i); }
 extern "C" void printU64(uint64_t u) { fprintf(stdout, "%" PRIu64, u); }
 extern "C" void printF32(float f) { fprintf(stdout, "%g", f); }
@@ -63,7 +59,6 @@ extern "C" void memrefCopy(int64_t elemSize, UnrankedMemRefType<char> *srcArg,
   int64_t rank = src.rank;
   MLIR_MSAN_MEMORY_IS_INITIALIZED(src.sizes, rank * sizeof(int64_t));
 
-  // Handle empty shapes -> nothing to copy.
   for (int rankp = 0; rankp < rank; ++rankp)
     if (src.sizes[rankp] == 0)
       return;
@@ -80,7 +75,6 @@ extern "C" void memrefCopy(int64_t elemSize, UnrankedMemRefType<char> *srcArg,
   int64_t *srcStrides = static_cast<int64_t *>(alloca(sizeof(int64_t) * rank));
   int64_t *dstStrides = static_cast<int64_t *>(alloca(sizeof(int64_t) * rank));
 
-  // Initialize index and scale strides.
   for (int rankp = 0; rankp < rank; ++rankp) {
     indices[rankp] = 0;
     srcStrides[rankp] = src.strides[rankp] * elemSize;
@@ -89,22 +83,15 @@ extern "C" void memrefCopy(int64_t elemSize, UnrankedMemRefType<char> *srcArg,
 
   int64_t readIndex = 0, writeIndex = 0;
   for (;;) {
-    // Copy over the element, byte by byte.
     memcpy(dstPtr + writeIndex, srcPtr + readIndex, elemSize);
-    // Advance index and read position.
     for (int64_t axis = rank - 1; axis >= 0; --axis) {
-      // Advance at current axis.
       auto newIndex = ++indices[axis];
       readIndex += srcStrides[axis];
       writeIndex += dstStrides[axis];
-      // If this is a valid index, we have our next index, so continue copying.
       if (src.sizes[axis] != newIndex)
         break;
-      // We reached the end of this axis. If this is axis 0, we are done.
       if (axis == 0)
         return;
-      // Else, reset to 0 and undo the advancement of the linear index that
-      // this axis had. Then continue with the axis one outer.
       indices[axis] = 0;
       readIndex -= src.sizes[axis] * srcStrides[axis];
       writeIndex -= dst.sizes[axis] * dstStrides[axis];
@@ -112,12 +99,10 @@ extern "C" void memrefCopy(int64_t elemSize, UnrankedMemRefType<char> *srcArg,
   }
 }
 
-/// Prints GFLOPS rating.
 extern "C" void printFlops(double flops) {
   fprintf(stderr, "%lf GFLOPS\n", flops / 1.0E9);
 }
 
-/// Returns the number of seconds since Epoch 1970-01-01 00:00:00 +0000 (UTC).
 extern "C" double rtclock() {
 #ifndef _WIN32
   struct timeval tp;
@@ -137,8 +122,6 @@ extern "C" void *mlirAlignedAlloc(uint64_t alignment, uint64_t size) {
 #ifdef _WIN32
   return _aligned_malloc(size, alignment);
 #elif defined(__APPLE__)
-  // aligned_alloc was added in MacOS 10.15. Fall back to posix_memalign to also
-  // support older versions.
   void *result = nullptr;
   (void)::posix_memalign(&result, alignment, size);
   return result;
@@ -157,10 +140,7 @@ extern "C" void mlirAlignedFree(void *ptr) {
 #endif
 }
 
-extern "C" void *rtsrand(uint64_t s) {
-  // Standard mersenne_twister_engine seeded with s.
-  return new std::mt19937(s);
-}
+extern "C" void *rtsrand(uint64_t s) { return new std::mt19937(s); }
 
 extern "C" uint64_t rtrand(void *g, uint64_t m) {
   std::mt19937 *generator = static_cast<std::mt19937 *>(g);

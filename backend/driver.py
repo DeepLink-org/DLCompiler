@@ -131,7 +131,13 @@ class DICPDriver(DriverBase):
         super().__init__()
         self.is_cpu_verify = os.environ.get("DLC_CPU_VERIFY", "0") == "1"
 
-        if target == "mlu":
+        # Extract backend name from GPUTarget or string
+        if hasattr(target, "backend"):
+            backend = target.backend
+        else:
+            backend = str(target) if target else get_current_backend()
+
+        if backend == "mlu":
             from triton.backends.dicp_triton.mlu import BangLauncher, BangUtils
 
             self.target = "mlu"
@@ -148,19 +154,19 @@ class DICPDriver(DriverBase):
             self.is_linear_pointer = lambda ptr, device: self.utils.is_linear_pointer(
                 ptr, device
             )
-        elif target == "maca":
+        elif backend == "maca":
             from triton.backends.dicp_triton.maca import MacaLauncher, MacaUtils
 
             self.target = "maca"
             self.utils = MacaUtils()
             self.launcher_cls = MacaLauncher
-        elif target == "ascend":
-            from triton.backends.dicp_triton.npu import NPULauncher, NPUUtils
+        elif backend == "ascend":
+            from triton.backends.dicp_triton.npu_driver import NPULauncher, NPUUtils
 
             self.target = "ascend"
             self.utils = NPUUtils()
             self.launcher_cls = NPULauncher
-        elif target == "nvidia":
+        elif backend == "nvidia":
             from triton.backends.nvidia.driver import CudaLauncher, CudaUtils
 
             self.target = "nvidia"
@@ -192,7 +198,7 @@ class DICPDriver(DriverBase):
             if current_backend == "ascend":
 
                 def test_npucompiler():
-                    from triton.backends.dicp_triton.npu import _get_bisheng_path
+                    from triton.backends.dicp_triton.utils import _get_bisheng_path
 
                     npucompiler = _get_bisheng_path()
                     targets = (

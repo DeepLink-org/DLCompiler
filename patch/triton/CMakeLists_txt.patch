@@ -1,0 +1,19 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 47a0f3b17..fc7729ce3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -83,6 +83,14 @@ endif()
+
+ # Compiler flags
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
++
++# Ascend NPU: 检测 npu-smi，禁用 AddPtrOp fold 以避免与 LoadStoreCanonicalizer 死循环
++find_program(NPU_SMI_CMD npu-smi)
++if(NPU_SMI_CMD)
++  add_definitions(-DWITH_ASCEND=1)
++  message(STATUS "WITH_ASCEND=1: npu-smi found, AddPtrOp::fold disabled")
++endif()
++
+ if(NOT MSVC)
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__STDC_FORMAT_MACROS  -fPIC -std=gnu++17")
+ else()

@@ -39,27 +39,30 @@ def fn_npu_(output_ptr, x_ptr, XB: tl.constexpr, YB: tl.constexpr, ZB: tl.conste
 
     ret = tl.zeros_like(X)
 
-    oidx = xidx[:, None, None] * YB * ZB + yidx[None, :, None] * ZB + zidx[None, None, :]
+    oidx = (
+        xidx[:, None, None] * YB * ZB + yidx[None, :, None] * ZB + zidx[None, None, :]
+    )
 
     tl.store(output_ptr + oidx, ret)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 256, 16), 1, 2, 256, 16],
-                             ['float32', (8, 8, 4), 1, 8, 8, 4],
-                             ['float16', (2, 256, 16), 1, 2, 256, 16],
-                             ['float16', (8, 8, 4), 1, 8, 8, 4],
-                             ['int8', (2, 256, 16), 1, 2, 256, 16],
-                             ['int8', (8, 8, 4), 1, 8, 8, 4],
-                         ]
-                         )
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 256, 16), 1, 2, 256, 16],
+        ["float32", (8, 8, 4), 1, 8, 8, 4],
+        ["float16", (2, 256, 16), 1, 2, 256, 16],
+        ["float16", (8, 8, 4), 1, 8, 8, 4],
+        ["int8", (2, 256, 16), 1, 2, 256, 16],
+        ["int8", (8, 8, 4), 1, 8, 8, 4],
+    ],
+)
 def test_case(param_list):
     dtype, shape, ncore, XB, YB, ZB = param_list
-    x0 = test_common.generate_tensor(shape, dtype)
-    y_ref = torch.zeros_like(x0, dtype=eval('torch.' + dtype)).npu()
+    x0 = test_common.generate_tensor(shape, dtype).npu()
+    y_ref = torch.zeros_like(x0, dtype=eval("torch." + dtype)).npu()
     print(f"y_ref = {y_ref[0, 0, 0:4]}")
-    y_cal = torch.zeros(shape, dtype=eval('torch.' + dtype)).npu()
+    y_cal = torch.zeros(shape, dtype=eval("torch." + dtype)).npu()
 
     fn_npu_[ncore, 1, 1](y_cal, x0, XB, YB, ZB)
     print(f"y_cal = {y_cal[0, 0, 0:4]}")

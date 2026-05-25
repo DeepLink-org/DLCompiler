@@ -15,7 +15,7 @@ import os
 os.environ.setdefault("DLC_CPU_VERIFY", "1")
 os.environ.setdefault(
     "LLVM_BINARY_DIR",
-    "/mnt/data01/kezengxiang/work/third_party/llvm-project/build_064f02dac0c81c19350a74415b3245f42fed09dc/bin",
+    "/mnt/data01/kezengxiang/work/third_party/llvm-project/build_7d5de3033187c8a3bb4d2e322f5462cdaf49808f/bin",
 )
 
 import pytest

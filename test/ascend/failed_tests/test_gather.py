@@ -22,7 +22,7 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink.libdevice as libdevice
+import triton.language.extra.deeplink.cann.libdevice as libdevice
 import numpy as np
 import test_common
 import pytest

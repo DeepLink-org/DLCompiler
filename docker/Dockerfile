@@ -1,152 +1,142 @@
-FROM ccr.ccs.tencentyun.com/library/ubuntu:22.04
-
-# FROM ubuntu:22.04
+ARG TARGETPLATFORM=linux/arm64
+FROM --platform=${TARGETPLATFORM} swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.0.0-910b-ubuntu22.04-py3.11-devel
 
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ="Asia/shanghai"
+ENV TZ=Asia/Shanghai
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
-RUN apt update && \
-    apt install --yes --no-install-recommends --no-install-suggests \
-    bash \
-    ca-certificates \
-    curl \
-    git \
-    gnupg \
-    make \
-    sudo \
-    unzip \
-    vim \
-    wget && \
-    apt clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    update-ca-certificates
+# ============================================================
+# 1. 替换 Ubuntu 源为阿里源
+# ============================================================
+RUN cp /etc/apt/sources.list /etc/apt/sources.list.bak && \
+    cat > /etc/apt/sources.list << 'EOF'
+deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+EOF
+RUN apt-get update
 
-RUN echo "deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main" > /etc/apt/sources.list.d/deadsnakes-ppa.list && \
-    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BA6932366A755776 && \
-    apt-get update
+# ============================================================
+# 2. 安装基础依赖
+# ============================================================
+RUN apt-get install -y --no-install-recommends \
+    wget curl git build-essential software-properties-common \
+    apt-transport-https ca-certificates gnupg lsb-release cmake
+# ============================================================
+# 5. 安装其他构建依赖
+# ============================================================
+RUN apt-get install -y --no-install-recommends \
+    ninja-build  python3-pip libssl-dev libffi-dev \
+    bash make sudo unzip vim zlib1g-dev
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN apt update && \
-    apt install --yes --no-install-recommends --no-install-suggests \
-    clang \
-    clang-format \
-    cmake \
-    lld \
-    ninja-build \
-    python3-dev \
-    python3-venv \
-    python3.11 \
-    python3.11-dev \
-    python3.11-venv \
-    python3.11-distutils \
-    python3.9 \
-    python3.9-dev \
-    python3.9-venv \
-    python3.9-distutils \
-    zlib1g-dev && \
-    apt clean && \
-    rm -rf /var/lib/apt/lists/*
+# ============================================================
+# 3. 安装 LLVM/Clang (>=15)，固定为 15 版本
+#    对应原脚本步骤3，但只装15且使用阿里云源
+# ============================================================
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - && \
+    cat > /etc/apt/sources.list.d/llvm-aliyun.list << 'EOF'
+deb http://mirrors.aliyun.com/llvm/apt/jammy/ llvm-toolchain-jammy-15 main
+EOF
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        clang-15 clangd-15 lld-15 \
+        clang-format-15 clang-tidy-15 \
+        llvm-15-dev libclang-15-dev
+RUN update-alternatives --install /usr/bin/clang        clang        /usr/bin/clang-15        100 && \
+    update-alternatives --install /usr/bin/clang++      clang++      /usr/bin/clang++-15      100 && \
+    update-alternatives --install /usr/bin/clangd       clangd       /usr/bin/clangd-15       100 && \
+    update-alternatives --install /usr/bin/lld          lld          /usr/bin/lld-15          100 && \
+    update-alternatives --install /usr/bin/ld.lld       ld.lld       /usr/bin/ld.lld-15       100 && \
+    update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-15 100 && \
+    update-alternatives --install /usr/bin/clang-tidy   clang-tidy   /usr/bin/clang-tidy-15   100
 
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.9 && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && \
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1 \
-      --slave /usr/bin/python3 python3 /usr/bin/python3.9 \
-      --slave /usr/bin/pip pip /usr/local/bin/pip3.9 \
-      --slave /usr/bin/pip3 pip3 /usr/local/bin/pip3.9 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3.10 2 \
-      --slave /usr/bin/python3 python3 /usr/bin/python3.10 \
-      --slave /usr/bin/pip pip /usr/local/bin/pip3.10 \
-      --slave /usr/bin/pip3 pip3 /usr/local/bin/pip3.10 && \
-    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 3 \
-      --slave /usr/bin/python3 python3 /usr/bin/python3.11 \
-      --slave /usr/bin/pip pip /usr/local/bin/pip3.11 \
-      --slave /usr/bin/pip3 pip3 /usr/local/bin/pip3.11 && \
-    rm -f /usr/local/bin/pip /usr/local/bin/pip3 && \
-    update-alternatives --set python /usr/bin/python3.10
 
-USER root
-WORKDIR /root/workspace
 
-RUN set -ex && \
-    apt update && \
-    apt install -y zlib1g-dev clang-15 lld-15 && \
-    apt install -y ccache && \
-    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 20 && \
-    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 20 && \
-    update-alternatives --install /usr/bin/lld lld /usr/bin/lld-15 20
 
-# 添加Miniconda安装（Python 3.10版本）
-ENV CONDA_DIR /opt/conda
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-py310_23.1.0-1-Linux-aarch64.sh -O /tmp/miniconda.sh && \
+# ============================================================
+# 6. 安装 Miniconda
+# ============================================================
+ENV CONDA_DIR=/opt/conda
+RUN ARCH=$(uname -m) && \
+    MINI_ARCH=$ARCH && \
+    [ "$ARCH" = "aarch64" ] && MINI_ARCH="aarch64" && \
+    [ "$ARCH" = "x86_64" ]  && MINI_ARCH="x86_64" && \
+    wget -q "https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-${MINI_ARCH}.sh" -O /tmp/miniconda.sh && \
     bash /tmp/miniconda.sh -b -p $CONDA_DIR && \
     rm -f /tmp/miniconda.sh && \
     $CONDA_DIR/bin/conda clean -tipy && \
-    ln -s $CONDA_DIR/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
-    echo ". $CONDA_DIR/etc/profile.d/conda.sh" >> /etc/bash.bashrc && \
-    echo "conda activate base" >> /etc/bash.bashrc
+    echo ". $CONDA_DIR/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate dlcompiler" >> ~/.bashrc
+ENV PATH="$CONDA_DIR/bin:$PATH"
+# 直接覆盖 .condarc，避免保留默认的 defaults channel
+# （新版 conda 访问 repo.anaconda.com 时会要求接受 ToS，导致 conda create 失败）
+RUN cat > $CONDA_DIR/.condarc <<'EOF' && cp $CONDA_DIR/.condarc /root/.condarc
+channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+show_channel_urls: true
+EOF
 
-ENV PATH $CONDA_DIR/bin:$PATH
+# ============================================================
+# 7. 创建并激活 dlcompiler 环境（python=3.10），pip 改为清华源
+# ============================================================
+RUN conda create -n dlcompiler python=3.10 -y
 
-# 初始化 conda
-RUN conda init bash
+RUN source $CONDA_DIR/etc/profile.d/conda.sh && conda activate dlcompiler && \
+    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn
 
-# 创建新的 conda 环境
-RUN set -ex \
-    && conda create -n dlcompiler python=3.10
-ENV LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:/usr/lib:/lib:$CONDA_DIR/envs/dlcompiler/lib:$LD_LIBRARY_PATH
+# ============================================================
+# 8. 安装 Triton 构建依赖
+# ============================================================
+RUN source $CONDA_DIR/etc/profile.d/conda.sh && conda activate dlcompiler && \
+    pip install --no-cache-dir \
+        autopep8 isort numpy pytest pytest-forked pytest-xdist \
+        "scipy>=1.7.1" llnl-hatchet expecttest \
+        "setuptools>=40.8.0" wheel "cmake>=3.20,<4.0" \
+        "ninja>=1.11.1" "pybind11>=2.13.1" lit nanobind
 
-RUN echo "source activate dlcompiler" > ~/.bashrc
-RUN set -ex && \
-    apt-get update && apt-get install -y openssh-server && \
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    service ssh start
+# ============================================================
+# 9. 安装 PyTorch + torch_npu
+# ============================================================
+RUN source $CONDA_DIR/etc/profile.d/conda.sh && conda activate dlcompiler && \
+    ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then \
+        wget -q -P /tmp https://download.pytorch.org/whl/cpu/torch-2.9.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
+        pip install /tmp/torch-2.9.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
+        rm -f /tmp/torch-2.9.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
+        wget -q -P /tmp https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-pytorch2.9.0/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_aarch64.whl && \
+        pip install /tmp/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_aarch64.whl && \
+        rm -f /tmp/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_aarch64.whl; \
+    elif [ "$ARCH" = "x86_64" ]; then \
+        wget -q -P /tmp https://download.pytorch.org/whl/cpu/torch-2.9.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl && \
+        pip install /tmp/torch-2.9.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl && \
+        rm -f /tmp/torch-2.9.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl && \
+        wget -q -P /tmp https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-pytorch2.9.0/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_x86_64.whl && \
+        pip install /tmp/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_x86_64.whl && \
+        rm -f /tmp/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_x86_64.whl; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi
 
-COPY cann cann
-RUN set -ex && \
-    cd /root/workspace/cann && \
-    chmod +x Ascend-cann-toolkit_8.3.RC1_linux-aarch64.run && \
-    chmod +x Ascend-cann-kernels-910b_8.3.RC1_linux-aarch64.run && \
-    ./Ascend-cann-toolkit_8.3.RC1_linux-aarch64.run --quiet --install --install-for-all && \
-    ./Ascend-cann-kernels-910b_8.3.RC1_linux-aarch64.run --quiet --install --install-for-all && \
-    echo "alias ll='ls -alh'" >> ~/.bashrc && \
-    source ~/.bashrc && \
-    echo "source /usr/local/Ascend/ascend-toolkit/set_env.sh" >> ~/.bashrc
-
-RUN set -ex && \
-    source ~/.bashrc && \
-    conda activate dlcompiler && \
-    pip install ninja cmake wheel pybind11  -i https://mirrors.huaweicloud.com/repository/pypi/simple    && \
-    pip install attrs==24.2.0 numpy==1.26.4 scipy==1.13.1 decorator==5.1.1 psutil==6.0.0 pytest==8.3.2 pytest-xdist==3.6.1 pyyaml nanobind==2.9.2 torch==2.6.0 torch-npu==2.6.0  -i https://mirrors.huaweicloud.com/repository/pypi/simple
-
-COPY requirements.txt .
-RUN set -ex && \
-    source ~/.bashrc && \
-    conda activate dlcompiler && \
-    pip install -r requirements.txt  -i https://mirrors.huaweicloud.com/repository/pypi/simple
-
-ENV LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
-
-RUN mkdir -p /root/.triton
-COPY nvidia /root/.triton/nvidia
-
-COPY code .
-
-RUN ln -sf /usr/lib/aarch64-linux-gnu/libstdc++.so.6 $CONDA_DIR/envs/dlcompiler/lib/libstdc++.so.6 && \
-    ldconfig
-
+# ============================================================
+# 10. 设置工作目录和 CANN 环境
+# ============================================================
+WORKDIR /root/workspace
 RUN echo "alias ll='ls -alh --color=auto'" >> ~/.bashrc && \
     echo "alias ls='ls --color=auto'" >> ~/.bashrc && \
-    echo "export LS_COLORS='rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32'" >> ~/.bashrc
+    echo "source /usr/local/Ascend/ascend-toolkit/set_env.sh" >> ~/.bashrc && \
+    echo "export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:\$LD_LIBRARY_PATH" >> ~/.bashrc
 
-RUN set -ex && \
-    source ~/.bashrc && \
-    conda activate dlcompiler && \
-    cd /root/workspace && \
-    export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH && \
-    ln -sf /usr/lib/aarch64-linux-gnu/libstdc++.so.6 $CONDA_DIR/envs/dlcompiler/lib/libstdc++.so.6 && \
-    ldconfig && \
-    echo "当前LD_LIBRARY_PATH: $LD_LIBRARY_PATH" && \
-    echo "Python路径: $(which python)" && \
-    echo "PIP路径: $(which pip)" && \
-    echo y | bash compile.sh
+# 额外 DLCompiler 依赖（原 Dockerfile 保留）
+COPY requirements.txt .
+RUN source $CONDA_DIR/etc/profile.d/conda.sh && conda activate dlcompiler && \
+    pip install --no-cache-dir -r requirements.txt

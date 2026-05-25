@@ -20,7 +20,7 @@
 
 import triton
 import triton.language as tl
-from triton.language.extra.deeplink.libdevice import pow
+from triton.language.extra.deeplink.cann.libdevice import pow
 import torch
 import torch_npu
 import pytest

@@ -27,7 +27,7 @@ import test_common
 import torch
 import torch_npu
 
-import triton.language.extra.deeplink.libdevice as libdevice
+import triton.language.extra.deeplink.cann.libdevice as libdevice
 
 def standard_unary(x0, dtype):
     res = torch.atan(x0)

@@ -23,7 +23,7 @@ import triton.language as tl
 import torch
 import pytest
 import test_common
-import triton.language.extra.deeplink.libdevice as libdevice
+import triton.language.extra.deeplink.cann.libdevice as libdevice
 
 
 def torch_relu(x0, x1):

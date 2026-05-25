@@ -48,7 +48,7 @@ def test_isnan(sigtype, N):
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = tl.arange(0, N)
         x0 = tl.load(in_ptr0 + idx)
-        ret = tl.extra.deeplink.libdevice.isnan(x0)
+        ret = tl.extra.deeplink.cann.libdevice.isnan(x0)
         tl.store(out_ptr0 + idx, ret)
 
     def triton_func(x0, N):
@@ -83,7 +83,7 @@ def test_isnan(sigtype, N):
 #     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
 #         idx = tl.arange(0, N)
 #         x0 = tl.load(in_ptr0 + idx)
-#         ret = tl.extra.deeplink.libdevice.isnan(x0)
+#         ret = tl.extra.deeplink.cann.libdevice.isnan(x0)
 #         tl.store(out_ptr0 + idx, ret)
 
 

@@ -26,7 +26,7 @@ import torch
 import torch_npu
 import pytest
 import test_common
-import triton.language.extra.deeplink.libdevice as dl
+import triton.language.extra.deeplink.cann.libdevice as dl
 
 # from dlblas.utils.libentry import libentry
 

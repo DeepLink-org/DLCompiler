@@ -10,8 +10,10 @@ from triton.language.core import (
     range,
     slice,
 )
+import triton.language.core as tl_core
 import builtins
-from . import semantic as dl_semantic
+from .cann.extension import semantic as dl_semantic
+from triton._C.libtriton import dicp_triton
 
 
 def _constexpr_to_value(v):
@@ -215,8 +217,19 @@ def extract_slice(
 
 @builtin
 def compile_hint(ptr, hint_name, hint_val=None, _semantic=None):
+    # TODO: simt mode does not support hint annotations
+    # if _semantic.builder.is_simt_mode():
+    #     return
+
+    def _unwrap(val):
+        return _unwrap_if_constexpr(val) if val else val
+
     hint_name = _constexpr_to_value(hint_name)
     assert isinstance(hint_name, str), f"hint name: {hint_name} is not string"
+    if isinstance(hint_val, (list, tl_core.tuple)):
+        hint_val = [_unwrap(val) for val in hint_val]
+    else:
+        hint_val = _unwrap(hint_val)
     hint_val = _unwrap_if_constexpr(hint_val) if hint_val else hint_val
     dl_semantic.compile_hint(ptr, hint_name, hint_val, _semantic.builder)
 
@@ -306,6 +319,17 @@ class SyncFlag:
     V2C = SyncFlagType("vector_to_cube")
 
 
+def _get_cross_flag_pipes(sender):
+    from .cann.extension.core import PIPE
+
+    if sender == "cube":
+        return "vector", PIPE.PIPE_FIX, PIPE.PIPE_MTE2
+    elif sender == "vector":
+        return "cube", PIPE.PIPE_MTE3, PIPE.PIPE_MTE2
+    else:
+        raise AssertionError(f"Unexpected sender: {sender}")
+
+
 @builtin
 def set_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     sender = _constexpr_to_value(sync_flag_type.sender())
@@ -313,8 +337,11 @@ def set_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     assert (
         isinstance(event_id, int) and (event_id >= 0) and (event_id < 16)
     ), f"event_id: {event_id} should be 0 ~ 15"
-    dl_semantic.custom_sync_op(
-        _semantic.builder, "sync_block_set", sender=sender, event_id=event_id
+    receiver, sender_pipe, receiver_pipe = _get_cross_flag_pipes(sender)
+    from .cann.extension.core import sync_block_set
+
+    sync_block_set(
+        sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=_semantic
     )
 
 
@@ -325,8 +352,11 @@ def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None)
     assert (
         isinstance(event_id, int) and (event_id >= 0) and (event_id < 16)
     ), f"event_id: {event_id} should be 0 ~ 15"
-    dl_semantic.custom_sync_op(
-        _semantic.builder, "sync_block_wait", sender=sender, event_id=event_id
+    receiver, sender_pipe, receiver_pipe = _get_cross_flag_pipes(sender)
+    from .cann.extension.core import sync_block_wait
+
+    sync_block_wait(
+        sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=_semantic
     )
 
 

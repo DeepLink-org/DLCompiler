@@ -41,7 +41,6 @@ from .utils import (
     is_compile_on_910_95,
 )
 from .npu_driver import NPUUtils
-from .npu_compiler_flags import CompilerFlag, build_compile_options
 
 
 def _get_dicp_opt_path() -> str:
@@ -525,212 +524,6 @@ def get_libdevice():
 
 
 # ---------------------------------------------------------------------------
-# Compiler flag builders (generators → yield CLI args)
-# ---------------------------------------------------------------------------
-
-
-def _build_multibuffer(metadata, opt):
-    """Build --enable-auto-multi-buffer flag from multibuffer + num_stages."""
-    mb = metadata.get("multibuffer")
-    ns = metadata.get("num_stages")
-    if mb is None and ns is None:
-        return
-    disabled = (mb is not None and not mb) or ns == 1
-    yield "--enable-auto-multi-buffer=False" if disabled else "--enable-auto-multi-buffer=True"
-
-
-def _build_auto_bind_sub_block(metadata, opt):
-    """Getter: resolves enable_auto_bind_sub_block vs auto_tile_and_bind_subblock.
-
-    NOTE: This is a *value getter* used with CompilerFlag.derived(), not a
-    generator builder.  It must return a plain value (or None), never yield.
-    """
-    return get_auto_bind_sub_block_option(metadata)
-
-
-def _build_sanitizer(metadata, opt):
-    if _is_ascend_sanitizer_enabled():
-        yield "--enable-sanitizer=true"
-
-
-def _build_print_ub(metadata, opt):
-    if _enable_print_ub_bits():
-        yield "--enable-print-memory-allocated-size"
-
-
-def _build_debug_info(metadata, opt):
-    if not _is_debug_line_info_disabled():
-        yield "--enable-debug-info=true"
-
-
-def _build_dump_memory(metadata, opt):
-    if _enable_dump_memory_info():
-        yield "--enable-memory-display=true"
-
-
-def _build_msdebug(metadata, opt):
-    if _enable_msdebug():
-        yield "--enable-ms-debug=true"
-
-
-def _build_auto_blockify_a2a3(metadata, opt):
-    if _is_auto_map_parallel_blocks_enabled():
-        yield "--enable-auto-blockify-loop"
-
-
-def _build_sync_solver_a2a3(metadata, opt):
-    """A2/A3: produces *two* flags for sync_solver."""
-    if (v := metadata.get("sync_solver")) is not None:
-        yield f"--enable-hivm-graph-sync-solver={v}"
-        yield f"--enable-hivm-cross-core-gss={v}"
-
-
-def _build_disable_ffts(metadata, opt):
-    if force_disable_ffts():
-        yield "--disable-ffts"
-
-
-def _build_vf_fusion_legacy(metadata, opt):
-    env_vf = os.getenv("TRITON_ENABLE_VF_FUSION")
-    enable = (
-        env_vf.lower() in ("true", "1", "yes")
-        if env_vf is not None
-        else metadata.get("enable_vf_fusion", False)
-    )
-    if enable:
-        yield "--enable-vf-fusion"
-
-
-def _build_auto_blockify_legacy(metadata, opt):
-    """910_95: complex auto-blockify condition."""
-    enable = metadata.get("enable_auto_blockify")
-    if _is_auto_map_parallel_blocks_enabled():
-        if enable is None or enable:
-            yield "--enable-auto-blockify-loop"
-    elif enable:
-        yield "--enable-auto-blockify-loop"
-
-
-def _build_mix_mode_aic(metadata, opt):
-    if opt.mix_mode in ("aic",):
-        yield "--disable-hfusion-vectorize=true"
-
-
-def _build_disable_auto_cv_workspace(metadata, opt):
-    """Only emit when explicitly True (not just truthy/not-None)."""
-    if metadata.get("disable_auto_cv_work_space_manage") is True:
-        yield "--disable-auto-cv-work-space-manage=True"
-
-
-def _build_tightly_coupled_buf_reuse(metadata, opt):
-    if metadata.get("disable_tightly_coupled_buffer_reuse"):
-        yield "--disable-tightly-coupled-buffer-reuse"
-
-
-# ---------------------------------------------------------------------------
-# Declarative flag sets
-# ---------------------------------------------------------------------------
-
-_A2A3_FLAGS: tuple[CompilerFlag, ...] = (
-    # --- custom builders ---
-    CompilerFlag.custom("multibuffer", _build_multibuffer),
-    CompilerFlag.custom("sync_solver", _build_sync_solver_a2a3),
-    CompilerFlag.custom("_sanitizer", _build_sanitizer),
-    CompilerFlag.custom("_debug_info", _build_debug_info),
-    CompilerFlag.custom("_print_ub", _build_print_ub),
-    CompilerFlag.custom("_dump_mem", _build_dump_memory),
-    CompilerFlag.custom("_msdebug", _build_msdebug),
-    CompilerFlag.custom("_auto_blockify", _build_auto_blockify_a2a3),
-    # --- derived (custom getter) ---
-    CompilerFlag.derived(
-        "enable_auto_bind_sub_block",
-        "--enable-auto-bind-sub-block={value}",
-        _build_auto_bind_sub_block,
-    ),
-    # --- simple key → --flag={value} ---
-    CompilerFlag.simple("enable_ubuf_saving", "--enable-ubuf-saving={value}"),
-    CompilerFlag.simple("enable_preload", "--enable-preload={value}"),
-    CompilerFlag.simple("enable_hivm_auto_cv_balance", "--enable-hivm-auto-cv-balance={value}"),
-    CompilerFlag.simple("unit_flag", "--enable-hivm-unit-flag-sync={value}"),
-    CompilerFlag.simple("enable_drop_unit_dims", "--enable-drop-unit-dims={value}"),
-    CompilerFlag.simple("enable_flatten", "--enable-flatten={value}"),
-    CompilerFlag.simple("enable_auto_vectorize_v2", "--enable-auto-vectorize-v2={value}"),
-    CompilerFlag.simple("inject_barrier_all", "--enable-hivm-inject-barrier-all-sync={value}"),
-    CompilerFlag.simple("inject_block_all", "--enable-hivm-inject-block-all-sync={value}"),
-    CompilerFlag.simple(
-        "limit_auto_multi_buffer_only_for_local_buffer",
-        "--limit-auto-multi-buffer-only-for-local-buffer={value}",
-    ),
-    CompilerFlag.simple("set_workspace_multibuffer", "--set-workspace-multibuffer={value}"),
-    CompilerFlag.simple("tile_mix_vector_loop", "--tile-mix-vector-loop={value}"),
-    CompilerFlag.simple("tile_mix_cube_loop", "--tile-mix-cube-loop={value}"),
-    CompilerFlag.simple(
-        "limit_auto_multi_buffer_of_local_buffer",
-        "--limit-auto-multi-buffer-of-local-buffer={value}",
-    ),
-    CompilerFlag.simple("disable_auto_inject_block_sync", "--disable-auto-inject-block-sync={value}"),
-    CompilerFlag.custom("disable_auto_cv_work_space_manage", _build_disable_auto_cv_workspace),
-    CompilerFlag.simple("disable_size_align_for_cast", "--disable-size-align-for-cast={value}"),
-)
-
-_LEGACY_FLAGS: tuple[CompilerFlag, ...] = (
-    # --- custom builders ---
-    CompilerFlag.custom("multibuffer", _build_multibuffer),
-    CompilerFlag.custom("_sanitizer", _build_sanitizer),
-    CompilerFlag.custom("_print_ub", _build_print_ub),
-    CompilerFlag.custom("_disable_ffts", _build_disable_ffts),
-    CompilerFlag.custom("_vf_fusion", _build_vf_fusion_legacy),
-    CompilerFlag.custom("_auto_blockify", _build_auto_blockify_legacy),
-    CompilerFlag.custom("_tightly_coupled_buf_reuse", _build_tightly_coupled_buf_reuse),
-    CompilerFlag.custom("_mix_mode_aic", _build_mix_mode_aic),
-    CompilerFlag.custom("disable_auto_cv_work_space_manage", _build_disable_auto_cv_workspace),
-    # --- derived (custom getter) ---
-    CompilerFlag.derived(
-        "enable_auto_bind_sub_block",
-        "--enable-auto-bind-sub-block={value}",
-        _build_auto_bind_sub_block,
-    ),
-    # --- simple key → --flag={value} ---
-    CompilerFlag.simple("sync_solver", "--enable-hivm-graph-sync-solver={value}"),
-    CompilerFlag.simple("enable_hivm_auto_cv_balance", "--enable-hivm-auto-cv-balance={value}"),
-    CompilerFlag.simple("unit_flag", "--enable-hivm-unit-flag-sync={value}"),
-    CompilerFlag.simple("inject_barrier_all", "--enable-hivm-inject-barrier-all-sync={value}"),
-    CompilerFlag.simple("inject_block_all", "--enable-hivm-inject-block-all-sync={value}"),
-    CompilerFlag.simple(
-        "limit_auto_multi_buffer_only_for_local_buffer",
-        "--limit-auto-multi-buffer-only-for-local-buffer={value}",
-    ),
-    CompilerFlag.simple("set_workspace_multibuffer", "--set-workspace-multibuffer={value}"),
-    CompilerFlag.simple(
-        "limit_auto_multi_buffer_of_local_buffer",
-        "--limit-auto-multi-buffer-of-local-buffer={value}",
-    ),
-    CompilerFlag.simple("enable_mixed_cv", "--enable-mixed-cv={value}"),
-    CompilerFlag.simple(
-        "enable_cce_vf_auto_sync",
-        "--append-bisheng-options=-mllvm --cce-vf-auto-sync={value}",
-    ),
-    CompilerFlag.simple(
-        "enable_cce_vf_remove_membar",
-        "--append-bisheng-options=-mllvm --cce-vf-remove-membar={value}",
-    ),
-    CompilerFlag.simple("enable_drop_unit_dims", "--enable-drop-unit-dims={value}"),
-    CompilerFlag.simple("enable_flatten", "--enable-flatten={value}"),
-    CompilerFlag.simple("enable_auto_vectorize_v2", "--enable-auto-vectorize-v2={value}"),
-    CompilerFlag.simple(
-        "auto_vectorize_v2_max_fused_ops_num",
-        "--hfusion-max-fused-ops-in-auto-vectorize-v2={value}",
-    ),
-    CompilerFlag.simple(
-        "prevec_max_fused_ops_num",
-        "--hfusion-max-fused-elementwise-ops={value}",
-    ),
-    CompilerFlag.simple("disable_auto_inject_block_sync", "--disable-auto-inject-block-sync={value}"),
-    CompilerFlag.simple("bisheng_options", "--append-bisheng-options={value}"),
-)
-
-
-# ---------------------------------------------------------------------------
 # Shared NPU compilation orchestration
 # ---------------------------------------------------------------------------
 
@@ -739,8 +532,7 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
                                 build_options_fn,
                                 bishengir_hivm_opt=None,
                                 extra_cmd_args=None,
-                                debug_stage_name="kernel.npuir_input.mlir",
-                                print_linalg=False):
+                                debug_stage_name="kernel.npuir_input.mlir"):
     """Shared orchestration for linalg → npubin compilation.
 
     Parameters
@@ -757,8 +549,6 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
         after ``-o bin_file`` (910_95: vf_merge_level + hfusion multi-consumer).
     debug_stage_name : str
         File name used when dumping the input IR in debug mode.
-    print_linalg : bool
-        If True, print the linalg IR before compilation (A2/A3 behaviour).
     """
     linalg, metadata = _parse_linalg_metadata(linalg, metadata)
     if replace_dicp_ir is not None:
@@ -766,8 +556,6 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
         linalg = Path(replace_dicp_ir).read_text()
     if _get_bishengir_llvm_version() < 22:
         linalg = _downgrade_mlir_for_legacy_llvm(linalg)
-    if print_linalg:
-        print(linalg)
     if opt.debug:
         dicp_utils._dump_stage_ir(linalg, metadata["hash"], debug_stage_name)
 
@@ -860,7 +648,158 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
 def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
     def _build_options(m, o):
         opts = get_common_bishengir_compile_options(m)
-        return build_compile_options(m, o, _LEGACY_FLAGS, opts)
+
+        multibuffer = m.get("multibuffer")
+        num_stages = m.get("num_stages")
+        if multibuffer is not None or num_stages is not None:
+            multi_buffer_value = True
+            if multibuffer is not None and not multibuffer:
+                multi_buffer_value = False
+            elif num_stages is not None and num_stages == 1:
+                multi_buffer_value = False
+            opts.append(f"--enable-auto-multi-buffer={multi_buffer_value}")
+
+        if m.get("disable_tightly_coupled_buffer_reuse"):
+            opts.append("--disable-tightly-coupled-buffer-reuse")
+
+        opts.append(
+            f"--enable-auto-bind-sub-block={get_auto_bind_sub_block_option(m)}"
+        )
+
+        if force_disable_ffts():
+            opts.append("--disable-ffts")
+        if _is_ascend_sanitizer_enabled():
+            opts.append("--enable-sanitizer=true")
+        if not _is_debug_line_info_disabled():
+            opts.append("--enable-debug-info=true")
+        if _enable_print_ub_bits():
+            opts.append("--enable-print-memory-allocated-size")
+
+        enable_hivm_auto_cv_balance = m["enable_hivm_auto_cv_balance"]
+        if enable_hivm_auto_cv_balance is not None:
+            opts.append(
+                f"--enable-hivm-auto-cv-balance={enable_hivm_auto_cv_balance}"
+            )
+
+        sync_solver = m["sync_solver"]
+        if sync_solver is not None:
+            opts.append(f"--enable-hivm-graph-sync-solver={sync_solver}")
+
+        unit_flag = m["unit_flag"]
+        if unit_flag is not None:
+            opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
+
+        inject_barrier_all = m["inject_barrier_all"]
+        if inject_barrier_all is not None:
+            opts.append(
+                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
+            )
+
+        inject_block_all = m["inject_block_all"]
+        if inject_block_all is not None:
+            opts.append(
+                f"--enable-hivm-inject-block-all-sync={inject_block_all}"
+            )
+
+        limit_auto_multi_buffer_only_for_local_buffer = m[
+            "limit_auto_multi_buffer_only_for_local_buffer"
+        ]
+        if limit_auto_multi_buffer_only_for_local_buffer is not None:
+            opts.append(
+                f"--limit-auto-multi-buffer-only-for-local-buffer={limit_auto_multi_buffer_only_for_local_buffer}"
+            )
+
+        set_workspace_multibuffer = m["set_workspace_multibuffer"]
+        if set_workspace_multibuffer is not None:
+            opts.append(
+                f"--set-workspace-multibuffer={set_workspace_multibuffer}"
+            )
+
+        auto_multi_buffer = m["limit_auto_multi_buffer_of_local_buffer"]
+        if auto_multi_buffer is not None:
+            opts.append(
+                f"--limit-auto-multi-buffer-of-local-buffer={auto_multi_buffer}"
+            )
+
+        enable_mixed_cv = m["enable_mixed_cv"]
+        if enable_mixed_cv is not None:
+            opts.append(f"--enable-mixed-cv={enable_mixed_cv}")
+
+        enable_cce_vf_auto_sync = m["enable_cce_vf_auto_sync"]
+        if enable_cce_vf_auto_sync is not None:
+            opts.append(
+                f"--append-bisheng-options=-mllvm --cce-vf-auto-sync={enable_cce_vf_auto_sync}"
+            )
+
+        enable_cce_vf_remove_membar = m["enable_cce_vf_remove_membar"]
+        if enable_cce_vf_remove_membar is not None:
+            opts.append(
+                f"--append-bisheng-options=-mllvm --cce-vf-remove-membar={enable_cce_vf_remove_membar}"
+            )
+
+        env_vf = os.getenv("TRITON_ENABLE_VF_FUSION")
+        enable_vf_fusion = (
+            env_vf.lower() in ("true", "1", "yes")
+            if env_vf is not None
+            else m.get("enable_vf_fusion", False)
+        )
+        if enable_vf_fusion:
+            opts.append("--enable-vf-fusion")
+
+        enable_drop_unit_dims = m["enable_drop_unit_dims"]
+        if enable_drop_unit_dims is not None:
+            opts.append(f"--enable-drop-unit-dims={enable_drop_unit_dims}")
+
+        enable_flatten = m["enable_flatten"]
+        if enable_flatten is not None:
+            opts.append(f"--enable-flatten={enable_flatten}")
+
+        enable_auto_vectorize_v2 = m["enable_auto_vectorize_v2"]
+        if enable_auto_vectorize_v2 is not None:
+            opts.append(
+                f"--enable-auto-vectorize-v2={enable_auto_vectorize_v2}"
+            )
+
+        auto_vectorize_v2_max_fused_ops_num = m[
+            "auto_vectorize_v2_max_fused_ops_num"
+        ]
+        if auto_vectorize_v2_max_fused_ops_num is not None:
+            opts.append(
+                f"--hfusion-max-fused-ops-in-auto-vectorize-v2={auto_vectorize_v2_max_fused_ops_num}"
+            )
+
+        prevec_max_fused_ops_num = m["prevec_max_fused_ops_num"]
+        if prevec_max_fused_ops_num is not None:
+            opts.append(
+                f"--hfusion-max-fused-elementwise-ops={prevec_max_fused_ops_num}"
+            )
+
+        disable_auto_inject_block_sync = m["disable_auto_inject_block_sync"]
+        if disable_auto_inject_block_sync is not None:
+            opts.append(
+                f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
+            )
+
+        bitcodes = m["bitcodes"]
+        if bitcodes is not None:
+            for bitcode in bitcodes:
+                opts.append(f"--link-aicore-bitcode={bitcode}")
+
+        enable_auto_blockify = m["enable_auto_blockify"]
+        if _is_auto_map_parallel_blocks_enabled():
+            if enable_auto_blockify is None or enable_auto_blockify:
+                opts.append("--enable-auto-blockify-loop")
+        elif enable_auto_blockify:
+            opts.append("--enable-auto-blockify-loop")
+
+        bisheng_options = m["bisheng_options"]
+        if bisheng_options is not None:
+            opts.append(f"--append-bisheng-options={bisheng_options}")
+
+        if o.mix_mode in ("aic",):
+            opts.append("--disable-hfusion-vectorize=true")
+
+        return opts
 
     def _extra_cmd_args(m, o):
         args = []
@@ -895,19 +834,146 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
 
     def _build_options(m, o):
         opts = [f"--target={NPUUtils().get_arch()}"]
-        opts = build_compile_options(m, o, _A2A3_FLAGS, opts)
+
+        multibuffer = m.get("multibuffer")
+        num_stages = m.get("num_stages")
+        if multibuffer is not None or num_stages is not None:
+            multi_buffer_value = True
+            if multibuffer is not None and not multibuffer:
+                multi_buffer_value = False
+            elif num_stages is not None and num_stages == 1:
+                multi_buffer_value = False
+            opts.append(
+                f"--enable-auto-multi-buffer={multi_buffer_value}"
+            )
+
+        enable_ubuf_saving = m["enable_ubuf_saving"]
+        if enable_ubuf_saving is not None:
+            opts.append(f"--enable-ubuf-saving={enable_ubuf_saving}")
+
+        enable_preload = m["enable_preload"]
+        if enable_preload is not None:
+            opts.append(f"--enable-preload={enable_preload}")
+
+        opts.append(
+            f"--enable-auto-bind-sub-block={get_auto_bind_sub_block_option(m)}"
+        )
+
+        if _is_ascend_sanitizer_enabled():
+            opts.append("--enable-sanitizer=true")
+        if not _is_debug_line_info_disabled():
+            opts.append("--enable-debug-info=true")
+        if _enable_print_ub_bits():
+            opts.append("--enable-print-memory-allocated-size")
+        if _enable_dump_memory_info():
+            opts.append("--enable-memory-display=true")
+        if _enable_msdebug():
+            opts.append("--enable-ms-debug=true")
+
+        enable_hivm_auto_cv_balance = m["enable_hivm_auto_cv_balance"]
+        if enable_hivm_auto_cv_balance is not None:
+            opts.append(
+                f"--enable-hivm-auto-cv-balance={enable_hivm_auto_cv_balance}"
+            )
+
+        sync_solver = m["sync_solver"]
+        if sync_solver is not None:
+            opts.append(
+                f"--enable-hivm-graph-sync-solver={sync_solver}"
+            )
+            opts.append(
+                f"--enable-hivm-cross-core-gss={sync_solver}"
+            )
+
+        unit_flag = m["unit_flag"]
+        if unit_flag is not None:
+            opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
+
+        enable_drop_unit_dims = m["enable_drop_unit_dims"]
+        if enable_drop_unit_dims is not None:
+            opts.append(f"--enable-drop-unit-dims={enable_drop_unit_dims}")
+
+        enable_flatten = m["enable_flatten"]
+        if enable_flatten is not None:
+            opts.append(f"--enable-flatten={enable_flatten}")
+
+        enable_auto_vectorize_v2 = m["enable_auto_vectorize_v2"]
+        if enable_auto_vectorize_v2 is not None:
+            opts.append(
+                f"--enable-auto-vectorize-v2={enable_auto_vectorize_v2}"
+            )
+
+        inject_barrier_all = m["inject_barrier_all"]
+        if inject_barrier_all is not None:
+            opts.append(
+                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
+            )
+
+        inject_block_all = m["inject_block_all"]
+        if inject_block_all is not None:
+            opts.append(
+                f"--enable-hivm-inject-block-all-sync={inject_block_all}"
+            )
+
+        limit_auto_multi_buffer_only_for_local_buffer = m[
+            "limit_auto_multi_buffer_only_for_local_buffer"
+        ]
+        if limit_auto_multi_buffer_only_for_local_buffer is not None:
+            opts.append(
+                f"--limit-auto-multi-buffer-only-for-local-buffer={limit_auto_multi_buffer_only_for_local_buffer}"
+            )
+
+        set_workspace_multibuffer = m["set_workspace_multibuffer"]
+        if set_workspace_multibuffer is not None:
+            opts.append(
+                f"--set-workspace-multibuffer={set_workspace_multibuffer}"
+            )
+
+        tile_mix_vector_loop = m["tile_mix_vector_loop"]
+        if tile_mix_vector_loop is not None:
+            opts.append(f"--tile-mix-vector-loop={tile_mix_vector_loop}")
+
+        tile_mix_cube_loop = m["tile_mix_cube_loop"]
+        if tile_mix_cube_loop is not None:
+            opts.append(f"--tile-mix-cube-loop={tile_mix_cube_loop}")
+
+        auto_multi_buffer = m["limit_auto_multi_buffer_of_local_buffer"]
+        if auto_multi_buffer is not None:
+            opts.append(
+                f"--limit-auto-multi-buffer-of-local-buffer={auto_multi_buffer}"
+            )
+
+        disable_auto_inject_block_sync = m["disable_auto_inject_block_sync"]
+        if disable_auto_inject_block_sync is not None:
+            opts.append(
+                f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
+            )
+
         bitcodes = m["bitcodes"]
         if bitcodes is not None:
             for bitcode in bitcodes:
                 opts.append(f"--link-aicore-bitcode={bitcode}")
+
+        if m.get("disable_auto_cv_work_space_manage") is True:
+            opts.append("--disable-auto-cv-work-space-manage=True")
+
         opts.append(f"--link-aicore-bitcode={get_libdevice()}")
+
+        disable_size_align_for_cast = m["disable_size_align_for_cast"]
+        if disable_size_align_for_cast is not None:
+            opts.append(
+                f"--disable-size-align-for-cast={disable_size_align_for_cast}"
+            )
+
+        if _is_auto_map_parallel_blocks_enabled():
+            opts.append("--enable-auto-blockify-loop")
+
         return opts
 
     return _compile_linalg_to_npu_bin(
         linalg, metadata, opt,
         build_options_fn=_build_options,
         bishengir_hivm_opt=bishengir_hivm_opt,
-        print_linalg=True,
     )
 
 

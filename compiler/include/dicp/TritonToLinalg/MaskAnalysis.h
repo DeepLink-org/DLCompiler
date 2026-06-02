@@ -168,6 +168,10 @@ private:
   LogicalResult parseSplat(triton::SplatOp splatOp, const Location &loc,
                            OpBuilder &builder);
 
+  // Operand is the result of tensor.insert
+  LogicalResult parseInsert(tensor::InsertOp insertOp, const Location &loc,
+                            OpBuilder &builder);
+
   // Operand is the result of expand_dims
   LogicalResult parseExpandDims(triton::ExpandDimsOp expandDimsOp,
                                 const Location &loc, OpBuilder &builder);

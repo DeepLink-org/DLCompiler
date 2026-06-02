@@ -29,7 +29,6 @@ target_link_libraries(dicp_opt PRIVATE
   CommonIRTransforms
   DiscreteMaskAccessConversion
   MLIRTritonNPUUtils
-  DynamicCVPipeline
   TritonAffinityOpt
   TritonDicpIR
   TritonStructuredIR

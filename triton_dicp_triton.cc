@@ -6,7 +6,6 @@
 #include "dicp/Dialect/CommonIR/Passes.h"
 #include "dicp/Dialect/TritonDicp/IR/TritonDicpDialect.h"
 #include "dicp/DiscreteMaskAccessConversion/Passes.h"
-#include "dicp/DynamicCVPipeline/Passes.h"
 #include "dicp/TritonAffinityOpt/Passes.h"
 #include "dicp/TritonToAnnotation/Passes.h"
 #include "dicp/TritonToHFusion/Passes.h"
@@ -1249,13 +1248,6 @@ void init_triton_dicp_passes_ttir(py::module &&m) {
           AscendNPUIRLegalizeOptions opts;
           opts.unsafeMode = unsafeMode;
           pm.addPass(mlir::triton::createAscendNPUIRLegalizePass(opts));
-        });
-
-  m.def("add_dynamic_cv_pipeline",
-        [](mlir::PassManager &pm, bool compileOn91095) {
-          AddDynamicCVPipelineOptions opts;
-          opts.compileOn91095 = compileOn91095;
-          pm.addPass(mlir::triton::createAddDynamicCVPipelinePass(opts));
         });
 
   m.def("add_dag_sync", [](mlir::PassManager &pm) {

@@ -136,24 +136,6 @@ struct TritonCustomOpToHIVMSyncOpConversion
   }
 };
 
-// // Convert CustomOp after operand type changed,
-// // for example tt.ptr changed to memref.
-// class TritonCustomOpToHIVMCustomOpConversion
-//     : public OpConversionPattern<triton::CustomOp> {
-// public:
-//   using OpConversionPattern<triton::CustomOp>::OpConversionPattern;
-
-//   LogicalResult
-//   matchAndRewrite(triton::CustomOp op, OpAdaptor adaptor,
-//                   ConversionPatternRewriter &rewriter) const override {
-//     auto res_types = adaptor.getOutputs().getTypes();
-//     auto new_op = rewriter.create<hivm::CustomOp>(
-//         op->getLoc(), res_types, adaptor.getOperands(), op->getAttrs());
-//     rewriter.replaceOp(op, new_op);
-//     return success();
-//   }
-// };
-
 void TritonToHIVMPass::runOnOperation() {
   auto module = getOperation();
   ConversionTarget target(getContext());
@@ -161,7 +143,6 @@ void TritonToHIVMPass::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   patterns.add<TritonCustomOpToHIVMSyncOpConversion>(patterns.getContext());
-  // patterns.add<TritonCustomOpToHIVMCustomOpConversion>(patterns.getContext());
   if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
     signalPassFailure();
   }

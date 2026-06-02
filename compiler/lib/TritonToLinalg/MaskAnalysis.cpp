@@ -106,6 +106,8 @@ LogicalResult MaskState::parse(Value operand, const Location &loc,
           [&](auto op) { return this->parseDiv(op, loc, builder); })
       .Case<arith::SelectOp>(
           [&](auto op) { return this->parseSel(op, loc, builder); })
+      .Case<tensor::InsertOp>(
+          [&](auto op) { return this->parseInsert(op, loc, builder); })
       .Default([&](Operation *op) { return failure(); });
 }
 
@@ -683,6 +685,26 @@ LogicalResult MaskState::parseSplat(triton::SplatOp splatOp,
     this->offsets.push_back(builder.getIndexAttr(0));
   }
   return success();
+}
+
+LogicalResult MaskState::parseInsert(tensor::InsertOp insertOp,
+                                     const Location &loc, OpBuilder &builder) {
+  if (auto tensorType = dyn_cast<RankedTensorType>(insertOp.getType())) {
+    if (llvm::all_of(tensorType.getShape(),
+                     [](int64_t dim) { return dim == 1; })) {
+      SmallVector<Value> indices(
+          tensorType.getRank(), builder.create<arith::ConstantIndexOp>(loc, 0));
+      auto scalarlizeTensor =
+          builder.create<tensor::ExtractOp>(loc, insertOp, indices).getResult();
+      this->offsets = SmallVector<OpFoldResult>(tensorType.getRank(),
+                                                builder.getIndexAttr(0));
+      this->dims = SmallVector<OpFoldResult>(tensorType.getRank(),
+                                             builder.getIndexAttr(1));
+      this->scalar = getOpFoldResultOfLayoutInfo(scalarlizeTensor, builder);
+      return success();
+    }
+  }
+  return failure();
 }
 
 LogicalResult MaskState::parseExpandDims(triton::ExpandDimsOp expandDimsOp,

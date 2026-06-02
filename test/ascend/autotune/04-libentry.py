@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 try:
-    from triton.runtime.libentry import libentry
+    from language.deeplink.runtime import libentry
 except ImportError:
     libentry = None
 from backend.testing import do_bench_npu

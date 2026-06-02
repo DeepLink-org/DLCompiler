@@ -1,7 +1,6 @@
 
 
 #include "dicp/AutoBlockify/AutoBlockify.h"
-#include "bishengir/Dialect/Annotation/IR/Annotation.h"
 #include "dicp/AutoBlockify/Utils.h"
 #include "dicp/Dialect/TritonDicp/IR/TritonDicpDialect.h"
 #include "dicp/Utils/Utils.h"
@@ -86,8 +85,7 @@ PropagateUnrealizedCastDown::matchAndRewrite(UnrealizedConversionCastOp op,
       rewriteCondition(op, conditionOp, rewriter);
     } else if (user->hasTrait<OpTrait::Elementwise>() ||
                isa<triton::BroadcastOp, triton::JoinOp, triton::ReshapeOp,
-                   triton::PrintOp, triton::dicp::AnnotationOp,
-                   annotation::MarkOp>(user)) {
+                   triton::PrintOp, triton::dicp::AnnotationOp>(user)) {
       rewriteGeneraleOp(op, user, rewriter);
     } else if (isa<triton::AtomicCASOp>(user)) {
       auto *newOp =

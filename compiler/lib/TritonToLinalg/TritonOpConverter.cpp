@@ -2297,7 +2297,9 @@ DotScaledConverter::matchAndRewrite(triton::DotScaledOp op, OpAdaptor adaptor,
                      lhsElemType == triton::ScaleDotElemType::E5M2) &&
                     (rhsElemType == triton::ScaleDotElemType::E4M3 ||
                      rhsElemType == triton::ScaleDotElemType::E5M2);
-  if (isFP8Input) {
+  bool isFP4Input = (lhsElemType == triton::ScaleDotElemType::E2M1) &&
+                    (rhsElemType == triton::ScaleDotElemType::E2M1);
+  if (isFP8Input || isFP4Input) {
     if (!rhsScale) {
       RankedTensorType defaultScaleTy =
           RankedTensorType::get({1}, rewriter.getI8Type());
@@ -2314,10 +2316,29 @@ DotScaledConverter::matchAndRewrite(triton::DotScaledOp op, OpAdaptor adaptor,
                   : rewriter.create<tensor::EmptyOp>(loc, dstType.getShape(),
                                                      dstType.getElementType());
 
+    auto convertFormat =
+        [&](triton::ScaleDotElemType ty) -> mlir::hfusion::DataformatAttr {
+      auto ctx = rewriter.getContext();
+      switch (ty) {
+      case triton::ScaleDotElemType::E2M1:
+        return mlir::hfusion::DataformatAttr::get(
+            ctx, mlir::hfusion::Dataformat::FP4E2M1_T);
+      case triton::ScaleDotElemType::E4M3:
+        return mlir::hfusion::DataformatAttr::get(
+            ctx, mlir::hfusion::Dataformat::FP8E4M3_T);
+      case triton::ScaleDotElemType::E5M2:
+        return mlir::hfusion::DataformatAttr::get(
+            ctx, mlir::hfusion::Dataformat::FP8E5M2_T);
+      default:
+        llvm_unreachable("unsupported ScaleDotElemType");
+      }
+    };
+
+    auto lhsFmt = convertFormat(lhsElemType);
+    auto rhsFmt = convertFormat(rhsElemType);
+
     Value matmulMxResult = rewriter.create<hfusion::MatMulMxOp>(
-        loc, dstType, lhs, rhs, lhsScale, rhsScale, acc,
-        /*lhsFormat=*/nullptr,
-        /*rhsFormat=*/nullptr);
+        loc, dstType, lhs, rhs, lhsScale, rhsScale, acc, lhsFmt, rhsFmt);
 
     Value finalResult = matmulMxResult;
     if (dstType.getElementType().isBF16()) {

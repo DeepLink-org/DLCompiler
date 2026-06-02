@@ -69,7 +69,6 @@ if (TRITON_BUILD_PYTHON_MODULE)
     CommonIRTransforms
     DiscreteMaskAccessConversion
     MLIRTritonNPUUtils
-    DynamicCVPipeline
     TritonAffinityOpt
     TritonDicpIR
     TritonStructuredIR

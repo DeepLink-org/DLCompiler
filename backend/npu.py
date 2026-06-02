@@ -304,9 +304,6 @@ def ttir_to_linalg_dicp(mod, metadata, opt, *, named_ops=False):
     )
     dicp_triton.passes.ttir.add_ascend_npu_ir_legalize(pm, False)
 
-    if metadata["enable_dynamic_cv_pipeline"]:
-        dicp_triton.passes.ttir.add_dynamic_cv_pipeline(pm, compile_on_910_95)
-
     pm.run(mod)
 
     content = str(mod)
@@ -1115,7 +1112,6 @@ class NPUOptions:
     enable_mixed_cv: bool = None
     enable_vf_fusion: bool = False
     add_auto_scheduling: bool = False
-    enable_dynamic_cv_pipeline: bool = False
     hfusion_enable_multiple_consumer_fusion: bool = False
 
     stream: int = None

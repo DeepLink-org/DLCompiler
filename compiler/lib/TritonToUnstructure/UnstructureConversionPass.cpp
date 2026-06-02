@@ -271,11 +271,13 @@ LogicalResult UnstructuredMemAccessConverter<MemAccOpTy>::matchAndRewrite(
       rewriter.setInsertionPoint(op);
       ptrOffsetInfo.setUnstructured(ptrOffsetInfo.getRank());
     } else if constexpr (std::is_same_v<MemAccOpTy, triton::AtomicRMWOp>) {
-      auto selectOp = op.getVal().template getDefiningOp<arith::SelectOp>();
-      op = rewriter.replaceOpWithNewOp<triton::AtomicRMWOp>(
-          op, op.getType(), op.getAtomicRmwOp(), op.getPtr(),
-          selectOp.getTrueValue(), selectOp.getCondition(), op.getSem(),
-          op.getScope());
+      if (auto selectOp =
+              op.getVal().template getDefiningOp<arith::SelectOp>()) {
+        op = rewriter.replaceOpWithNewOp<triton::AtomicRMWOp>(
+            op, op.getType(), op.getAtomicRmwOp(), op.getPtr(),
+            selectOp.getTrueValue(), selectOp.getCondition(), op.getSem(),
+            op.getScope());
+      }
     }
     rewriter.setInsertionPoint(op);
     ptrOffsetInfo.setUnstructured(ptrOffsetInfo.getRank());

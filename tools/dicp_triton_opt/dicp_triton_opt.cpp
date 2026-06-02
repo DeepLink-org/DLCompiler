@@ -4,7 +4,6 @@
 #include "dicp/Dialect/CommonIR/Passes.h"
 #include "dicp/Dialect/TritonDicp/IR/TritonDicpDialect.h"
 #include "dicp/DiscreteMaskAccessConversion/Passes.h"
-#include "dicp/DynamicCVPipeline/Passes.h"
 #include "dicp/TritonAffinityOpt/Passes.h"
 #include "dicp/TritonToAnnotation/Passes.h"
 #include "dicp/TritonToHFusion/Passes.h"
@@ -103,7 +102,6 @@ inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   triton::registerTritonToLLVMPass();
   triton::registerBubbleUpOperationPass();
   triton::registerTritonToLinalgPass();
-  triton::registerAddDynamicCVPipelinePass();
   triton::registerDAGSyncPass();
   triton::registerDAGScopePass();
   triton::registerDAGSSBufferPass();

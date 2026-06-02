@@ -9,6 +9,7 @@ import logging
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
 from triton._C.libtriton import ir, passes, dicp_triton
+from triton.compiler.errors import CompilationError
 import triton.backends.dicp_triton.utils as dicp_utils
 from dataclasses import dataclass
 from typing import Any, Union, Tuple, Dict
@@ -604,7 +605,8 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
         except subprocess.CalledProcessError as e:
             if opt.debug:
                 _save_npuir_debug_output(e.stdout, e.stderr, tmpdir, metadata["hash"])
-            raise
+            error_msg = e.stderr.decode("utf-8") if e.stderr else str(e)
+            raise CompilationError(None, None, f"bishengir-compile failed: {error_msg}") from e
 
         if opt.debug:
             _save_npuir_debug_output(ret.stdout, ret.stderr, tmpdir, metadata["hash"])
@@ -618,9 +620,7 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
             error_msg = ret.stderr.decode("utf-8") if ret.stderr else ""
             print(f"[DEBUG] {bin_path} is not found")
             print(f"[DEBUG] Stderr:\n{error_msg}")
-            raise subprocess.CalledProcessError(
-                ret.returncode, cmd_list, ret.stdout, ret.stderr
-            )
+            raise CompilationError(None, None, f"bishengir-compile output not found: {error_msg}")
 
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
@@ -1023,14 +1023,16 @@ def ttir_to_npubin(mod, metadata, opt):
         cmd_list = (
             [npu_compiler_path, src_path] + _compile_option_list + ["-o", bin_file]
         )
-        ret = subprocess.run(cmd_list, env=env, capture_output=True, check=True)
+        try:
+            ret = subprocess.run(cmd_list, env=env, capture_output=True, check=True)
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode("utf-8") if e.stderr else str(e)
+            raise CompilationError(None, None, f"bishengir-compile (SIMT) failed: {error_msg}") from e
         if not Path(bin_path).exists():
             error_msg = ret.stderr.decode("utf-8")
             print(f"[DEBUG] {bin_path} is not found")
             print(f"[DEBUG] Stderr:\n{error_msg}")
-            raise subprocess.CalledProcessError(
-                ret.returncode, cmd_list, ret.stdout, ret.stderr
-            )
+            raise CompilationError(None, None, f"bishengir-compile (SIMT) output not found: {error_msg}")
         return Path(bin_path).read_bytes()
 
 

@@ -9,7 +9,7 @@ import logging
 from triton.runtime.cache import get_cache_manager, get_dump_manager
 from triton.backends.compiler import GPUTarget
 from triton._C.libtriton import ir, passes, dicp_triton
-from triton.compiler.errors import CompilationError
+from triton.compiler.errors import CompileTimeAssertionFailure
 import triton.backends.dicp_triton.utils as dicp_utils
 from dataclasses import dataclass
 from typing import Any, Union, Tuple, Dict
@@ -176,15 +176,13 @@ def _get_bishengir_llvm_version() -> int:
 
 def _downgrade_mlir_for_legacy_llvm(content: str) -> str:
     _TO_BUFFER_RE = re.compile(
-        r"\bbufferization\.to_buffer\b\s+(?P<value>%[^\s:]+).*?:\s*"
-        r"(?P<tensor>tensor<.+?>)\s+to\s+(?P<memref>memref<.+?>)",
-        re.DOTALL,
+        r"\bbufferization\.to_buffer\b[^\n:]*\s+(?P<value>%[^\s:]+)[^\n:]*:\s*"
+        r"(?P<tensor>tensor<[^\n]+?>)\s+to\s+(?P<memref>memref<[^\n]+?>)",
     )
     _TO_TENSOR_RE = re.compile(
         r"\bbufferization\.to_tensor\b\s+(?P<value>%[^\s:]+)"
         r"(?P<attrs>(?:\s+(?:restrict|writable))*)\s*:\s*"
-        r"(?P<memref>memref<.+?>)\s+to\s+tensor<.+?>",
-        re.DOTALL,
+        r"(?P<memref>memref<[^\n]+?>)\s+to\s+tensor<[^\n]+?>",
     )
     _HIVM_ATTR_RE = re.compile(r'"#hivm\.(pipe|tcore_type|vf_mode)<([A-Za-z0-9_]*)>"')
     content = content.replace("*x", "?x")
@@ -492,7 +490,7 @@ def get_common_bishengir_compile_options(metadata):
 def get_auto_bind_sub_block_option(metadata):
     enable_auto_bind_sub_block = metadata["enable_auto_bind_sub_block"]
     return (
-        metadata["auto_tile_and_bind_subblock"]
+        True
         if enable_auto_bind_sub_block is None
         else enable_auto_bind_sub_block
     )
@@ -603,12 +601,17 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
             if opt.debug:
                 _save_npuir_debug_output(e.stdout, e.stderr, tmpdir, metadata["hash"])
             error_msg = e.stderr.decode("utf-8") if e.stderr else str(e)
-            raise CompilationError(None, None, f"bishengir-compile failed: {error_msg}") from e
+            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile failed: {error_msg}") from e
 
+        stdout_bytes = ret.stdout
+        stderr_bytes = ret.stderr
+        stdout_str = stdout_bytes.decode("utf-8") if stdout_bytes else ""
+        stderr_str = stderr_bytes.decode("utf-8") if stderr_bytes else ""
         if opt.debug:
-            _save_npuir_debug_output(ret.stdout, ret.stderr, tmpdir, metadata["hash"])
+            print(f"[DEBUG] bishengir-compile stdout:\n{stdout_str if stdout_str else '<empty>'}")
+            print(f"[DEBUG] bishengir-compile stderr:\n{stderr_str if stderr_str else '<empty>'}")
+            _save_npuir_debug_output(stdout_bytes, stderr_bytes, tmpdir, metadata["hash"])
 
-        stdout_str = ret.stdout.decode("utf-8") if ret.stdout else ""
         match = re.search(r"UB\s+size\s*=\s*(\d+)\s*bits", stdout_str)
         if match:
             metadata["required_ub_bits"] = int(match.group(1))
@@ -617,7 +620,7 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
             error_msg = ret.stderr.decode("utf-8") if ret.stderr else ""
             print(f"[DEBUG] {bin_path} is not found")
             print(f"[DEBUG] Stderr:\n{error_msg}")
-            raise CompilationError(None, None, f"bishengir-compile output not found: {error_msg}")
+            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile output not found: {error_msg}")
 
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
@@ -648,13 +651,16 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
 
         multibuffer = m.get("multibuffer")
         num_stages = m.get("num_stages")
-        if multibuffer is not None or num_stages is not None:
-            multi_buffer_value = True
-            if multibuffer is not None and not multibuffer:
-                multi_buffer_value = False
-            elif num_stages is not None and num_stages == 1:
-                multi_buffer_value = False
-            opts.append(f"--enable-auto-multi-buffer={multi_buffer_value}")
+        multi_buffer_value = True
+        if multibuffer is not None and not multibuffer:
+            multi_buffer_value = False
+        elif num_stages is not None and num_stages == 1:
+            multi_buffer_value = False
+        opts.append(f"--enable-auto-multi-buffer={multi_buffer_value}")
+
+        enable_tuning_mode = m["enable_tuning_mode"]
+        if enable_tuning_mode is not None:
+            opts.append(f"--enable-tuning-mode={enable_tuning_mode}")
 
         if m.get("disable_tightly_coupled_buffer_reuse"):
             opts.append("--disable-tightly-coupled-buffer-reuse")
@@ -683,14 +689,16 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
             opts.append(f"--enable-hivm-graph-sync-solver={sync_solver}")
 
         unit_flag = m["unit_flag"]
-        if unit_flag is not None:
-            opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
+        if unit_flag is None:
+            unit_flag = False
+        opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
 
         inject_barrier_all = m["inject_barrier_all"]
-        if inject_barrier_all is not None:
-            opts.append(
-                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
-            )
+        if inject_barrier_all is None:
+            inject_barrier_all = False
+        opts.append(
+            f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
+        )
 
         inject_block_all = m["inject_block_all"]
         if inject_block_all is not None:
@@ -772,10 +780,11 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
             )
 
         disable_auto_inject_block_sync = m["disable_auto_inject_block_sync"]
-        if disable_auto_inject_block_sync is not None:
-            opts.append(
-                f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
-            )
+        if disable_auto_inject_block_sync is None:
+            disable_auto_inject_block_sync = False
+        opts.append(
+            f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
+        )
 
         bitcodes = m["bitcodes"]
         if bitcodes is not None:
@@ -834,15 +843,18 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
 
         multibuffer = m.get("multibuffer")
         num_stages = m.get("num_stages")
-        if multibuffer is not None or num_stages is not None:
-            multi_buffer_value = True
-            if multibuffer is not None and not multibuffer:
-                multi_buffer_value = False
-            elif num_stages is not None and num_stages == 1:
-                multi_buffer_value = False
-            opts.append(
-                f"--enable-auto-multi-buffer={multi_buffer_value}"
-            )
+        multi_buffer_value = True
+        if multibuffer is not None and not multibuffer:
+            multi_buffer_value = False
+        elif num_stages is not None and num_stages == 1:
+            multi_buffer_value = False
+        opts.append(
+            f"--enable-auto-multi-buffer={multi_buffer_value}"
+        )
+
+        enable_tuning_mode = m["enable_tuning_mode"]
+        if enable_tuning_mode is not None:
+            opts.append(f"--enable-tuning-mode={enable_tuning_mode}")
 
         enable_ubuf_saving = m["enable_ubuf_saving"]
         if enable_ubuf_saving is not None:
@@ -883,8 +895,9 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             )
 
         unit_flag = m["unit_flag"]
-        if unit_flag is not None:
-            opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
+        if unit_flag is None:
+            unit_flag = False
+        opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
 
         enable_drop_unit_dims = m["enable_drop_unit_dims"]
         if enable_drop_unit_dims is not None:
@@ -901,10 +914,11 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             )
 
         inject_barrier_all = m["inject_barrier_all"]
-        if inject_barrier_all is not None:
-            opts.append(
-                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
-            )
+        if inject_barrier_all is None:
+            inject_barrier_all = False
+        opts.append(
+            f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
+        )
 
         inject_block_all = m["inject_block_all"]
         if inject_block_all is not None:
@@ -941,10 +955,11 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             )
 
         disable_auto_inject_block_sync = m["disable_auto_inject_block_sync"]
-        if disable_auto_inject_block_sync is not None:
-            opts.append(
-                f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
-            )
+        if disable_auto_inject_block_sync is None:
+            disable_auto_inject_block_sync = False
+        opts.append(
+            f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
+        )
 
         bitcodes = m["bitcodes"]
         if bitcodes is not None:
@@ -1024,12 +1039,12 @@ def ttir_to_npubin(mod, metadata, opt):
             ret = subprocess.run(cmd_list, env=env, capture_output=True, check=True)
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode("utf-8") if e.stderr else str(e)
-            raise CompilationError(None, None, f"bishengir-compile (SIMT) failed: {error_msg}") from e
+            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile (SIMT) failed: {error_msg}") from e
         if not Path(bin_path).exists():
             error_msg = ret.stderr.decode("utf-8")
             print(f"[DEBUG] {bin_path} is not found")
             print(f"[DEBUG] Stderr:\n{error_msg}")
-            raise CompilationError(None, None, f"bishengir-compile (SIMT) output not found: {error_msg}")
+            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile (SIMT) output not found: {error_msg}")
         return Path(bin_path).read_bytes()
 
 
@@ -1041,7 +1056,7 @@ def ttir_to_npubin(mod, metadata, opt):
 @dataclass(frozen=True)
 class NPUOptions:
     debug: bool = False
-    sanitize_overflow: bool = True
+    sanitize_overflow: bool = False
     llvm_version: int = 22
     kernel_name: str = "triton_"
     arch: str = ""
@@ -1083,6 +1098,7 @@ class NPUOptions:
     extern_libs: dict = None
     bisheng_options: str = "-cce-link-aicore-ll-module " + get_libdevice()
 
+    enable_tuning_mode: bool = False
     multibuffer: bool = not is_compile_on_910_95
     enable_ubuf_saving: bool = None
     enable_preload: bool = None

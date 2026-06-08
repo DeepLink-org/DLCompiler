@@ -2,6 +2,7 @@ import functools
 import hashlib
 import json
 import re
+import os
 from pathlib import Path
 from typing import Any, List
 from triton._C.libtriton import get_cache_invalidating_env_vars
@@ -154,9 +155,14 @@ class CommonIRCompiler(object):
         assert isinstance(target, GPUTarget), "target must be of GPUTarget type"
 
         extra_options = {}
-        options = commonir_backend.parse_options(
-            dict(options or dict(), **extra_options)
-        )
+        options = dict(options or dict(), **extra_options)
+        if "debug" not in options and (
+            os.environ.get("TRITON_DEBUG", "0") == "1"
+            or os.environ.get("DEBUG", "0") == "1"
+        ):
+            options["debug"] = True
+
+        options = commonir_backend.parse_options(options)
         # create cache manager
         env_vars = get_cache_invalidating_env_vars() if _env_vars is None else _env_vars
 

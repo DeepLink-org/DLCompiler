@@ -33,7 +33,7 @@ from typing import Dict, Optional
 
 import torch
 import triton
-from triton.runtime.code_cache import config_cache_dir
+from language.deeplink.runtime.code_cache import config_cache_dir
 
 
 # Prefer NPU device function in DLCompiler runtime; keep CUDA as fallback for envs

@@ -59,17 +59,9 @@ class NPUUtils(object):
         spec.loader.exec_module(mod)
         self.npu_utils_mod = mod
 
-    def load_binary(self, name, kernel, shared, device, mix_mode=None):
-        if mix_mode is None:
-            if " " in name:
-                fnname, mix_mode = name.split()
-            else:
-                fnname = name
-                mix_mode = "aiv"
-        else:
-            fnname = name
+    def load_binary(self, name, kernel, shared, device, mix_mode):
         return self.npu_utils_mod.load_kernel_binary(
-            fnname, kernel, shared, device, mix_mode
+            name, kernel, shared, device, mix_mode
         )
 
     @functools.lru_cache()

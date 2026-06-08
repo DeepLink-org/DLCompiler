@@ -1,5 +1,6 @@
 import functools
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -13,10 +14,23 @@ replace_commonir_ir = os.environ.get("DLC_REPLACE_COMMON_IR_FILE", None)
 replace_commonir_linked_ir = os.environ.get("DLC_REPLACE_COMMONIR_LINKED_IR_FILE", None)
 
 
+def add_matmul_input_precision(commonir: str) -> str:
+    # TODO: Temporary string-level patch for TileLang-generated CommonIR.
+    # TileLang should eventually use a pybind-based codegen path, similar to
+    # Triton's codegen, to emit linalg.matmul attributes directly.
+    return re.sub(
+        r"\blinalg\.matmul\s+(?!\{)",
+        'linalg.matmul {input_precision = "ieee"} ',
+        commonir,
+    )
+
+
 def commonir_to_linkedir(commonir, metadata, opt, named_ops=True):
     if replace_commonir_ir is not None:
         print(f"[DEBUG] Replace common ir with {replace_commonir_ir}")
         commonir = Path(replace_commonir_ir).read_text()
+
+    commonir = add_matmul_input_precision(commonir)
 
     compile_on_910_95 = metadata["compile_on_910_95"]
     enable_nd2nz_on_vector = metadata["enable_nd2nz_on_vector"]
@@ -33,14 +47,6 @@ def commonir_to_linkedir(commonir, metadata, opt, named_ops=True):
         passes.common.add_cse(pm)
         passes.common.add_canonicalizer(pm)
         dicp_triton.passes.commonir.add_annotate_kernel_attrs(pm)
-        dicp_triton.passes.ttir.add_triton_to_linalg(
-            pm,
-            True,
-            named_ops,
-            enable_nd2nz_on_vector,
-            enable_select_analysis,
-            compile_on_910_95,
-        )
         dicp_triton.passes.ttir.add_ascend_npu_ir_legalize(pm, False)
         pm.run(mod)
         content = str(mod)

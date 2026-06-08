@@ -63,6 +63,57 @@ class AutoParser(ast.NodeVisitor):
         return False
 
 
+class DotCallParser(AutoParser):
+    """
+    Detects whether a Triton kernel source contains tensor-core dot calls.
+    """
+
+    def __init__(self, func_ast: ast.AST, scope=None, seen=None):
+        super().__init__(func_ast)
+        self.has_dot = False
+        self.scope = scope or {}
+        self.seen = seen or set()
+
+    def parse(self):
+        super().parse()
+        return self.has_dot
+
+    def visit_Call(self, node):
+        if self._is_tl_dot_call(node.func):
+            self.has_dot = True
+            return
+        if self._called_jit_has_dot(node.func):
+            self.has_dot = True
+            return
+        self.generic_visit(node)
+
+    @staticmethod
+    def _is_tl_dot_call(func):
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr in ("dot", "dot_scaled")
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "tl"
+        )
+
+    def _called_jit_has_dot(self, func):
+        if not isinstance(func, ast.Name):
+            return False
+        callee = self.scope.get(func.id)
+        if callee is None or not callable(getattr(callee, "parse", None)):
+            return False
+        callee_id = id(callee)
+        if callee_id in self.seen:
+            return False
+        self.seen.add(callee_id)
+        callee_scope = (
+            callee.get_capture_scope()
+            if callable(getattr(callee, "get_capture_scope", None))
+            else self.scope
+        )
+        return DotCallParser(callee.parse(), callee_scope, self.seen).parse()
+
+
 class AxesKeyParser(AutoParser):
     """
     A parser for extracting axis information from a given function's AST.

@@ -26,6 +26,7 @@ import builtins
 import copy
 import functools
 import ast
+import inspect
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -38,9 +39,42 @@ import triton
 from triton.runtime.autotuner import Autotuner, Config
 from triton.backends.dicp_triton.utils import is_compile_on_910_95
 
-from .autoparser import (LowDimsAxesParser, PtrNumsParser, ReductionAxesParser,
+from .autoparser import (DotCallParser, LowDimsAxesParser, PtrNumsParser, ReductionAxesParser,
                          SplitAxesParser, TilingAxesParser)
+from .compile_options import (
+    expand_compile_option_configs,
+    format_compile_option_result,
+    get_compile_option_param_names,
+    parse_compile_options_hint,
+    summarize_compile_option_configs,
+)
+from .benchmark import select_benchmark_strategy
 from .utils import get_byte_per_numel, is_valid_axis_name, valid_axis_names
+
+
+def _make_config_compat(**kwargs):
+    supported_config_args = inspect.signature(Config).parameters
+    return Config(**{
+        key: value
+        for key, value in kwargs.items()
+        if key in supported_config_args
+    })
+
+
+def _unwrap_parse_target(fn):
+    seen = set()
+    cur = fn
+    while cur is not None and id(cur) not in seen:
+        if callable(getattr(cur, "parse", None)):
+            return cur
+
+        jit_function = getattr(cur, "jit_function", None)
+        if callable(getattr(jit_function, "parse", None)):
+            return jit_function
+
+        seen.add(id(cur))
+        cur = getattr(cur, "fn", None)
+    return fn
 
 
 class AutoTilingTuner(Autotuner):
@@ -92,7 +126,8 @@ class AutoTilingTuner(Autotuner):
         if not hints:
             self.hints = {}
         else:
-            self.hints = hints
+            self.hints = dict(hints)
+        self.ast_fn = _unwrap_parse_target(self.fn)
         split_params = self.hints.get("split_params", None)
         tiling_params = self.hints.get("tiling_params", None)
         low_dim_axes = self.hints.get("low_dim_axes", None)
@@ -106,6 +141,8 @@ class AutoTilingTuner(Autotuner):
         )
 
         self.auto_gen_config = not configs or self.hints.get("auto_gen_config", False)
+        self._infer_compile_options_hint_if_needed()
+        self.compile_options = parse_compile_options_hint(self.hints.get("compile_options", None))
         self.gen_configs = []  # generated configs from TileGenerator
         self.auto_profile_dir = auto_profile_dir
         if not configs:
@@ -118,10 +155,42 @@ class AutoTilingTuner(Autotuner):
         self.user_specified_multibuffer = None
         self.default_multibuffer = not is_compile_on_910_95
         self.print_autotuning = os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1"
+        self.print_autotuning_timings = os.getenv("TRITON_PRINT_AUTOTUNING_TIMINGS", None) == "1"
         # Compile kernels in parallel by default for triton.runtime.JITFunction,
         # but not for others, e.g., LibEntry, since it's not compatible with AsyncCompileMode
         self.compile_parallel = (isinstance(self.fn, triton.runtime.JITFunction)
                                  and os.getenv("TRITON_AUTOTUNE_PARALLEL_COMPILE", "1") == "1")
+
+    def _infer_compile_options_hint_if_needed(self):
+        if "compile_options" in self.hints:
+            return
+        self.hints["compile_options"] = "mixcv" if self._autoparse_has_dot() else "vector"
+
+    def _parse_ast(self):
+        parse = getattr(self.ast_fn, "parse", None)
+        if not callable(parse):
+            raise ValueError(
+                "Cannot parse Ascend autotune kernel AST. "
+                "Please pass explicit autotune hints for wrapped kernels."
+            )
+        return parse()
+
+    def _get_capture_scope(self):
+        get_capture_scope = getattr(self.ast_fn, "get_capture_scope", None)
+        if callable(get_capture_scope):
+            return get_capture_scope()
+        return {}
+
+    def _autoparse_has_dot(self) -> bool:
+        try:
+            func_ast = self._parse_ast()
+            return DotCallParser(func_ast, self._get_capture_scope(), {id(self.ast_fn)}).parse()
+        except Exception as e:
+            raise ValueError(
+                "Cannot infer Ascend compile_options from kernel AST. "
+                "Please pass hints={'compile_options': 'mixcv'} or "
+                "hints={'compile_options': 'vector'} explicitly."
+            ) from e
 
     def _expand_simt_num_warps_configs(self, base_configs: List[Config]) -> List[Config]:
         _default_cand_num_warps = [8, 16, 32, 64]
@@ -350,10 +419,40 @@ class AutoTilingTuner(Autotuner):
                 self._autoparse_axis_params(all_args)
                 _kv_dict = {k: _args[v] for k, v in self.keys.items() if v in _args}
                 self._gen_tile_configs(_kv_dict, dtype)
-            if len(self.gen_configs) == 0 and len(self.user_configs) == 0:
+            fixed_compile_options = {
+                name: kwargs[name]
+                for name in get_compile_option_param_names(self.compile_options)
+                if name in kwargs and kwargs[name] is not None
+            }
+            self.fixed_compile_options = fixed_compile_options
+            gen_configs = expand_compile_option_configs(
+                self.gen_configs,
+                self.compile_options,
+                generated_tiling=True,
+                fixed_options=fixed_compile_options,
+            )
+            user_configs = expand_compile_option_configs(
+                self.user_configs,
+                self.compile_options,
+                generated_tiling=False,
+                fixed_options=fixed_compile_options,
+            )
+            if self.print_autotuning and self.compile_options.enabled:
+                print(
+                    "Triton autotuning compile_options: "
+                    f"kernel_type={self.compile_options.kernel_type}, "
+                    f"manual_params={sorted(self.compile_options.params.keys())}, "
+                    f"fixed_runtime_params={sorted(fixed_compile_options.keys())}, "
+                    f"max_configs={self.compile_options.max_configs}, "
+                    f"generated_tiling_configs={len(self.gen_configs)}->{len(gen_configs)}, "
+                    f"user_configs={len(self.user_configs)}->{len(user_configs)}"
+                )
+                for idx, sample in enumerate(summarize_compile_option_configs(gen_configs + user_configs), 1):
+                    print(f"Triton autotuning compile_options sample[{idx}]: {sample}")
+            if len(gen_configs) == 0 and len(user_configs) == 0:
                 self.configs = [
-                    Config(
-                        {},
+                    _make_config_compat(
+                        kwargs={},
                         num_warps=4,
                         num_stages=2,
                         num_ctas=1,
@@ -363,8 +462,21 @@ class AutoTilingTuner(Autotuner):
                         reg_inc_consumer=0,
                     )
                 ]
+                self.configs = expand_compile_option_configs(
+                    self.configs,
+                    self.compile_options,
+                    generated_tiling=True,
+                    fixed_options=fixed_compile_options,
+                )
+                if self.print_autotuning and self.compile_options.enabled:
+                    print(
+                        "Triton autotuning compile_options fallback: "
+                        f"configs=1->{len(self.configs)}"
+                    )
+                    for idx, sample in enumerate(summarize_compile_option_configs(self.configs), 1):
+                        print(f"Triton autotuning compile_options sample[{idx}]: {sample}")
             else:
-                self.configs = self.gen_configs + self.user_configs
+                self.configs = gen_configs + user_configs
         return key
 
     def run(self, *args, **kwargs):
@@ -385,6 +497,8 @@ class AutoTilingTuner(Autotuner):
                 full_nargs = {**self.nargs, **kwargs, **self.cache[key].all_kwargs()}
                 self.pre_hook(full_nargs, reset_only=True)
                 self.configs_timings = timings
+                if self.print_autotuning_timings:
+                    self._print_config_timings(timings)
                 config = self.cache[key]
             else:
                 config = pruned_configs[0]
@@ -394,7 +508,8 @@ class AutoTilingTuner(Autotuner):
         self.best_config = config
         if self.print_autotuning and not used_cached_result:
             print(f"Triton autotuning for function {self.base_fn.__name__} finished after "
-                  f"{self.bench_time:.2f}s; best config selected: {self.best_config};")
+                  f"{self.bench_time:.2f}s; best config selected: "
+                  f"{format_compile_option_result(self.best_config, self.compile_options, getattr(self, 'fixed_compile_options', {}))};")
 
         if not used_cached_result and self.auto_profile_dir is not None:
             self._profile(*args, config=self.best_config, **kwargs)
@@ -408,6 +523,22 @@ class AutoTilingTuner(Autotuner):
         )
         self.nargs = None
         return ret
+
+    @staticmethod
+    def _timing_sort_key(cost):
+        if isinstance(cost, (list, tuple)) and cost:
+            return cost[0]
+        return cost
+
+    def _print_config_timings(self, timings):
+        sorted_timings = sorted(timings.items(), key=lambda item: self._timing_sort_key(item[1]))
+        for idx, (config, cost) in enumerate(sorted_timings, 1):
+            print(
+                "Triton autotuning timing"
+                f"[{idx}]: cost={cost}; "
+                f"{format_compile_option_result(config, self.compile_options, getattr(self, 'fixed_compile_options', {}))};",
+                flush=True,
+            )
 
     def _batch_bench(self, *args, configs, **kwargs):
         from triton.compiler.errors import CompilationError, CompileTimeAssertionFailure
@@ -460,21 +591,12 @@ class AutoTilingTuner(Autotuner):
         if len(run_fns) == 0:
             raise RuntimeError(f"No valid triton configs. {type(exc).__name__}: {exc} \nStack trace: {exc_stack}")
 
-        if len(run_fns) == 1:
-            # we ignore expensive profiling method when only single config is left
-            return {config: self.do_bench(fn, quantiles=(0.5, 0.2, 0.8)) for config, fn in run_fns.items()}
-
-        use_profiling = os.getenv("TRITON_BENCH_METHOD", "default").lower() == "npu"
-        # Respect user-provided benchmarkers even when NPU profiling mode is enabled.
-        use_npu_profiling = use_profiling and not self.user_defined_do_bench
-        if use_npu_profiling:
-            from ..testing import do_bench_npu
-
-            time_cost = do_bench_npu(list(run_fns.values()), clear_l2_cache=False)
-            assert len(time_cost) == len(run_fns)
-            return {config: cost for config, cost in zip(run_fns.keys(), time_cost)}
-        else:
-            return {config: self.do_bench(fn, quantiles=(0.5, 0.2, 0.8)) for config, fn in run_fns.items()}
+        strategy = select_benchmark_strategy(
+            self.do_bench,
+            self.user_defined_do_bench,
+            len(run_fns),
+        )
+        return strategy.bench(run_fns)
 
     def _make_kernel_call(self, *args, config, **meta):
         # check for conflicts, i.e. meta-parameters both provided
@@ -541,7 +663,7 @@ class AutoTilingTuner(Autotuner):
         """
         Extracts the split axis parameters from triton kernel code.
         """
-        func_ast = self.fn.parse()
+        func_ast = self._parse_ast()
         parser = SplitAxesParser(func_ast, self.keys, candidates_params)
         split_axes = parser.parse()
         self.split_axis_pid_dims = dict(getattr(parser, "split_axis_pid_dims", {}))
@@ -557,7 +679,7 @@ class AutoTilingTuner(Autotuner):
         Extract axis -> program_id dim mapping without relying on split-parameter
         classification, so fixed-grid semantics can always consume it.
         """
-        func_ast = self.fn.parse()
+        func_ast = self._parse_ast()
         parser = SplitAxesParser(
             func_ast,
             self.keys,
@@ -575,7 +697,7 @@ class AutoTilingTuner(Autotuner):
         """
         Returns all constexpr parameter names from the kernel function definition.
         """
-        func_ast = self.fn.parse()
+        func_ast = self._parse_ast()
         constexpr_names = []
         for node in ast.walk(func_ast):
             if not isinstance(node, ast.FunctionDef):
@@ -681,7 +803,7 @@ class AutoTilingTuner(Autotuner):
         """
         Extracts the tiling axis parameters from triton kernel code.
         """
-        func_ast = self.fn.parse()
+        func_ast = self._parse_ast()
         parser = TilingAxesParser(func_ast, self.keys, candidates_params)
         tiling_axes = parser.parse()
         if self.print_autotuning:
@@ -692,7 +814,7 @@ class AutoTilingTuner(Autotuner):
         """
         Extracts the reduction axis parameters from triton kernel code.
         """
-        func_ast = self.fn.parse()
+        func_ast = self._parse_ast()
         parser = ReductionAxesParser(func_ast, self.keys)
         reduction_axes = parser.parse()
         for axis in reduction_axes:
@@ -708,7 +830,7 @@ class AutoTilingTuner(Autotuner):
         """
         Extracts the low dimension axis from triton kernel code.
         """
-        func_ast = self.fn.parse()
+        func_ast = self._parse_ast()
         parser = LowDimsAxesParser(func_ast, self.keys)
         low_dim_axes = parser.parse()
         if len(low_dim_axes) < 1:
@@ -812,7 +934,8 @@ def autotune(configs, key, prune_configs_by=None, reset_to_zero=None, restore_va
 
 
 _ALL_PARAMS = {
-    "num_stages", "unit_flag",
+    "num_stages",
+    "unit_flag",
     "limit_auto_multi_buffer_only_for_local_buffer",
     "limit_auto_multi_buffer_of_local_buffer",
     "set_workspace_multibuffer",
@@ -845,7 +968,8 @@ _VALID_VALUES = {
 _CUBE_PARAMS = {"num_stages", "unit_flag", "limit_auto_multi_buffer_of_local_buffer"}
 
 _MIXCV_PARAMS = {
-    "num_stages", "unit_flag",
+    "num_stages",
+    "unit_flag",
     "limit_auto_multi_buffer_only_for_local_buffer",
     "limit_auto_multi_buffer_of_local_buffer",
     "set_workspace_multibuffer",
@@ -1069,8 +1193,10 @@ def get_max_configs(config, kernel_type="mixcv", **kwargs):
             val_list = kwargs[param]
         elif param == "num_stages":
             # num_stages is an attribute of Config, not part of kwargs.
-            # If not provided in tuning_params, use the value from the base config as a fixed single-element list.
-            val_list = [base_num_stages]
+            # Triton's default is 3, but Ascend only supports the local defaults.
+            # Treat an unsupported base value as "not fixed" so examples that use
+            # triton.Config(kwargs={...}) still follow the Ascend default table.
+            val_list = [base_num_stages] if base_num_stages in _VALID_VALUES["num_stages"] else _DEFAULTS[param]
         elif param in base_kwargs:
             # Parameter present in base config's kwargs -> fix to that single value
             val_list = [base_kwargs[param]]
@@ -1104,11 +1230,20 @@ def get_max_configs(config, kernel_type="mixcv", **kwargs):
                 # Overwrite or add the parameter to kwargs
                 new_kwargs[pname] = val
 
-        new_config = Config(kwargs=new_kwargs, num_warps=config.num_warps,
-                            num_stages=num_stages_val if num_stages_val is not None else config.num_stages,
-                            num_ctas=config.num_ctas, num_buffers_warp_spec=config.num_buffers_warp_spec,
-                            num_consumer_groups=config.num_consumer_groups, reg_dec_producer=config.reg_dec_producer,
-                            reg_inc_consumer=config.reg_inc_consumer, maxnreg=config.maxnreg, pre_hook=config.pre_hook)
+        config_args = {
+            "kwargs": new_kwargs,
+            "num_warps": getattr(config, "num_warps", 4),
+            "num_stages": num_stages_val if num_stages_val is not None else getattr(config, "num_stages", 2),
+            "num_ctas": getattr(config, "num_ctas", 1),
+            "maxnreg": getattr(config, "maxnreg", None),
+            "pre_hook": getattr(config, "pre_hook", None),
+            "ir_override": getattr(config, "ir_override", None),
+            "num_buffers_warp_spec": getattr(config, "num_buffers_warp_spec", None),
+            "num_consumer_groups": getattr(config, "num_consumer_groups", None),
+            "reg_dec_producer": getattr(config, "reg_dec_producer", None),
+            "reg_inc_consumer": getattr(config, "reg_inc_consumer", None),
+        }
+        new_config = _make_config_compat(**config_args)
         new_configs.append(new_config)
 
     return new_configs

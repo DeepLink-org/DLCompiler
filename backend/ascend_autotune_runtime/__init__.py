@@ -14,6 +14,11 @@ from .autoparser import (
     PtrNumsParser,
 )
 from .tile_generator import AxisInfo, BlockInfo, KernelMeta, TileGenerator
+from .compile_options import (
+    CompileOptionsSpec,
+    expand_compile_option_configs,
+    parse_compile_options_hint,
+)
 from .autotuner import (
     AutoTilingTuner,
     autotune,
@@ -40,6 +45,9 @@ __all__ = [
     "BlockInfo",
     "KernelMeta",
     "TileGenerator",
+    "CompileOptionsSpec",
+    "expand_compile_option_configs",
+    "parse_compile_options_hint",
     "AutoTilingTuner",
     "autotune",
     "max_autotune",

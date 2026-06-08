@@ -3,7 +3,7 @@ from types import MethodType
 import pytest
 import triton
 from triton.runtime.autotuner import Config
-from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import AutoTilingTuner
+from backend.ascend_autotune_runtime.autotuner import AutoTilingTuner
 from triton.compiler.errors import CompilationError
 
 
@@ -30,61 +30,32 @@ def _make_tuner(do_bench):
     return tuner
 
 
-def test_batch_bench_supports_do_bench_with_quantiles():
-    record = {}
+def test_batch_bench_uses_do_bench_npu_with_user_do_bench(monkeypatch):
+    calls = {"do_bench_npu": 0}
 
     def _do_bench(fn, quantiles):
-        record["quantiles"] = quantiles
-        fn()
-        return (1.0, 1.0, 1.0)
+        raise AssertionError("user do_bench should not be used by Ascend autotune runtime")
 
-    tuner = _make_tuner(_do_bench)
-    cfg = Config({})
-
-    result = tuner._batch_bench(configs=[cfg])
-
-    assert result[cfg] == (1.0, 1.0, 1.0)
-    assert record["quantiles"] == (0.5, 0.2, 0.8)
-
-
-def test_batch_bench_requires_do_bench_quantiles_parameter():
-
-    def _do_bench(fn):
-        fn()
-        return (2.0, 2.0, 2.0)
-
-    tuner = _make_tuner(_do_bench)
-    cfg = Config({})
-
-    with pytest.raises(TypeError):
-        tuner._batch_bench(configs=[cfg])
-
-
-def test_batch_bench_npu_env_respects_user_do_bench(monkeypatch):
-    calls = {"do_bench": 0}
-
-    def _do_bench(fn, quantiles):
-        calls["do_bench"] += 1
-        fn()
-        return (3.0, 3.0, 3.0)
-
-    def _unexpected_do_bench_npu(*args, **kwargs):
-        raise AssertionError("do_bench_npu should not be used when user do_bench is provided")
+    def _do_bench_npu(funcs, clear_l2_cache=False):
+        calls["do_bench_npu"] += 1
+        assert clear_l2_cache is False
+        assert len(funcs) == 2
+        return [3.0, 4.0]
 
     tuner = _make_tuner(_do_bench)
     cfg0 = Config({"ID": 0})
     cfg1 = Config({"ID": 1})
     monkeypatch.setenv("TRITON_BENCH_METHOD", "npu")
-    monkeypatch.setattr("backend.testing.do_bench_npu", _unexpected_do_bench_npu)
+    monkeypatch.setattr("backend.testing.do_bench_npu", _do_bench_npu)
 
     result = tuner._batch_bench(configs=[cfg0, cfg1])
 
-    assert calls["do_bench"] == 2
-    assert result[cfg0] == (3.0, 3.0, 3.0)
-    assert result[cfg1] == (3.0, 3.0, 3.0)
+    assert calls["do_bench_npu"] == 1
+    assert result[cfg0] == 3.0
+    assert result[cfg1] == 4.0
 
 
-def test_batch_bench_npu_env_uses_do_bench_npu_without_user_do_bench(monkeypatch):
+def test_batch_bench_defaults_to_do_bench_npu_without_user_do_bench(monkeypatch):
 
     def _do_bench(fn, quantiles):
         raise AssertionError("self.do_bench should not be used when no user do_bench is provided")
@@ -100,8 +71,8 @@ def test_batch_bench_npu_env_uses_do_bench_npu_without_user_do_bench(monkeypatch
     tuner.user_defined_do_bench = False
     cfg0 = Config({"ID": 0})
     cfg1 = Config({"ID": 1})
-    monkeypatch.setenv("TRITON_BENCH_METHOD", "npu")
-    monkeypatch.setattr("triton.backends.dicp_triton.testing.do_bench_npu", _do_bench_npu)
+    monkeypatch.delenv("TRITON_BENCH_METHOD", raising=False)
+    monkeypatch.setattr("backend.testing.do_bench_npu", _do_bench_npu)
 
     result = tuner._batch_bench(configs=[cfg0, cfg1])
 
@@ -110,7 +81,76 @@ def test_batch_bench_npu_env_uses_do_bench_npu_without_user_do_bench(monkeypatch
     assert result[cfg1] == 2.0
 
 
-def test_autotilingtuner_marks_user_defined_do_bench():
+@pytest.mark.parametrize("method", ["default", "triton", "do_bench"])
+def test_batch_bench_ignores_triton_bench_method(monkeypatch, method):
+    calls = {"do_bench_npu": 0}
+
+    def _do_bench(fn, quantiles):
+        raise AssertionError("TRITON_BENCH_METHOD should not switch Ascend autotune runtime away from do_bench_npu")
+
+    def _do_bench_npu(funcs, clear_l2_cache=False):
+        calls["do_bench_npu"] += 1
+        assert len(funcs) == 2
+        return [4.0, 5.0]
+
+    tuner = _make_tuner(_do_bench)
+    tuner.user_defined_do_bench = False
+    cfg0 = Config({"ID": 0})
+    cfg1 = Config({"ID": 1})
+    monkeypatch.setenv("TRITON_BENCH_METHOD", method)
+    monkeypatch.setattr("backend.testing.do_bench_npu", _do_bench_npu)
+
+    result = tuner._batch_bench(configs=[cfg0, cfg1])
+
+    assert calls["do_bench_npu"] == 1
+    assert result[cfg0] == 4.0
+    assert result[cfg1] == 5.0
+
+
+def test_batch_bench_single_config_uses_do_bench_npu(monkeypatch):
+    calls = {"do_bench_npu": 0}
+
+    def _do_bench(fn, quantiles):
+        raise AssertionError("single config should still use do_bench_npu")
+
+    def _do_bench_npu(funcs, clear_l2_cache=False):
+        calls["do_bench_npu"] += 1
+        assert len(funcs) == 1
+        return [5.0]
+
+    tuner = _make_tuner(_do_bench)
+    tuner.user_defined_do_bench = False
+    cfg = Config({"ID": 0})
+    monkeypatch.delenv("TRITON_BENCH_METHOD", raising=False)
+    monkeypatch.setattr("backend.testing.do_bench_npu", _do_bench_npu)
+
+    result = tuner._batch_bench(configs=[cfg])
+
+    assert calls["do_bench_npu"] == 1
+    assert result[cfg] == 5.0
+
+
+def test_batch_bench_do_bench_npu_timing_count_mismatch(monkeypatch):
+
+    def _do_bench(fn, quantiles):
+        raise AssertionError("self.do_bench should not be used when default NPU benchmark is selected")
+
+    def _do_bench_npu(funcs, clear_l2_cache=False):
+        assert len(funcs) == 2
+        return [1.0]
+
+    tuner = _make_tuner(_do_bench)
+    tuner.user_defined_do_bench = False
+    cfg0 = Config({"ID": 0})
+    cfg1 = Config({"ID": 1})
+    monkeypatch.delenv("TRITON_BENCH_METHOD", raising=False)
+    monkeypatch.setattr("backend.testing.do_bench_npu", _do_bench_npu)
+
+    with pytest.raises(RuntimeError, match="mismatched timing count"):
+        tuner._batch_bench(configs=[cfg0, cfg1])
+
+
+def test_autotilingtuner_accepts_user_defined_do_bench():
     marker = {"called": False}
 
     def _do_bench(fn, quantiles):
@@ -130,14 +170,15 @@ def test_autotilingtuner_marks_user_defined_do_bench():
         None,
         None,
         do_bench=_do_bench,
+        hints={"compile_options": False},
     )
 
     assert tuner.user_defined_do_bench is True
     assert marker["called"] is False
 
 
-def test_ascend_autotune_decorator_forwards_do_bench(monkeypatch):
-    import triton.backends.dicp_triton.ascend_autotune_runtime.autotuner as ascend_autotuner
+def test_ascend_autotune_decorator_accepts_do_bench(monkeypatch):
+    import backend.ascend_autotune_runtime.autotuner as ascend_autotuner
 
     captured = {}
 

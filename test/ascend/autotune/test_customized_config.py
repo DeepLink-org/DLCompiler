@@ -5,7 +5,7 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
-import backend.ascend_autotune_hooks  # noqa: F401 — install proxy before @triton.autotune
+import triton.backends.dicp_triton.ascend_autotune_hooks # noqa: F401 — install proxy before @triton.autotune
 
 os.environ['TRITON_PRINT_AUTOTUNING'] = '1'
 

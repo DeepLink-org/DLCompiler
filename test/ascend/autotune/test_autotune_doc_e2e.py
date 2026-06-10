@@ -6,7 +6,7 @@ import torch_npu
 import triton
 import triton.language as tl
 
-import backend.ascend_autotune_hooks  # noqa: F401 - install proxy before decorators
+import triton.backends.dicp_triton.ascend_autotune_hooks # noqa: F401 - install proxy before decorators
 
 os.environ.setdefault("TRITON_AUTOTUNE_PARALLEL_COMPILE", "0")
 

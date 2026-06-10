@@ -280,6 +280,8 @@ def generate_npu_wrapper_src(
     compile_on_910_95=False,
     force_simt_only=False,
     shared_mem_dynamic_size=0,
+    parallel_mode="simd",
+    enable_auto_blockify=None,
 ):
     import os
 
@@ -371,7 +373,9 @@ def generate_npu_wrapper_src(
         "true",
         "1",
     )
-    enable_auto_map_parallel_blocks = _is_auto_map_parallel_blocks_enabled()
+    enable_auto_map_parallel_blocks = enable_auto_blockify
+    if enable_auto_map_parallel_blocks is None:
+        enable_auto_map_parallel_blocks = _is_auto_map_parallel_blocks_enabled()
     npu_utils = NPUUtils()
     num_physical_blocks = (
         npu_utils.get_aivector_core_num()
@@ -392,7 +396,7 @@ def generate_npu_wrapper_src(
         'fprintf(stderr, "Error: workspace allocation failed\\n"); return;'
     )
 
-    enable_simt = ("simt" in mix_mode) or force_simt_only
+    enable_simt = ("simt" in parallel_mode) or force_simt_only
 
     arch = get_ascend_arch_from_env()
     target_support_ffts = is_ffts_supported(arch) and (not force_disable_ffts())
@@ -679,6 +683,7 @@ static void _launch(const char* kernelName, const void* func, rtStream_t stream,
       return {'ret' if enable_taskqueue else ''};
     }}
     ''' if lock_num > 0 else ''}
+    {'if (ret != RT_ERROR_NONE) return ret;' if (workspace_size > 0 and enable_taskqueue) else 'if (ret != RT_ERROR_NONE) return;' if (workspace_size > 0 and not enable_taskqueue) else ''}
     struct __attribute__((packed)) {{
       {'void* ffts_addr __attribute__((aligned(8)));' if target_support_ffts else ''}
       {'void* syncBlockLock __attribute__((aligned(8)));' if not force_simt_only else ''}
@@ -909,6 +914,8 @@ class NPULauncher(object):
         compile_on_910_95 = getattr(metadata, "compile_on_910_95", False)
         force_simt_only = getattr(metadata, "force_simt_only", False)
         shared_mem_dynamic_size = getattr(metadata, "shared_mem_dynamic_size", 0)
+        parallel_mode = getattr(metadata, "parallel_mode", "simd")
+        enable_auto_blockify = getattr(metadata, "enable_auto_blockify", None)
 
         header_src = generate_npu_header_src()
         wrapper_src = generate_npu_wrapper_src(
@@ -922,6 +929,8 @@ class NPULauncher(object):
             compile_on_910_95=compile_on_910_95,
             force_simt_only=force_simt_only,
             shared_mem_dynamic_size=shared_mem_dynamic_size,
+            parallel_mode=parallel_mode,
+            enable_auto_blockify=enable_auto_blockify,
         )
         self.so_launcher_path = make_npu_launcher_stub(
             header_src, wrapper_src, debug_mode

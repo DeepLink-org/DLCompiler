@@ -5,7 +5,7 @@ import torch_npu
 import triton
 import triton.language as tl
 from backend.testing import do_bench_npu
-import backend.ascend_autotune_hooks  # noqa: F401 — install proxy before @triton.autotune
+import triton.backends.dicp_triton.ascend_autotune_hooks
 
 
 @triton.autotune(configs=[], key=["n_elements"])

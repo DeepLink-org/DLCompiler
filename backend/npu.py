@@ -689,16 +689,14 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
             opts.append(f"--enable-hivm-graph-sync-solver={sync_solver}")
 
         unit_flag = m["unit_flag"]
-        if unit_flag is None:
-            unit_flag = False
-        opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
+        if unit_flag is not None:
+            opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
 
         inject_barrier_all = m["inject_barrier_all"]
-        if inject_barrier_all is None:
-            inject_barrier_all = False
-        opts.append(
-            f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
-        )
+        if inject_barrier_all is not None:
+            opts.append(
+                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
+            )
 
         inject_block_all = m["inject_block_all"]
         if inject_block_all is not None:
@@ -780,11 +778,10 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
             )
 
         disable_auto_inject_block_sync = m["disable_auto_inject_block_sync"]
-        if disable_auto_inject_block_sync is None:
-            disable_auto_inject_block_sync = False
-        opts.append(
-            f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
-        )
+        if disable_auto_inject_block_sync is not None:
+            opts.append(
+                f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
+            )
 
         bitcodes = m["bitcodes"]
         if bitcodes is not None:
@@ -895,9 +892,8 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             )
 
         unit_flag = m["unit_flag"]
-        if unit_flag is None:
-            unit_flag = False
-        opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
+        if unit_flag is not None:
+            opts.append(f"--enable-hivm-unit-flag-sync={unit_flag}")
 
         enable_drop_unit_dims = m["enable_drop_unit_dims"]
         if enable_drop_unit_dims is not None:
@@ -914,11 +910,10 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             )
 
         inject_barrier_all = m["inject_barrier_all"]
-        if inject_barrier_all is None:
-            inject_barrier_all = False
-        opts.append(
-            f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
-        )
+        if inject_barrier_all is not None:
+            opts.append(
+                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
+            )
 
         inject_block_all = m["inject_block_all"]
         if inject_block_all is not None:
@@ -955,11 +950,10 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             )
 
         disable_auto_inject_block_sync = m["disable_auto_inject_block_sync"]
-        if disable_auto_inject_block_sync is None:
-            disable_auto_inject_block_sync = False
-        opts.append(
-            f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
-        )
+        if disable_auto_inject_block_sync is not None:
+            opts.append(
+                f"--disable-auto-inject-block-sync={disable_auto_inject_block_sync}"
+            )
 
         bitcodes = m["bitcodes"]
         if bitcodes is not None:

@@ -61,6 +61,15 @@ def _make_config_compat(**kwargs):
     })
 
 
+def _empty_npu_cache_after_failure():
+    try:
+        import torch
+
+        torch.npu.empty_cache()
+    except Exception:
+        pass
+
+
 def _unwrap_parse_target(fn):
     seen = set()
     cur = fn
@@ -567,7 +576,8 @@ class AutoTilingTuner(Autotuner):
                             if hasattr(fut, "result"):
                                 fut = fut.result()
                             run_fns[config] = functools.partial(kernels_call[config], warmup=False)
-                        except (CompileTimeAssertionFailure, CompilationError, OutOfResources) as e:
+                        except (CompileTimeAssertionFailure, CompilationError, OutOfResources, Exception) as e:
+                            _empty_npu_cache_after_failure()
                             import traceback
                             exc_stack = traceback.format_exc()
                             exc = e
@@ -575,6 +585,7 @@ class AutoTilingTuner(Autotuner):
                 # ignore exception from __exit__() of AsyncCompileMode
                 triton.runtime._async_compile.active_mode.set(None)
                 if exc is None:
+                    _empty_npu_cache_after_failure()
                     import traceback
                     exc_stack = traceback.format_exc()
                     exc = e
@@ -583,7 +594,8 @@ class AutoTilingTuner(Autotuner):
                 try:
                     fn(warmup=False)
                     run_fns[config] = functools.partial(fn, warmup=False)
-                except (CompileTimeAssertionFailure, CompilationError, OutOfResources) as e:
+                except (CompileTimeAssertionFailure, CompilationError, OutOfResources, Exception) as e:
+                    _empty_npu_cache_after_failure()
                     import traceback
                     exc_stack = traceback.format_exc()
                     exc = e
@@ -596,7 +608,29 @@ class AutoTilingTuner(Autotuner):
             self.user_defined_do_bench,
             len(run_fns),
         )
-        return strategy.bench(run_fns)
+        try:
+            return strategy.bench(run_fns)
+        except Exception:
+            _empty_npu_cache_after_failure()
+            return self._batch_bench_fallback(strategy, run_fns)
+
+    def _batch_bench_fallback(self, strategy, run_fns):
+        timings = {}
+        for config, fn in run_fns.items():
+            try:
+                cost = strategy.bench({config: fn})
+                if isinstance(cost, dict):
+                    timings[config] = cost.get(config, float("inf"))
+                elif isinstance(cost, (list, tuple)) and len(cost) == 1:
+                    timings[config] = cost[0]
+                elif isinstance(cost, (int, float)):
+                    timings[config] = cost
+                else:
+                    timings[config] = float("inf")
+            except Exception:
+                _empty_npu_cache_after_failure()
+                timings[config] = float("inf")
+        return timings
 
     def _make_kernel_call(self, *args, config, **meta):
         # check for conflicts, i.e. meta-parameters both provided

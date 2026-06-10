@@ -22,7 +22,8 @@ import pytest
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink as dl
+import triton.language.extra.deeplink.cann.extension as dl
+from triton.language.extra.deeplink import async_task
 import torch_npu
 
 CPU_VERIFY = os.environ.get("DLC_CPU_VERIFY", "0") == "1"
@@ -356,14 +357,14 @@ def _attn_fwd_split_cv(
                     order=(1, 0),
                 )
 
-                with dl.async_task(scope=dl.async_task.cube):
+                with async_task(scope=async_task.cube):
                     k = tl.load(K_block_ptr)
                     trans_k = tl.trans(k)
                     qk = tl.dot(q, trans_k)
                     tl.store(ws1_ptr, qk)
                     dl.set_cross_flag(dl.SyncFlag.C2V, 0)
 
-                with dl.async_task(scope=dl.async_task.vector):
+                with async_task(scope=async_task.vector):
                     dl.wait_cross_flag(dl.SyncFlag.C2V, 0)
                     qk = tl.load(ws1_ptr)
                     qk = qk * sm_scale
@@ -374,7 +375,7 @@ def _attn_fwd_split_cv(
                     tl.store(ws2_ptr, p_cast)
                     dl.set_cross_flag(dl.SyncFlag.V2C, 1)
                     dl.wait_cross_flag(dl.SyncFlag.V2C, 1)
-                with dl.async_task(scope=dl.async_task.cube):
+                with async_task(scope=async_task.cube):
                     p_cast = tl.load(ws2_ptr)
                     v = tl.load(V_block_ptr)
                     acc_l0c = tl.dot(p_cast, v)
@@ -382,7 +383,7 @@ def _attn_fwd_split_cv(
                     dl.set_cross_flag(dl.SyncFlag.C2V, 2)
                     V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
                     K_block_ptr = tl.advance(K_block_ptr, (BLOCK_N, 0))
-                with dl.async_task(scope=dl.async_task.vector):
+                with async_task(scope=async_task.vector):
                     l_ij = tl.sum(p, 1)
                     alpha = tl.math.exp(m_i - m_ij)
                     l_i = l_i * alpha + l_ij

@@ -1,7 +1,7 @@
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink as dl
+import triton.language.extra.deeplink.cann.extension as dl
 import pytest
 
 @triton.jit

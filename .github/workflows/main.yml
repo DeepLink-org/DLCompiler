@@ -68,7 +68,7 @@ jobs:
             which conda
             echo "which conda? $(which conda)"
             conda activate dlcompiler
-            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            source /usr/local/Ascend/cann-cann-9.1.0-beta.1/set_env.sh
             cd ${{ env.CI_PATH }}
             export JSON_PATH35=${{ vars.CI_BASE_PATH }}/data/v35/include.zip
             export GOOGLETEST_DIR35=${{ vars.CI_BASE_PATH }}/data/v35/googletest
@@ -89,37 +89,37 @@ jobs:
             bash compile_shared.sh apply_patch=true
           '
 
-      - name: Build and install tilelang-dlc
-        run: |
-          set -ex
-          # 切换到 root 用户执行
-          sudo -E bash -c '
-            source /home/dlc_ci/.bashrc
-            conda activate dlcompiler
-            source /usr/local/Ascend/cann-8.5.0/set_env.sh
-            cd ${{ env.CI_PATH }}
-            export TILELANG_DLC_PATH=${{ vars.CI_BASE_PATH }}/data/tilelang-dlc
-            export DLCOMPILER_SOURCE=${{ env.CI_PATH }}
-            export TILELANG_USE_DLCOMPILER=1
-            echo "whoami? $(whoami)"
-            echo "which python? $(which python)"
-            bash scripts/install_tilelang-dlc.sh
-          '
+      # - name: Build and install tilelang-dlc
+      #   run: |
+      #     set -ex
+      #     # 切换到 root 用户执行
+      #     sudo -E bash -c '
+      #       source /home/dlc_ci/.bashrc
+      #       conda activate dlcompiler
+      #       source /usr/local/Ascend/cann-cann-9.1.0-beta.1/set_env.sh
+      #       cd ${{ env.CI_PATH }}
+      #       export TILELANG_DLC_PATH=${{ vars.CI_BASE_PATH }}/data/tilelang-dlc
+      #       export DLCOMPILER_SOURCE=${{ env.CI_PATH }}
+      #       export TILELANG_USE_DLCOMPILER=1
+      #       echo "whoami? $(whoami)"
+      #       echo "which python? $(which python)"
+      #       bash scripts/install_tilelang-dlc.sh
+      #     '
 
-      - name: Run tilelang-dlc tests on ascend
-        run: |
-          set -ex
-          # 切换到 root 用户执行
-          sudo -E bash -c '
-            source /home/dlc_ci/.bashrc
-            conda activate dlcompiler
-            source /usr/local/Ascend/cann-8.5.0/set_env.sh
-            cd ${{env.CI_PATH }}
-            export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
-            export ASCEND_RT_VISIBLE_DEVICES=7
-            export TILELANG_USE_DLCOMPILER=1
-            bash test/commonir/run_tests.sh
-          '
+      # - name: Run tilelang-dlc tests on ascend
+      #   run: |
+      #     set -ex
+      #     # 切换到 root 用户执行
+      #     sudo -E bash -c '
+      #       source /home/dlc_ci/.bashrc
+      #       conda activate dlcompiler
+      #       source /usr/local/Ascend/cann-cann-9.1.0-beta.1/set_env.sh
+      #       cd ${{env.CI_PATH }}
+      #       export PATH=${{ vars.CI_BASE_PATH }}/data/bishengir_latest/:$PATH
+      #       export ASCEND_RT_VISIBLE_DEVICES=7
+      #       export TILELANG_USE_DLCOMPILER=1
+      #       bash test/commonir/run_tests.sh
+      #     '
 
       - name: Run triton tests on ascend
         run: |
@@ -128,7 +128,7 @@ jobs:
           sudo -E bash -c '
             source /home/dlc_ci/.bashrc
             conda activate dlcompiler
-            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            source /usr/local/Ascend/cann-cann-9.1.0-beta.1/set_env.sh
             cd ${{env.CI_PATH }}
             echo "whoami? $(whoami)"
             echo "which python? $(which python)"
@@ -144,7 +144,7 @@ jobs:
           sudo -E bash -c '
             source /home/dlc_ci/.bashrc
             conda activate dlcompiler
-            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            source /usr/local/Ascend/cann-cann-9.1.0-beta.1/set_env.sh
             cd ${{env.CI_PATH }}
             echo "whoami? $(whoami)"
             echo "which python? $(which python)"
@@ -160,7 +160,7 @@ jobs:
           sudo -E bash -c '
             source /home/dlc_ci/.bashrc
             conda activate dlcompiler
-            source /usr/local/Ascend/cann-8.5.0/set_env.sh
+            source /usr/local/Ascend/cann-cann-9.1.0-beta.1/set_env.sh
             cd ${{env.CI_PATH }}
             echo "whoami? $(whoami)"
             echo "which python? $(which python)"

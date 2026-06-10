@@ -3,34 +3,7 @@ from triton.language import math
 from .cann import libdevice
 from .cann import extension
 from .async_task import async_task
-
-# Re-export from cann.extension for the new canonical location.
-from .cann.extension import (
-    insert_slice,
-    extract_slice,
-    sync_block_all,
-    set_cross_flag,
-    wait_cross_flag,
-    parallel,
-    inline_lambda,
-    alloc,
-    compile_hint,
-    ND,
-    NZ,
-    fragment,
-    UB,
-    L1,
-    L0A,
-    L0B,
-    L0C,
-    SyncFlag,
-    custom,
-    custom_semantic,
-    register_custom_op,
-    CORE,
-    PIPE,
-    MODE,
-)
+from .core import inline_lambda
 
 # ---------------------------------------------------------------------------
 # Glue layer: delegate standard math functions to triton.language.math
@@ -62,15 +35,21 @@ __all__ = [
     "libdevice",
     "extension",
     "async_task",
+    "inline_lambda",
+]
+
+_EXTENSION_ATTRS = {
     "insert_slice",
     "extract_slice",
     "sync_block_all",
+    "sync_block_set",
+    "sync_block_wait",
     "set_cross_flag",
     "wait_cross_flag",
     "parallel",
-    "inline_lambda",
     "alloc",
     "compile_hint",
+    "multibuffer",
     "ND",
     "NZ",
     "fragment",
@@ -86,7 +65,25 @@ __all__ = [
     "CORE",
     "PIPE",
     "MODE",
-]
+    "scope",
+    "layout",
+    "builtin",
+    "is_builtin",
+    "get_element",
+    "sort",
+    "flip",
+    "gather",
+    "index_put",
+    "gather_out_to_ub",
+    "scatter_ub_to_out",
+    "index_select_simd",
+}
+
+
+def __getattr__(name):
+    if name in _EXTENSION_ATTRS:
+        return getattr(extension, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def ensure_driver_initialized():

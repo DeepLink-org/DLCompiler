@@ -40,6 +40,10 @@ __all__ = [
     "sync_block_all",
     "sync_block_set",
     "sync_block_wait",
+    "alloc",
+    "SyncFlag",
+    "set_cross_flag",
+    "wait_cross_flag",
     "SYNC_IN_VF",
 ]
 
@@ -49,7 +53,7 @@ from functools import wraps
 
 from triton._C.libtriton import ir, dicp_triton
 import triton.language.core as tl
-from triton.language.core import _unwrap_if_constexpr
+from triton.language.core import _shape_check_impl, _unwrap_if_constexpr
 
 from triton.backends.dicp_triton.npu_driver import NPUUtils
 
@@ -60,6 +64,12 @@ T = TypeVar("T")
 
 TRITON_BUILTIN = "__triton_builtin__"
 ASCEND_BUILTIN = "__ascend_builtin__"
+
+
+def _constexpr_to_value(v):
+    if isinstance(v, tl.constexpr):
+        return v.value
+    return v
 
 
 def builtin(fn: T) -> T:
@@ -239,6 +249,83 @@ def sync_block_all(mode, event_id, _semantic=None):
     assert isinstance(event_id, int) and 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
     assert mode in ("all_cube", "all_vector", "all"), f"ERROR: mode = {mode}"
     semantic.custom_sync_op(_semantic.builder, "sync_block_all", mode=mode, event_id=event_id)
+
+
+@builtin
+def alloc(shape, value, dtype, layout=None, scope=None, _semantic=None):
+    """
+    Returns a tensor filled with the scalar value for the given shape and dtype.
+    """
+    shape = _shape_check_impl(shape)
+    value = _constexpr_to_value(value)
+    dtype = _constexpr_to_value(dtype)
+    layout = _constexpr_to_value(layout)
+    scope = _constexpr_to_value(scope)
+    return semantic.alloc(shape, value, dtype, layout, scope, _semantic.builder)
+
+
+class SyncFlagType:
+    ASCEND = ["cube_to_vector", "vector_to_cube"]
+
+    def __init__(self, name):
+        name = _unwrap_if_constexpr(name)
+        self.name = name
+        assert name in SyncFlagType.ASCEND, name
+
+    def __str__(self):
+        return self.name
+
+    def codegen_name(self):
+        return self.name
+
+    def sender(self):
+        if self.name == "cube_to_vector":
+            return "cube"
+        if self.name == "vector_to_cube":
+            return "vector"
+        assert self.name in SyncFlagType.ASCEND
+
+    @property
+    def cache_key_part(self) -> str:
+        return self.name
+
+    def __repr__(self):
+        return f"triton.language.{self.codegen_name()}"
+
+
+class SyncFlag:
+    C2V = SyncFlagType("cube_to_vector")
+    V2C = SyncFlagType("vector_to_cube")
+
+
+def _get_cross_flag_pipes(sender):
+    if sender == "cube":
+        return "vector", PIPE.PIPE_FIX, PIPE.PIPE_MTE2
+    if sender == "vector":
+        return "cube", PIPE.PIPE_MTE3, PIPE.PIPE_MTE2
+    raise AssertionError(f"Unexpected sender: {sender}")
+
+
+@builtin
+def set_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
+    sender = _unwrap_if_constexpr(sync_flag_type.sender())
+    event_id = _unwrap_if_constexpr(event_id)
+    assert isinstance(event_id, int) and 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
+    receiver, sender_pipe, receiver_pipe = _get_cross_flag_pipes(sender)
+    return sync_block_set(
+        sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=_semantic
+    )
+
+
+@builtin
+def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
+    sender = _unwrap_if_constexpr(sync_flag_type.sender())
+    event_id = _unwrap_if_constexpr(event_id)
+    assert isinstance(event_id, int) and 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
+    receiver, sender_pipe, receiver_pipe = _get_cross_flag_pipes(sender)
+    return sync_block_wait(
+        sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=_semantic
+    )
 
 
 @builtin

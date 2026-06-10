@@ -57,10 +57,26 @@ from .core import (
     sync_block_all,
     sync_block_set,
     sync_block_wait,
+    alloc,
+    SyncFlag,
+    set_cross_flag,
+    wait_cross_flag,
     SYNC_IN_VF,
 )
 
 from .scope import scope
+
+from .layout import (
+    layout,
+    ND,
+    NZ,
+    fragment,
+    UB,
+    L1,
+    L0A,
+    L0B,
+    L0C,
+)
 
 from .custom_op import (
     custom,
@@ -81,6 +97,8 @@ from .aux_ops import (
 )
 
 from .vec_ops import (
+    insert_slice,
+    extract_slice,
     get_element,
     sort,
     flip,
@@ -91,25 +109,6 @@ from .mem_ops import (
     gather_out_to_ub,
     scatter_ub_to_out,
     index_select_simd,
-)
-
-# Re-export from deeplink.core for backward compatibility.
-from ...core import (
-    insert_slice,
-    extract_slice,
-    alloc,
-    ND,
-    NZ,
-    fragment,
-    UB,
-    L1,
-    L0A,
-    L0B,
-    L0C,
-    SyncFlag,
-    set_cross_flag,
-    wait_cross_flag,
-    inline_lambda,
 )
 
 # gather is a standard triton op; re-export for backward compat.
@@ -137,6 +136,10 @@ __all__ = [
     "sync_block_all",
     "sync_block_set",
     "sync_block_wait",
+    "alloc",
+    "SyncFlag",
+    "set_cross_flag",
+    "wait_cross_flag",
     "SYNC_IN_VF",
     # address space
     "ascend_address_space",
@@ -155,6 +158,15 @@ __all__ = [
     "AffineMap",
     # scope
     "scope",
+    "layout",
+    "ND",
+    "NZ",
+    "fragment",
+    "UB",
+    "L1",
+    "L0A",
+    "L0B",
+    "L0C",
     # custom op
     "custom",
     "custom_semantic",
@@ -168,6 +180,8 @@ __all__ = [
     "compile_hint",
     "multibuffer",
     # vec ops
+    "insert_slice",
+    "extract_slice",
     "get_element",
     "sort",
     "flip",
@@ -176,22 +190,6 @@ __all__ = [
     "gather_out_to_ub",
     "scatter_ub_to_out",
     "index_select_simd",
-    # backward compat from deeplink.core
-    "insert_slice",
-    "extract_slice",
-    "alloc",
-    "ND",
-    "NZ",
-    "fragment",
-    "UB",
-    "L1",
-    "L0A",
-    "L0B",
-    "L0C",
-    "SyncFlag",
-    "set_cross_flag",
-    "wait_cross_flag",
-    "inline_lambda",
     # standard
     "gather",
 ]

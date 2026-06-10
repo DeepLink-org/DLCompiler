@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import pytest
-import triton.language.extra.deeplink as dl
+import triton.language.extra.deeplink.cann.extension as dl
 
 # eg: pytest -v test_compile_hint.py::test_compile_hint
 #############################

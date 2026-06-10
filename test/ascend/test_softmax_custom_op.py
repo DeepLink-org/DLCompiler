@@ -22,7 +22,7 @@ if os.path.isdir(_BISHENG_INSTALL):
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink as dl
+import triton.language.extra.deeplink.cann.extension as dl
 
 # ======================================================================
 # DSL custom op registration — bitcode auto-resolved by name

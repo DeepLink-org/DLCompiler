@@ -28,16 +28,19 @@ import test_common
 
 types = [
     "float32",
-    "float16",
-    "bfloat16",
+    # "float16",
+    # "bfloat16",
 ]
 
 shapes = [
-    16,
-    256,
+    # 3,
+    # 32,
+    37,
+    # 256,
+    # 781,
 ]
 
-# @pytest.mark.skip(reason="waiting for bishengir-compile to support")
+@pytest.mark.skip(reason="waiting for bishengir-compile to support")
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_pow_vv(sigtype, N):

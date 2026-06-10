@@ -10,7 +10,9 @@ from triton.compiler.errors import CompilationError
 @pytest.fixture(autouse=True)
 def _patch_mlir_error(monkeypatch):
     """MLIRCompilationError does not exist in stock triton 3.5; alias it."""
-    monkeypatch.setattr("triton.compiler.errors.MLIRCompilationError", CompilationError, raising=False)
+    monkeypatch.setattr(
+        "triton.compiler.errors.MLIRCompilationError", CompilationError, raising=False
+    )
 
 
 def _make_tuner(do_bench):
@@ -20,7 +22,6 @@ def _make_tuner(do_bench):
     tuner.user_defined_do_bench = True
 
     def _make_kernel_call(self, *args, config, **meta):
-
         def kernel_call(warmup):
             return None
 
@@ -34,7 +35,9 @@ def test_batch_bench_uses_do_bench_npu_with_user_do_bench(monkeypatch):
     calls = {"do_bench_npu": 0}
 
     def _do_bench(fn, quantiles):
-        raise AssertionError("user do_bench should not be used by Ascend autotune runtime")
+        raise AssertionError(
+            "user do_bench should not be used by Ascend autotune runtime"
+        )
 
     def _do_bench_npu(funcs, clear_l2_cache=False):
         calls["do_bench_npu"] += 1
@@ -56,9 +59,10 @@ def test_batch_bench_uses_do_bench_npu_with_user_do_bench(monkeypatch):
 
 
 def test_batch_bench_defaults_to_do_bench_npu_without_user_do_bench(monkeypatch):
-
     def _do_bench(fn, quantiles):
-        raise AssertionError("self.do_bench should not be used when no user do_bench is provided")
+        raise AssertionError(
+            "self.do_bench should not be used when no user do_bench is provided"
+        )
 
     calls = {"do_bench_npu": 0}
 
@@ -86,7 +90,9 @@ def test_batch_bench_ignores_triton_bench_method(monkeypatch, method):
     calls = {"do_bench_npu": 0}
 
     def _do_bench(fn, quantiles):
-        raise AssertionError("TRITON_BENCH_METHOD should not switch Ascend autotune runtime away from do_bench_npu")
+        raise AssertionError(
+            "TRITON_BENCH_METHOD should not switch Ascend autotune runtime away from do_bench_npu"
+        )
 
     def _do_bench_npu(funcs, clear_l2_cache=False):
         calls["do_bench_npu"] += 1
@@ -131,9 +137,10 @@ def test_batch_bench_single_config_uses_do_bench_npu(monkeypatch):
 
 
 def test_batch_bench_do_bench_npu_timing_count_mismatch(monkeypatch):
-
     def _do_bench(fn, quantiles):
-        raise AssertionError("self.do_bench should not be used when default NPU benchmark is selected")
+        raise AssertionError(
+            "self.do_bench should not be used when default NPU benchmark is selected"
+        )
 
     def _do_bench_npu(funcs, clear_l2_cache=False):
         assert len(funcs) == 2
@@ -183,7 +190,6 @@ def test_ascend_autotune_decorator_accepts_do_bench(monkeypatch):
     captured = {}
 
     class DummyAutoTilingTuner:
-
         def __init__(self, *args, **kwargs):
             captured["do_bench"] = kwargs.get("do_bench")
 
@@ -195,6 +201,8 @@ def test_ascend_autotune_decorator_accepts_do_bench(monkeypatch):
     _dummy_kernel.arg_names = []
     my_do_bench = lambda kernel_call, quantiles: (0.0, 0.0, 0.0)
 
-    ascend_autotuner.autotune(configs=[object()], key=[], do_bench=my_do_bench)(_dummy_kernel)
+    ascend_autotuner.autotune(configs=[object()], key=[], do_bench=my_do_bench)(
+        _dummy_kernel
+    )
 
     assert captured["do_bench"] is my_do_bench

@@ -96,7 +96,8 @@ getSignedPredicate(arith::CmpIPredicate predicate) {
   }
 }
 
-/// Pattern: Flip cmpi predicates that are incompatible with MaskState::parseCmp.
+/// Pattern: Flip cmpi predicates that are incompatible with
+/// MaskState::parseCmp.
 ///
 /// MaskState::parseCmp requires lhs = tensor (has range/offset) and rhs =
 /// scalar (splat constant). When the IR produces sge(scalar, tensor) instead,
@@ -136,8 +137,8 @@ struct FlipCmpiPredicatePattern : public OpRewritePattern<arith::CmpIOp> {
     if (rhsSplat)
       return failure();
 
-    auto newCmp = rewriter.create<arith::CmpIOp>(cmpOp.getLoc(), flippedPredicate,
-                                                 rhs, lhs);
+    auto newCmp = rewriter.create<arith::CmpIOp>(cmpOp.getLoc(),
+                                                 flippedPredicate, rhs, lhs);
     rewriter.replaceOp(cmpOp, newCmp.getResult());
     return success();
   }
@@ -154,8 +155,8 @@ struct MaxNumFToMaximumFPattern : public OpRewritePattern<arith::MaxNumFOp> {
 
   LogicalResult matchAndRewrite(arith::MaxNumFOp op,
                                 PatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<arith::MaximumFOp>(op, op.getType(), op.getLhs(),
-                                                    op.getRhs());
+    rewriter.replaceOpWithNewOp<arith::MaximumFOp>(op, op.getType(),
+                                                   op.getLhs(), op.getRhs());
     return success();
   }
 };
@@ -169,7 +170,8 @@ struct MaxNumFToMaximumFPattern : public OpRewritePattern<arith::MaxNumFOp> {
 /// unstructure/linalg lowering uses the explicit zero-fill operand to preserve
 /// masked lanes, especially for dot operands where it becomes zero-padding
 /// slices. Normalize here so both frontends feed the same IR shape to DICP.
-struct AddZeroOtherToMaskedLoadPattern : public OpRewritePattern<triton::LoadOp> {
+struct AddZeroOtherToMaskedLoadPattern
+    : public OpRewritePattern<triton::LoadOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(triton::LoadOp loadOp,

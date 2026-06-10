@@ -64,7 +64,10 @@ def _extract_slice(sl: slice, shape: constexpr):
 @_tensor_member_fn
 @builtin
 def __getitem__(self, slices, _semantic=None):
-    if isinstance(slices, (builtins.slice, slice, constexpr, tensor, int)) or slices is None:
+    if (
+        isinstance(slices, (builtins.slice, slice, constexpr, tensor, int))
+        or slices is None
+    ):
         slices = [slices]
     if isinstance(slices, tuple):
         slices = slices.values

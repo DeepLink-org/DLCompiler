@@ -714,7 +714,7 @@ class CPUUtils(object):
     @staticmethod
     def get_device_properties(device):
         return {
-            "max_shared_mem": 2**20,
+            "max_shared_mem": 2 ** 20,
             "multiprocessor_count": None,
             "sm_clock_rate": None,
             "mem_clock_rate": None,

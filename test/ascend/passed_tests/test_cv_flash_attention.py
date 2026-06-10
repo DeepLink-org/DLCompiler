@@ -259,7 +259,6 @@ def _attn_fwd_base(
 
 
 class AttentionBase(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, q, k, v, sm_scale, BM, BN):
         """
@@ -518,7 +517,6 @@ def _attn_fwd_split_cv(
 
 
 class AttentionSplitCV(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, q, k, v, sm_scale, BM, BN):
         """

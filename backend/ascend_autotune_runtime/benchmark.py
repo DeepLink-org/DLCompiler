@@ -6,7 +6,6 @@ from typing import Mapping
 
 
 class NpuProfilerBenchStrategy:
-
     def bench(self, run_fns: Mapping):
         from ..testing import do_bench_npu
 

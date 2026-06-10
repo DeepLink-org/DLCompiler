@@ -50,20 +50,26 @@ def _init_npu_params():
         rf_size_in_kbytes = 128
 
     _cached_params = {
-        'target': target,
-        'device': device,
-        'prop': prop,
-        'num_cube_core': num_cube_core,
-        'num_vector_core': num_vector_core,
-        'ub_size_in_kbytes': ub_size_in_kbytes,
-        'rf_size_in_kbytes': rf_size_in_kbytes,
+        "target": target,
+        "device": device,
+        "prop": prop,
+        "num_cube_core": num_cube_core,
+        "num_vector_core": num_vector_core,
+        "ub_size_in_kbytes": ub_size_in_kbytes,
+        "rf_size_in_kbytes": rf_size_in_kbytes,
     }
     return _cached_params
 
 
 def __getattr__(name):
     if name in [
-            'target', 'device', 'prop', 'num_cube_core', 'num_vector_core', 'ub_size_in_kbytes', 'rf_size_in_kbytes'
+        "target",
+        "device",
+        "prop",
+        "num_cube_core",
+        "num_vector_core",
+        "ub_size_in_kbytes",
+        "rf_size_in_kbytes",
     ]:
         return _init_npu_params()[name]
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
@@ -89,10 +95,10 @@ byte_per_numel = {
 
 # Some PyTorch versions expose extra fp8 dtypes. Register them when available.
 for fp8_dtype_name in (
-        "float8_e4m3fn",
-        "float8_e4m3fnuz",
-        "float8_e5m2",
-        "float8_e5m2fnuz",
+    "float8_e4m3fn",
+    "float8_e4m3fnuz",
+    "float8_e5m2",
+    "float8_e5m2fnuz",
 ):
     fp8_dtype = getattr(torch, fp8_dtype_name, None)
     if fp8_dtype is not None:

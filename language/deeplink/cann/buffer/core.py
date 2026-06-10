@@ -79,7 +79,6 @@ class address_space:
 
 
 class buffer_type(tl.dtype):
-
     def __init__(
         self,
         element_ty: tl.dtype,

@@ -142,13 +142,13 @@ def _inject_npu_attrs(module: str, metadata: dict) -> str:
         module = re.sub(
             r'(module\s+attributes\s*\{dicp\.backend\s*=\s*"ascend")',
             rf'\1, hacc.target = #hacc.target<"{arch}">',
-            module, count=1,
+            module,
+            count=1,
         )
     return module
 
 
 class CommonIRCompiler(object):
-
     def compile(self, commonir_src: CommonIRSource, options=None, _env_vars=None):
 
         target = commonir_backend.get_driver().get_current_target()
@@ -187,7 +187,7 @@ class CommonIRCompiler(object):
         module = commonir_src.src
         module = _inject_npu_attrs(module, metadata)
         print(module)
- 
+
         ir_filename = f"{file_name}.source"
         metadata_group[ir_filename] = fn_cache_manager.put(module, ir_filename)
 

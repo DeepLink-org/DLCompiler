@@ -172,43 +172,53 @@ def custom_sync_op(builder: ir.builder, op_name: str, **kwargs):
     raise ValueError(f"Unsupported custom op: {op_name}")
 
 
-def create_sync_block_set(sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=None):
+def create_sync_block_set(
+    sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=None
+):
     if isinstance(event_id, int):
         _semantic.builder.sync_block_set(
-            sender, receiver,
+            sender,
+            receiver,
             _semantic.to_tensor(tl.constexpr(event_id)).handle,
-            sender_pipe.value, receiver_pipe.value
+            sender_pipe.value,
+            receiver_pipe.value,
         )
     elif isinstance(event_id, tl.constexpr):
         _semantic.builder.sync_block_set(
-            sender, receiver,
+            sender,
+            receiver,
             _semantic.to_tensor(event_id).handle,
-            sender_pipe.value, receiver_pipe.value
+            sender_pipe.value,
+            receiver_pipe.value,
         )
     else:
         _semantic.builder.sync_block_set(
-            sender, receiver,
-            event_id.handle, sender_pipe.value, receiver_pipe.value
+            sender, receiver, event_id.handle, sender_pipe.value, receiver_pipe.value
         )
 
 
-def create_sync_block_wait(sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=None):
+def create_sync_block_wait(
+    sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=None
+):
     if isinstance(event_id, int):
         _semantic.builder.sync_block_wait(
-            sender, receiver,
+            sender,
+            receiver,
             _semantic.to_tensor(tl.constexpr(event_id)).handle,
-            sender_pipe.value, receiver_pipe.value
+            sender_pipe.value,
+            receiver_pipe.value,
         )
     elif isinstance(event_id, tl.constexpr):
         _semantic.builder.sync_block_wait(
-            sender, receiver,
+            sender,
+            receiver,
             _semantic.to_tensor(event_id).handle,
-            sender_pipe.value, receiver_pipe.value
+            sender_pipe.value,
+            receiver_pipe.value,
         )
     else:
         _semantic.builder.sync_block_wait(
-            sender, receiver,
-            event_id.handle, sender_pipe.value, receiver_pipe.value
+            sender, receiver, event_id.handle, sender_pipe.value, receiver_pipe.value
         )
 
 
@@ -219,6 +229,7 @@ def sub_vec_id(_semantic=None):
 def copy_from_ub_to_l1(src, dst, _semantic=None):
     from ..buffer.core import buffer as bl_buffer
     from . import core as _core
+
     if isinstance(src, tl.tensor) or isinstance(dst, tl.tensor):
         raise TypeError("tensor not support yet")
     if src.shape != dst.shape:
@@ -238,6 +249,7 @@ def copy_from_ub_to_l1(src, dst, _semantic=None):
 def copy(src, dst, _semantic=None):
     from ..buffer.core import buffer as bl_buffer
     from . import core as _core
+
     if isinstance(src, tl.tensor) or isinstance(dst, tl.tensor):
         raise TypeError("tensor not support yet")
     if src.shape != dst.shape:
@@ -247,7 +259,10 @@ def copy(src, dst, _semantic=None):
     if isinstance(src, bl_buffer) and isinstance(dst, bl_buffer):
         if src.space != _core.ascend_address_space.UB:
             raise TypeError("src's AddressSpace must be UB")
-        if dst.space not in (_core.ascend_address_space.L1, _core.ascend_address_space.UB):
+        if dst.space not in (
+            _core.ascend_address_space.L1,
+            _core.ascend_address_space.UB,
+        ):
             raise TypeError("dst's AddressSpace must be UB or L1")
         _semantic.builder.create_copy_buffer(src.handle, dst.handle)
     else:

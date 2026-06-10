@@ -40,7 +40,6 @@ import triton.language.extra.deeplink.cann.libdevice as dl
     ],
 )
 def test_flip(para_type, data_type, shape):
-
     def torch_func(x):
         return torch.flip(x, dims=(2,))
 

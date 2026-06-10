@@ -39,14 +39,18 @@ def _get_op_class(name):
     op_class = _custom_op_registry.get(name)
     if op_class is None:
         # Allow builtin custom ops used without registry.
-        assert name.startswith('__builtin_'), f"Custom Op '{name}' not registered."
-        op_class = type("_builtin_custom_op", (object,), {
-            "name": name,
-            "core": CORE.VECTOR,
-            "pipe": PIPE.PIPE_V,
-            "mode": MODE.SIMT,
-            "signature": inspect.signature(object),
-        })
+        assert name.startswith("__builtin_"), f"Custom Op '{name}' not registered."
+        op_class = type(
+            "_builtin_custom_op",
+            (object,),
+            {
+                "name": name,
+                "core": CORE.VECTOR,
+                "pipe": PIPE.PIPE_V,
+                "mode": MODE.SIMT,
+                "signature": inspect.signature(object),
+            },
+        )
     return op_class
 
 
@@ -64,7 +68,7 @@ def _unwrap_constexpr(arg):
 
 def _to_value(value, _semantic=None, ty=None):
     # Try to use 'type' attribute if ty not set.
-    ty = getattr(value, 'type', ty) if ty is None else ty
+    ty = getattr(value, "type", ty) if ty is None else ty
     if isinstance(value, tl.tensor):
         if not value.type.is_block() and isinstance(ty, tl.dtype) and value.type != ty:
             return _semantic.cast(value, ty).handle
@@ -156,7 +160,7 @@ def _bind_op_arguments(op, args, kwargs):
 
 
 def _make_align_dim_attrs(op, builder, arg_attrs):
-    name = 'align_dim'
+    name = "align_dim"
     if not hasattr(op, name):
         return
 
@@ -267,17 +271,18 @@ def _add_optional_attr(op, name, builder, attrs):
 
 
 def _add_bitcode_attr(op, builder, attrs):
-    name = 'bitcode'
+    name = "bitcode"
     if not hasattr(op, name):
         return
 
     from pathlib import Path
+
     bitcode_path = _resolve_bitcode_path(getattr(op, name))
     attrs[name] = builder.get_string_attr(bitcode_path)
 
 
 def _add_optional_extra_buffer_attr(op, builder, attrs):
-    name = 'extra_buffers'
+    name = "extra_buffers"
     if not hasattr(op, name):
         return
 
@@ -299,7 +304,7 @@ def _add_optional_extra_buffer_attr(op, builder, attrs):
 
 
 def _add_optional_indexing_map_attr(op, builder, attrs):
-    name = 'indexing_map'
+    name = "indexing_map"
     if not hasattr(op, name):
         return
     indexing_map = getattr(op, name)
@@ -307,7 +312,7 @@ def _add_optional_indexing_map_attr(op, builder, attrs):
 
 
 def _add_optional_iterator_types_attr(op, builder, attrs):
-    name = 'iterator_types'
+    name = "iterator_types"
     if not hasattr(op, name):
         return
     attrs[name] = builder.get_iterator_types_attr(
@@ -317,23 +322,25 @@ def _add_optional_iterator_types_attr(op, builder, attrs):
 
 def _make_attrs(op, builder):
     attrs = {
-        'hivm.tcore_type': builder.get_core_type_attr(op.core.value),
-        'hivm.pipe': builder.get_pipe_attr(op.pipe.value),
-        'hivm.vf_mode': builder.get_vf_mode_attr(op.mode.value),
+        "hivm.tcore_type": builder.get_core_type_attr(op.core.value),
+        "hivm.pipe": builder.get_pipe_attr(op.pipe.value),
+        "hivm.vf_mode": builder.get_vf_mode_attr(op.mode.value),
     }
 
-    if not op.name.startswith('__builtin_'):
-        assert hasattr(op, 'symbol'), "Non builtin custom op, symbol is required."
-        assert hasattr(op, 'bitcode'), "Non builtin custom op, bitcode path is required."
+    if not op.name.startswith("__builtin_"):
+        assert hasattr(op, "symbol"), "Non builtin custom op, symbol is required."
+        assert hasattr(
+            op, "bitcode"
+        ), "Non builtin custom op, bitcode path is required."
 
     _add_bitcode_attr(op, builder, attrs)
     _add_optional_indexing_map_attr(op, builder, attrs)
     _add_optional_iterator_types_attr(op, builder, attrs)
     _add_optional_extra_buffer_attr(op, builder, attrs)
-    _add_optional_attr(op, 'symbol', builder, attrs)
-    _add_optional_attr(op, 'source', builder, attrs)
-    _add_optional_attr(op, 'compile', builder, attrs)
-    _add_optional_attr(op, 'extra_attr', builder, attrs)
+    _add_optional_attr(op, "symbol", builder, attrs)
+    _add_optional_attr(op, "source", builder, attrs)
+    _add_optional_attr(op, "compile", builder, attrs)
+    _add_optional_attr(op, "extra_attr", builder, attrs)
 
     return attrs
 
@@ -350,7 +357,7 @@ def _to_result(res, res_types):
 
 def _init_op(op_class, *args, **kwargs):
     op = op_class.__new__(op_class)
-    setattr(op, 'arg_type', {})
+    setattr(op, "arg_type", {})
     if op_class.signature.parameters:
         op_class.__init__(op, *args, **kwargs)
     return op
@@ -362,7 +369,7 @@ def custom_semantic(name: str, *args, _semantic=None, **kwargs):
     args = _unwrap_constexpr(args)
     kwargs = _unwrap_constexpr(kwargs)
     op = _init_op(op_class, *args, **kwargs)
-    out = kwargs.pop('out', [])
+    out = kwargs.pop("out", [])
     outs = out if isinstance(out, (list, tuple, tl.tuple)) else [out]
     outputs = _to_operands(outs, _semantic)
     inputs = _args_to_operands(op, _semantic, args, kwargs)
@@ -383,38 +390,40 @@ def custom(name: str, *args, _semantic=None, **kwargs):
 def register_custom_op(op):
     """Register a custom operation so that we can invoke it using dl.custom()."""
     assert inspect.isclass(op), "@register_custom_op should decorate on a class."
-    if not hasattr(op, 'name'):
-        setattr(op, 'name', op.__name__)
-    assert op.name not in _custom_op_registry, f"Custom op name '{op.name}' already used."
+    if not hasattr(op, "name"):
+        setattr(op, "name", op.__name__)
+    assert (
+        op.name not in _custom_op_registry
+    ), f"Custom op name '{op.name}' already used."
 
-    assert hasattr(op, 'core'), "'core' field is required."
-    assert hasattr(op, 'pipe'), "'pipe' field is required."
-    assert hasattr(op, 'mode'), "'mode' field is required."
+    assert hasattr(op, "core"), "'core' field is required."
+    assert hasattr(op, "pipe"), "'pipe' field is required."
+    assert hasattr(op, "mode"), "'mode' field is required."
     assert isinstance(op.core, CORE), "Invalid 'core' field, CORE type is required."
     assert isinstance(op.pipe, PIPE), "Invalid 'pipe' field, PIPE type is required."
     assert isinstance(op.mode, MODE), "Invalid 'mode' field, MODE type is required."
     signature = inspect.signature(op)
-    setattr(op, 'signature', signature)
+    setattr(op, "signature", signature)
     _custom_op_registry[op.name] = op
     return op
 
 
 _dtype_cname_dict = {
-    'int1': 'bool',
-    'int8': 'int8_t',
-    'int16': 'int16_t',
-    'int32': 'int32_t',
-    'int64': 'int64_t',
-    'uint8': 'uint8_t',
-    'uint16': 'uint16_t',
-    'uint32': 'uint32_t',
-    'uint64': 'uint64_t',
-    'fp16': 'half',
-    'bf16': 'bfloat16_t',
-    'fp32': 'float',
-    'fp64': 'double',
-    'fp8e5': 'float8_e5m2_t',
-    'fp8e4nv': 'float8_e4m3_t',
+    "int1": "bool",
+    "int8": "int8_t",
+    "int16": "int16_t",
+    "int32": "int32_t",
+    "int64": "int64_t",
+    "uint8": "uint8_t",
+    "uint16": "uint16_t",
+    "uint32": "uint32_t",
+    "uint64": "uint64_t",
+    "fp16": "half",
+    "bf16": "bfloat16_t",
+    "fp32": "float",
+    "fp64": "double",
+    "fp8e5": "float8_e5m2_t",
+    "fp8e4nv": "float8_e4m3_t",
 }
 
 

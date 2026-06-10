@@ -27,7 +27,11 @@ def test_triton_max_last_dim_case1(mock_autotuner):
             for loop_r1 in range(loops_r1):
                 r1 = (loop_r1 * R1BLOCK_SUB) + base_r1[None, :]
                 r1_mask = r1 < r1_numel
-                tmp = tl.load(in_ptr0 + (r1 + r1_numel * x0), r1_mask & x0_mask, other=float("-inf"))
+                tmp = tl.load(
+                    in_ptr0 + (r1 + r1_numel * x0),
+                    r1_mask & x0_mask,
+                    other=float("-inf"),
+                )
                 block_val = tl.maximum(block_val, tmp)
             block_res = tl.max(block_val, axis=1)[:, None]
             tl.store(out_ptr0 + x0, block_res, x0_mask)
@@ -39,7 +43,7 @@ def test_triton_max_last_dim_case1(mock_autotuner):
         "low_dim_axes": ["ry"],
         "reduction_axes": ["ry"],
     }
-    grid = lambda meta: (meta["X0BLOCK"], )
+    grid = lambda meta: (meta["X0BLOCK"],)
     act_res = triton_max_last_dim1[grid]()
 
     check_axes_parse_res(act_res, ref_res)
@@ -69,7 +73,11 @@ def test_triton_max_last_dim_case2(mock_autotuner):
             for loop_r1 in range(loops_r1):
                 r1 = (loop_r1 * R1BLOCK_SUB) + base_r1[None, :]
                 r1_mask = r1 < r1_numel
-                tmp = tl.load(in_ptr0 + (r1 + r1_numel * x0), r1_mask & x0_mask, other=float("-inf"))
+                tmp = tl.load(
+                    in_ptr0 + (r1 + r1_numel * x0),
+                    r1_mask & x0_mask,
+                    other=float("-inf"),
+                )
                 block_val = tl.maximum(block_val, tmp)
             block_res = tl.max(block_val, axis=-1)[:, None]
             tl.store(out_ptr0 + x0, block_res, x0_mask)
@@ -81,7 +89,7 @@ def test_triton_max_last_dim_case2(mock_autotuner):
         "low_dim_axes": ["ry"],
         "reduction_axes": ["ry"],
     }
-    grid = lambda meta: (meta["X0BLOCK"], )
+    grid = lambda meta: (meta["X0BLOCK"],)
     act_res = triton_max_last_dim2[grid]()
 
     check_axes_parse_res(act_res, ref_res)
@@ -111,7 +119,11 @@ def test_triton_max_last_dim_case3(mock_autotuner):
             for loop_r1 in range(loops_r1):
                 r1 = (loop_r1 * R1BLOCK_SUB) + base_r1[None, :]
                 r1_mask = r1 < r1_numel
-                tmp = tl.load(in_ptr0 + (r1 + r1_numel * x0), r1_mask & x0_mask, other=float("-inf"))
+                tmp = tl.load(
+                    in_ptr0 + (r1 + r1_numel * x0),
+                    r1_mask & x0_mask,
+                    other=float("-inf"),
+                )
                 block_val = tl.maximum(block_val, tmp)
             block_res = tl.max(block_val, 1)[:, None]
             tl.store(out_ptr0 + x0, block_res, x0_mask)
@@ -123,7 +135,7 @@ def test_triton_max_last_dim_case3(mock_autotuner):
         "low_dim_axes": ["ry"],
         "reduction_axes": ["ry"],
     }
-    grid = lambda meta: (meta["X0BLOCK"], )
+    grid = lambda meta: (meta["X0BLOCK"],)
     act_res = triton_max_last_dim3[grid]()
 
     check_axes_parse_res(act_res, ref_res)

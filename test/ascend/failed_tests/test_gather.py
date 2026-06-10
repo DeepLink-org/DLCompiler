@@ -38,7 +38,6 @@ import pytest
     ],
 )
 def test_gather(src_shape, indices_shape, axis):
-
     @triton.jit
     def gather_kernel(
         src_ptr,
@@ -115,7 +114,6 @@ def test_gather(src_shape, indices_shape, axis):
     ],
 )
 def test_gather_flip(param_list):
-
     def torch_func(inp, idx):
         return torch.gather(input=inp, dim=-1, index=idx)
 

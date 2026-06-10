@@ -32,7 +32,9 @@ def torch_relu(x0, x1):
 
 
 @triton.jit
-def triton_relu(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_relu(
+    in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
     xoffset = tl.program_id(0) * XBLOCK
     for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
         x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
@@ -43,11 +45,13 @@ def triton_relu(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK
         tl.store(out_ptr0 + x_index, tmp2, xmask)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 4096, 8), 2, 32768, 512],
-                             ['float16', (2, 4096, 8), 2, 32768, 512],
-                         ])
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 512],
+        ["float16", (2, 4096, 8), 2, 32768, 512],
+    ],
+)
 def test_relu(param_list):
     # 生成数据
     dtype, shape, ncore, xblock, xblock_sub = param_list

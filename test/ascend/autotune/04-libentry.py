@@ -8,17 +8,18 @@ import triton.language as tl
 from language.deeplink.runtime import libentry
 
 from backend.testing import do_bench_npu
-import triton.backends.dicp_triton.ascend_autotune_hooks # noqa: F401 — install proxy before @triton.autotune
-
+import triton.backends.dicp_triton.ascend_autotune_hooks  # noqa: F401 — install proxy before @triton.autotune
 
 
 @triton.autotune(
     configs=[
-        triton.Config({'BLOCK_SIZE': 1 * 1024, 'multibuffer': True}),
-        triton.Config({'BLOCK_SIZE': 12 * 1024, 'multibuffer': True}),
-        triton.Config({'BLOCK_SIZE': 12 * 1024, 'multibuffer': False}),
-        triton.Config({'BLOCK_SIZE': 8 * 1024, 'multibuffer': True}),
-    ], key=["n_elements"])
+        triton.Config({"BLOCK_SIZE": 1 * 1024, "multibuffer": True}),
+        triton.Config({"BLOCK_SIZE": 12 * 1024, "multibuffer": True}),
+        triton.Config({"BLOCK_SIZE": 12 * 1024, "multibuffer": False}),
+        triton.Config({"BLOCK_SIZE": 8 * 1024, "multibuffer": True}),
+    ],
+    key=["n_elements"],
+)
 @libentry()
 @triton.jit
 def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -31,14 +32,19 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     output = x + y
     tl.store(output_ptr + offsets, output, mask=mask)
 
+
 def add_torch(x, y):
     return x + y
+
 
 def add_autotune(x, y):
     output = torch.empty_like(x)
     n_elements = output.numel()
-    add_kernel[lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]), )](x, y, output, n_elements)
+    add_kernel[lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)](
+        x, y, output, n_elements
+    )
     return output
+
 
 def test_add(size: int):
     x = torch.rand(size, device="npu")
@@ -47,6 +53,7 @@ def test_add(size: int):
     output_triton = add_autotune(x, y)
     assert torch.allclose(output_triton, output_torch)
     print(f"Vector Add {size} with libentry PASSED!")
+
 
 if __name__ == "__main__":
     test_add(98432)

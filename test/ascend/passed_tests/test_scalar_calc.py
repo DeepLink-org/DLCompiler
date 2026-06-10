@@ -30,7 +30,6 @@ import test_common
 ### add
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_add_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -54,7 +53,6 @@ def test_scalar_add_calc(param_list):
 ### sub
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_sub_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -78,7 +76,6 @@ def test_scalar_sub_calc(param_list):
 ### mul
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_mul_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -102,7 +99,6 @@ def test_scalar_mul_calc(param_list):
 ### div
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_div_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -126,7 +122,6 @@ def test_scalar_div_calc(param_list):
 ### remf
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_remf_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -150,7 +145,6 @@ def test_scalar_remf_calc(param_list):
 ### negf
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_negf_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -174,7 +168,6 @@ def test_scalar_negf_calc(param_list):
 ### cmpf
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_cmpf_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -198,7 +191,6 @@ def test_scalar_cmpf_calc(param_list):
 ### ceil
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_ceil_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -222,7 +214,6 @@ def test_scalar_ceil_calc(param_list):
 ### floor
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_floor_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -247,7 +238,6 @@ def test_scalar_floor_calc(param_list):
 # setting propagate_nan=tl.PropagateNan.ALL to generate arith::MaximumFOp
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_maximum_nanall_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         tl.static_assert(N > 1)
@@ -274,7 +264,6 @@ def test_scalar_maximum_nanall_calc(param_list):
 # setting propagate_nan=tl.PropagateNan.NONE to generate arith::MaxNumFOp
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_maximum_nannone_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         tl.static_assert(N > 1)
@@ -301,7 +290,6 @@ def test_scalar_maximum_nannone_calc(param_list):
 # setting propagate_nan=tl.PropagateNan.ALL to generate arith::MinimumFOp
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_minimum_nanall_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         tl.static_assert(N > 1)
@@ -328,7 +316,6 @@ def test_scalar_minimum_nanall_calc(param_list):
 # setting propagate_nan=tl.PropagateNan.NONE to generate arith::MinNumFOp
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_minimum_nannone_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         tl.static_assert(N > 1)
@@ -354,7 +341,6 @@ def test_scalar_minimum_nannone_calc(param_list):
 ### extf
 @pytest.mark.parametrize("param_list", [["float16", "float32", 16]])
 def test_scalar_extf_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -378,7 +364,6 @@ def test_scalar_extf_calc(param_list):
 ### truncf
 @pytest.mark.parametrize("param_list", [["float32", "float16", 16]])
 def test_scalar_truncf_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -402,7 +387,6 @@ def test_scalar_truncf_calc(param_list):
 ### exp
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_exp_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -426,7 +410,6 @@ def test_scalar_exp_calc(param_list):
 ### exp2
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_exp_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -450,7 +433,6 @@ def test_scalar_exp_calc(param_list):
 ### log
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_log_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -476,7 +458,6 @@ def test_scalar_log_calc(param_list):
 ### log2
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_log2_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -502,7 +483,6 @@ def test_scalar_log2_calc(param_list):
 ### sin
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_sin_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -526,7 +506,6 @@ def test_scalar_sin_calc(param_list):
 ### cos
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_cos_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -550,7 +529,6 @@ def test_scalar_cos_calc(param_list):
 ### abs
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_abs_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -574,7 +552,6 @@ def test_scalar_abs_calc(param_list):
 ### erf
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_erf_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -598,7 +575,6 @@ def test_scalar_erf_calc(param_list):
 ### sqrt
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_sqrt_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -624,7 +600,6 @@ def test_scalar_sqrt_calc(param_list):
 ### rsqrt
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_rsqrt_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -650,7 +625,6 @@ def test_scalar_rsqrt_calc(param_list):
 ### tanh
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_tanh_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         idx = 0
@@ -674,7 +648,6 @@ def test_scalar_tanh_calc(param_list):
 ### sum
 @pytest.mark.parametrize("param_list", [["float32", 16]])
 def test_scalar_sum_calc(param_list):
-
     @triton.jit
     def triton_kernel(out_ptr0, in_ptr0, N: tl.constexpr):
         tmp0 = tl.load(in_ptr0 + tl.arange(0, N))

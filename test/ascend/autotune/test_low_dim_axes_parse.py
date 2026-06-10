@@ -14,7 +14,9 @@ def _mock_single_reduction_axis(self):
 def test_low_dim_axis_parse_base_case1(mock_autotuner):
     @triton.autotune(configs=[], key=["n_elements"])
     @triton.jit
-    def triton_low_dim_axis_parse_base_case1(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    def triton_low_dim_axis_parse_base_case1(
+        x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
 
@@ -34,7 +36,7 @@ def test_low_dim_axis_parse_base_case1(mock_autotuner):
         "low_dim_axes": ["x"],
         "reduction_axes": [],
     }
-    grid = lambda meta: (meta["BLOCK_SIZE"], )
+    grid = lambda meta: (meta["BLOCK_SIZE"],)
     act_res = triton_low_dim_axis_parse_base_case1[grid]()
 
     check_axes_parse_res(act_res, ref_res)
@@ -43,7 +45,9 @@ def test_low_dim_axis_parse_base_case1(mock_autotuner):
 def test_low_dim_axis_parse_empty_is_non_fatal(mock_autotuner):
     @triton.autotune(configs=[], key=["n_elements"])
     @triton.jit
-    def triton_low_dim_axis_parse_empty_case(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    def triton_low_dim_axis_parse_empty_case(
+        x_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
         mask = block_start < n_elements
@@ -57,89 +61,127 @@ def test_low_dim_axis_parse_empty_is_non_fatal(mock_autotuner):
         "low_dim_axes": [],
         "reduction_axes": [],
     }
-    grid = lambda meta: (meta["BLOCK_SIZE"], )
+    grid = lambda meta: (meta["BLOCK_SIZE"],)
     act_res = triton_low_dim_axis_parse_empty_case[grid]()
 
     check_axes_parse_res(act_res, ref_res)
 
 
 def test_low_dim_axis_parse_empty_no_persistent_reduction_index_error(mock_autotuner):
-    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import AutoTilingTuner
+    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import (
+        AutoTilingTuner,
+    )
 
     @triton.autotune(configs=[], key=["n_elements"])
     @triton.jit
-    def triton_low_dim_axis_parse_guard_case(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    def triton_low_dim_axis_parse_guard_case(
+        x_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
         mask = block_start < n_elements
 
         _ = tl.load(x_ptr + block_start, mask=mask, other=0)
 
-    with mock.patch.object(AutoTilingTuner, "_autoparse_reduction_axes", return_value=["rx"]), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_low_dim_axes", return_value=[]), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_split_params", return_value={}), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_tiling_params", return_value={}):
-        act_res = triton_low_dim_axis_parse_guard_case[(1, )]()
+    with mock.patch.object(
+        AutoTilingTuner, "_autoparse_reduction_axes", return_value=["rx"]
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_low_dim_axes", return_value=[]
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_split_params", return_value={}
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_tiling_params", return_value={}
+    ):
+        act_res = triton_low_dim_axis_parse_guard_case[(1,)]()
 
     assert act_res["low_dim_axes"] == []
     assert act_res["reduction_axes"] == ["rx"]
 
 
 def test_persistent_reduction_inner_axis_threshold(mock_autotuner):
-    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import AutoTilingTuner
+    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import (
+        AutoTilingTuner,
+    )
 
     @triton.autotune(configs=[], key=["n_elements"])
     @triton.jit
-    def triton_persistent_reduction_inner_axis_case(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    def triton_persistent_reduction_inner_axis_case(
+        x_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
         mask = block_start < n_elements
         _ = tl.load(x_ptr + block_start, mask=mask, other=0)
 
-    with mock.patch.object(AutoTilingTuner, "_autoparse_reduction_axes", new=_mock_single_reduction_axis), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_low_dim_axes", return_value=["rx"]), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_split_params", return_value={}), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_tiling_params", return_value={}):
-        act_res = triton_persistent_reduction_inner_axis_case[(1, )](None, 1024)
+    with mock.patch.object(
+        AutoTilingTuner, "_autoparse_reduction_axes", new=_mock_single_reduction_axis
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_low_dim_axes", return_value=["rx"]
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_split_params", return_value={}
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_tiling_params", return_value={}
+    ):
+        act_res = triton_persistent_reduction_inner_axis_case[(1,)](None, 1024)
 
     assert act_res["persistent_reduction"] is True
 
 
 def test_persistent_reduction_outer_axis_threshold(mock_autotuner):
-    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import AutoTilingTuner
+    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import (
+        AutoTilingTuner,
+    )
 
     @triton.autotune(configs=[], key=["n_elements"])
     @triton.jit
-    def triton_persistent_reduction_outer_axis_case(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    def triton_persistent_reduction_outer_axis_case(
+        x_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
         mask = block_start < n_elements
         _ = tl.load(x_ptr + block_start, mask=mask, other=0)
 
-    with mock.patch.object(AutoTilingTuner, "_autoparse_reduction_axes", new=_mock_single_reduction_axis), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_low_dim_axes", return_value=[]), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_split_params", return_value={}), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_tiling_params", return_value={}):
-        act_res = triton_persistent_reduction_outer_axis_case[(1, )](None, 64)
+    with mock.patch.object(
+        AutoTilingTuner, "_autoparse_reduction_axes", new=_mock_single_reduction_axis
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_low_dim_axes", return_value=[]
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_split_params", return_value={}
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_tiling_params", return_value={}
+    ):
+        act_res = triton_persistent_reduction_outer_axis_case[(1,)](None, 64)
 
     assert act_res["persistent_reduction"] is True
 
 
 def test_persistent_reduction_outer_axis_over_threshold(mock_autotuner):
-    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import AutoTilingTuner
+    from triton.backends.dicp_triton.ascend_autotune_runtime.autotuner import (
+        AutoTilingTuner,
+    )
 
     @triton.autotune(configs=[], key=["n_elements"])
     @triton.jit
-    def triton_persistent_reduction_outer_axis_over_threshold_case(x_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    def triton_persistent_reduction_outer_axis_over_threshold_case(
+        x_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    ):
         pid = tl.program_id(axis=0)
         block_start = pid * BLOCK_SIZE
         mask = block_start < n_elements
         _ = tl.load(x_ptr + block_start, mask=mask, other=0)
 
-    with mock.patch.object(AutoTilingTuner, "_autoparse_reduction_axes", new=_mock_single_reduction_axis), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_low_dim_axes", return_value=[]), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_split_params", return_value={}), \
-         mock.patch.object(AutoTilingTuner, "_autoparse_tiling_params", return_value={}):
-        act_res = triton_persistent_reduction_outer_axis_over_threshold_case[(1, )](None, 65)
+    with mock.patch.object(
+        AutoTilingTuner, "_autoparse_reduction_axes", new=_mock_single_reduction_axis
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_low_dim_axes", return_value=[]
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_split_params", return_value={}
+    ), mock.patch.object(
+        AutoTilingTuner, "_autoparse_tiling_params", return_value={}
+    ):
+        act_res = triton_persistent_reduction_outer_axis_over_threshold_case[(1,)](
+            None, 65
+        )
 
     assert act_res["persistent_reduction"] is False

@@ -4,7 +4,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 
-namespace mlir::func { class FuncOp; }
+namespace mlir::func {
+class FuncOp;
+}
 
 namespace mlir::dicp::CommonIR {
 

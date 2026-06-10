@@ -39,7 +39,6 @@ shapes = [
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_isnan(sigtype, N):
-
     def torch_func(x0):
         res = torch.isnan(x0)
         return res

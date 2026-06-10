@@ -624,9 +624,9 @@ void ControlFlowGraph::exportToJSON(raw_ostream &os) const {
 
       bool isBack = isBackEdge(bb.get(), succ);
       os << "    {\"from\": " << bb->getId() << ", \"to\": " << succ->getId()
-         << ", \"fromName\": \"" << bb->getName() << "\"" << ", \"toName\": \""
-         << succ->getName() << "\"" << ", \"type\": \""
-         << (isBack ? "back" : "normal") << "\"}";
+         << ", \"fromName\": \"" << bb->getName() << "\""
+         << ", \"toName\": \"" << succ->getName() << "\""
+         << ", \"type\": \"" << (isBack ? "back" : "normal") << "\"}";
     }
   }
   os << "\n  ]\n";

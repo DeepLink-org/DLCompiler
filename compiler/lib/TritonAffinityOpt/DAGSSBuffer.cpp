@@ -4043,13 +4043,15 @@ void CreateIfOps(SmallVector<MergedRegion> &mergedRegions,
     // 获取if yield value 在 else块 返回值
     SmallVector<Value> elseYieldValues;
 
-    llvm::outs() << "before ComputeElseYieldValuesV2" << "\n";
+    llvm::outs() << "before ComputeElseYieldValuesV2"
+                 << "\n";
     if (needsYield) {
       //   ComputeElseYieldValues(region, elseYieldValues, dependValues);
       ComputeElseYieldValuesV2(region, elseYieldValues, dependValues);
     }
 
-    llvm::outs() << "after ComputeElseYieldValuesV2" << "\n";
+    llvm::outs() << "after ComputeElseYieldValuesV2"
+                 << "\n";
     // 将op移进then块
     Block &thenBlock = ifOp.getThenRegion().front();
     for (Operation *m : llvm::reverse(region.opsToMove)) {
@@ -5467,7 +5469,8 @@ collectIfInfo(scf::ForOp &curForOp,
                  << "\n";
     SmallVector<Value> deps;
     if (producedValues.empty()) {
-      llvm::outs() << "producedValues为空!" << "\n";
+      llvm::outs() << "producedValues为空!"
+                   << "\n";
     }
 
     // inputs

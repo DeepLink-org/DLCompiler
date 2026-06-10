@@ -489,11 +489,7 @@ def get_common_bishengir_compile_options(metadata):
 
 def get_auto_bind_sub_block_option(metadata):
     enable_auto_bind_sub_block = metadata["enable_auto_bind_sub_block"]
-    return (
-        True
-        if enable_auto_bind_sub_block is None
-        else enable_auto_bind_sub_block
-    )
+    return True if enable_auto_bind_sub_block is None else enable_auto_bind_sub_block
 
 
 def _save_npuir_debug_output(
@@ -524,11 +520,16 @@ def get_libdevice():
 # ---------------------------------------------------------------------------
 
 
-def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
-                                build_options_fn,
-                                bishengir_hivm_opt=None,
-                                extra_cmd_args=None,
-                                debug_stage_name="kernel.npuir_input.mlir"):
+def _compile_linalg_to_npu_bin(
+    linalg,
+    metadata,
+    opt,
+    *,
+    build_options_fn,
+    bishengir_hivm_opt=None,
+    extra_cmd_args=None,
+    debug_stage_name="kernel.npuir_input.mlir",
+):
     """Shared orchestration for linalg → npubin compilation.
 
     Parameters
@@ -595,22 +596,34 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
         # --- execute ---
         try:
             ret = subprocess.run(
-                cmd_list, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+                cmd_list,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
             )
         except subprocess.CalledProcessError as e:
             if opt.debug:
                 _save_npuir_debug_output(e.stdout, e.stderr, tmpdir, metadata["hash"])
             error_msg = e.stderr.decode("utf-8") if e.stderr else str(e)
-            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile failed: {error_msg}") from e
+            raise CompileTimeAssertionFailure(
+                None, None, f"bishengir-compile failed: {error_msg}"
+            ) from e
 
         stdout_bytes = ret.stdout
         stderr_bytes = ret.stderr
         stdout_str = stdout_bytes.decode("utf-8") if stdout_bytes else ""
         stderr_str = stderr_bytes.decode("utf-8") if stderr_bytes else ""
         if opt.debug:
-            print(f"[DEBUG] bishengir-compile stdout:\n{stdout_str if stdout_str else '<empty>'}")
-            print(f"[DEBUG] bishengir-compile stderr:\n{stderr_str if stderr_str else '<empty>'}")
-            _save_npuir_debug_output(stdout_bytes, stderr_bytes, tmpdir, metadata["hash"])
+            print(
+                f"[DEBUG] bishengir-compile stdout:\n{stdout_str if stdout_str else '<empty>'}"
+            )
+            print(
+                f"[DEBUG] bishengir-compile stderr:\n{stderr_str if stderr_str else '<empty>'}"
+            )
+            _save_npuir_debug_output(
+                stdout_bytes, stderr_bytes, tmpdir, metadata["hash"]
+            )
 
         match = re.search(r"UB\s+size\s*=\s*(\d+)\s*bits", stdout_str)
         if match:
@@ -620,7 +633,9 @@ def _compile_linalg_to_npu_bin(linalg, metadata, opt, *,
             error_msg = ret.stderr.decode("utf-8") if ret.stderr else ""
             print(f"[DEBUG] {bin_path} is not found")
             print(f"[DEBUG] Stderr:\n{error_msg}")
-            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile output not found: {error_msg}")
+            raise CompileTimeAssertionFailure(
+                None, None, f"bishengir-compile output not found: {error_msg}"
+            )
 
         if Path(callback_path).is_file():
             lib = ctypes.CDLL(callback_path)
@@ -665,9 +680,7 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
         if m.get("disable_tightly_coupled_buffer_reuse"):
             opts.append("--disable-tightly-coupled-buffer-reuse")
 
-        opts.append(
-            f"--enable-auto-bind-sub-block={get_auto_bind_sub_block_option(m)}"
-        )
+        opts.append(f"--enable-auto-bind-sub-block={get_auto_bind_sub_block_option(m)}")
 
         if force_disable_ffts():
             opts.append("--disable-ffts")
@@ -680,9 +693,7 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
 
         enable_hivm_auto_cv_balance = m["enable_hivm_auto_cv_balance"]
         if enable_hivm_auto_cv_balance is not None:
-            opts.append(
-                f"--enable-hivm-auto-cv-balance={enable_hivm_auto_cv_balance}"
-            )
+            opts.append(f"--enable-hivm-auto-cv-balance={enable_hivm_auto_cv_balance}")
 
         sync_solver = m["sync_solver"]
         if sync_solver is not None:
@@ -694,15 +705,11 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
 
         inject_barrier_all = m["inject_barrier_all"]
         if inject_barrier_all is not None:
-            opts.append(
-                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
-            )
+            opts.append(f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}")
 
         inject_block_all = m["inject_block_all"]
         if inject_block_all is not None:
-            opts.append(
-                f"--enable-hivm-inject-block-all-sync={inject_block_all}"
-            )
+            opts.append(f"--enable-hivm-inject-block-all-sync={inject_block_all}")
 
         limit_auto_multi_buffer_only_for_local_buffer = m[
             "limit_auto_multi_buffer_only_for_local_buffer"
@@ -714,9 +721,7 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
 
         set_workspace_multibuffer = m["set_workspace_multibuffer"]
         if set_workspace_multibuffer is not None:
-            opts.append(
-                f"--set-workspace-multibuffer={set_workspace_multibuffer}"
-            )
+            opts.append(f"--set-workspace-multibuffer={set_workspace_multibuffer}")
 
         auto_multi_buffer = m["limit_auto_multi_buffer_of_local_buffer"]
         if auto_multi_buffer is not None:
@@ -759,13 +764,9 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
 
         enable_auto_vectorize_v2 = m["enable_auto_vectorize_v2"]
         if enable_auto_vectorize_v2 is not None:
-            opts.append(
-                f"--enable-auto-vectorize-v2={enable_auto_vectorize_v2}"
-            )
+            opts.append(f"--enable-auto-vectorize-v2={enable_auto_vectorize_v2}")
 
-        auto_vectorize_v2_max_fused_ops_num = m[
-            "auto_vectorize_v2_max_fused_ops_num"
-        ]
+        auto_vectorize_v2_max_fused_ops_num = m["auto_vectorize_v2_max_fused_ops_num"]
         if auto_vectorize_v2_max_fused_ops_num is not None:
             opts.append(
                 f"--hfusion-max-fused-ops-in-auto-vectorize-v2={auto_vectorize_v2_max_fused_ops_num}"
@@ -811,13 +812,13 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
             args.append(f"--enable-vf-merge-level={vf_merge_level}")
         hfusion = m.get("hfusion_enable_multiple_consumer_fusion")
         if hfusion:
-            args.append(
-                f"--hfusion-enable-multiple-consumer-fusion={hfusion}"
-            )
+            args.append(f"--hfusion-enable-multiple-consumer-fusion={hfusion}")
         return args
 
     return _compile_linalg_to_npu_bin(
-        linalg, metadata, opt,
+        linalg,
+        metadata,
+        opt,
         build_options_fn=_build_options,
         extra_cmd_args=_extra_cmd_args,
         debug_stage_name="kernel.dicp.mlir",
@@ -845,9 +846,7 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             multi_buffer_value = False
         elif num_stages is not None and num_stages == 1:
             multi_buffer_value = False
-        opts.append(
-            f"--enable-auto-multi-buffer={multi_buffer_value}"
-        )
+        opts.append(f"--enable-auto-multi-buffer={multi_buffer_value}")
 
         enable_tuning_mode = m["enable_tuning_mode"]
         if enable_tuning_mode is not None:
@@ -861,9 +860,7 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
         if enable_preload is not None:
             opts.append(f"--enable-preload={enable_preload}")
 
-        opts.append(
-            f"--enable-auto-bind-sub-block={get_auto_bind_sub_block_option(m)}"
-        )
+        opts.append(f"--enable-auto-bind-sub-block={get_auto_bind_sub_block_option(m)}")
 
         if _is_ascend_sanitizer_enabled():
             opts.append("--enable-sanitizer=true")
@@ -878,18 +875,12 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
 
         enable_hivm_auto_cv_balance = m["enable_hivm_auto_cv_balance"]
         if enable_hivm_auto_cv_balance is not None:
-            opts.append(
-                f"--enable-hivm-auto-cv-balance={enable_hivm_auto_cv_balance}"
-            )
+            opts.append(f"--enable-hivm-auto-cv-balance={enable_hivm_auto_cv_balance}")
 
         sync_solver = m["sync_solver"]
         if sync_solver is not None:
-            opts.append(
-                f"--enable-hivm-graph-sync-solver={sync_solver}"
-            )
-            opts.append(
-                f"--enable-hivm-cross-core-gss={sync_solver}"
-            )
+            opts.append(f"--enable-hivm-graph-sync-solver={sync_solver}")
+            opts.append(f"--enable-hivm-cross-core-gss={sync_solver}")
 
         unit_flag = m["unit_flag"]
         if unit_flag is not None:
@@ -905,21 +896,15 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
 
         enable_auto_vectorize_v2 = m["enable_auto_vectorize_v2"]
         if enable_auto_vectorize_v2 is not None:
-            opts.append(
-                f"--enable-auto-vectorize-v2={enable_auto_vectorize_v2}"
-            )
+            opts.append(f"--enable-auto-vectorize-v2={enable_auto_vectorize_v2}")
 
         inject_barrier_all = m["inject_barrier_all"]
         if inject_barrier_all is not None:
-            opts.append(
-                f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}"
-            )
+            opts.append(f"--enable-hivm-inject-barrier-all-sync={inject_barrier_all}")
 
         inject_block_all = m["inject_block_all"]
         if inject_block_all is not None:
-            opts.append(
-                f"--enable-hivm-inject-block-all-sync={inject_block_all}"
-            )
+            opts.append(f"--enable-hivm-inject-block-all-sync={inject_block_all}")
 
         limit_auto_multi_buffer_only_for_local_buffer = m[
             "limit_auto_multi_buffer_only_for_local_buffer"
@@ -931,9 +916,7 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
 
         set_workspace_multibuffer = m["set_workspace_multibuffer"]
         if set_workspace_multibuffer is not None:
-            opts.append(
-                f"--set-workspace-multibuffer={set_workspace_multibuffer}"
-            )
+            opts.append(f"--set-workspace-multibuffer={set_workspace_multibuffer}")
 
         tile_mix_vector_loop = m["tile_mix_vector_loop"]
         if tile_mix_vector_loop is not None:
@@ -967,9 +950,7 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
 
         disable_size_align_for_cast = m["disable_size_align_for_cast"]
         if disable_size_align_for_cast is not None:
-            opts.append(
-                f"--disable-size-align-for-cast={disable_size_align_for_cast}"
-            )
+            opts.append(f"--disable-size-align-for-cast={disable_size_align_for_cast}")
 
         if _is_auto_map_parallel_blocks_enabled():
             opts.append("--enable-auto-blockify-loop")
@@ -977,7 +958,9 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
         return opts
 
     return _compile_linalg_to_npu_bin(
-        linalg, metadata, opt,
+        linalg,
+        metadata,
+        opt,
         build_options_fn=_build_options,
         bishengir_hivm_opt=bishengir_hivm_opt,
     )
@@ -1033,12 +1016,16 @@ def ttir_to_npubin(mod, metadata, opt):
             ret = subprocess.run(cmd_list, env=env, capture_output=True, check=True)
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode("utf-8") if e.stderr else str(e)
-            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile (SIMT) failed: {error_msg}") from e
+            raise CompileTimeAssertionFailure(
+                None, None, f"bishengir-compile (SIMT) failed: {error_msg}"
+            ) from e
         if not Path(bin_path).exists():
             error_msg = ret.stderr.decode("utf-8")
             print(f"[DEBUG] {bin_path} is not found")
             print(f"[DEBUG] Stderr:\n{error_msg}")
-            raise CompileTimeAssertionFailure(None, None, f"bishengir-compile (SIMT) output not found: {error_msg}")
+            raise CompileTimeAssertionFailure(
+                None, None, f"bishengir-compile (SIMT) output not found: {error_msg}"
+            )
         return Path(bin_path).read_bytes()
 
 

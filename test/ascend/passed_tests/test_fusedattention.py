@@ -334,7 +334,6 @@ def _attn_fwd(
 
 
 class _attention(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, q, k, v, causal, sm_scale, BM, BN):
         """

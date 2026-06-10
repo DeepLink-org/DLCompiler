@@ -137,7 +137,8 @@ void DataFlowInfo::forEachUse(
 }
 
 void DataFlowInfo::print(llvm::raw_ostream &os) const {
-  os << "=== Data Flow Information ===" << "\n";
+  os << "=== Data Flow Information ==="
+     << "\n";
 
   os << "Memory Definitions: " << memoryDefinitions.size() << "\n";
   for (const auto &entry : memoryDefinitions) {
@@ -146,7 +147,8 @@ void DataFlowInfo::print(llvm::raw_ostream &os) const {
     os << "\n";
   }
 
-  os << "Memory Uses: " << "\n";
+  os << "Memory Uses: "
+     << "\n";
   for (const auto &entry : memoryUses) {
     os << "  " << entry.first << ": ";
     for (const MemorySSAUse &use : entry.second) {
@@ -209,37 +211,43 @@ void DataFlowInfo::exportToJSON(llvm::raw_ostream &os) const {
 //===----------------------------------------------------------------------===//
 
 void DataFlowGraph::build() {
-  LLVM_DEBUG(llvm::dbgs() << "=== Starting Data Flow Graph Build ===" << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "=== Starting Data Flow Graph Build ==="
+                          << "\n");
 
   // 步骤1: 构建Alias分析
   aliasAnalysis = std::make_unique<AliasAnalysis>();
   aliasAnalysis->analyzePointerAliases(cfg);
   // aliasAnalysis->print(llvm::outs());
 
-  LLVM_DEBUG(llvm::dbgs() << "Alias analysis complete" << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Alias analysis complete"
+                          << "\n");
 
   // 步骤2: 构建Memory SSA
   memorySSABuilder =
       std::make_unique<MemorySSABuilder>(cfg, *aliasAnalysis, dataFlowInfo);
   memorySSABuilder->build();
 
-  LLVM_DEBUG(llvm::dbgs() << "Memory SSA build complete" << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Memory SSA build complete"
+                          << "\n");
 
   // 步骤3: 构建def-use图
   buildDefUseGraph();
 
-  LLVM_DEBUG(llvm::dbgs() << "=== Data Flow Graph Build Complete ===" << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "=== Data Flow Graph Build Complete ==="
+                          << "\n");
 }
 
 void DataFlowGraph::buildDefUseGraph() {
   // 构建def-use图（在DataFlowInfo中实现）
   dataFlowInfo.buildDefUseCache();
 
-  LLVM_DEBUG(llvm::dbgs() << "Def-use graph built" << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Def-use graph built"
+                          << "\n");
 }
 
 void DataFlowGraph::print(llvm::raw_ostream &os) const {
-  os << "=== Data Flow Graph ===" << "\n";
+  os << "=== Data Flow Graph ==="
+     << "\n";
   dataFlowInfo.print(os);
 }
 
@@ -251,7 +259,8 @@ void DataFlowGraph::exportToJSON(llvm::raw_ostream &os) const {
   std::string funcNameStr = funcName.empty() ? "unnamed" : funcName.str();
 
   os << "{\n";
-  os << "  \"function\": \"" << funcNameStr << "\"," << "\n";
+  os << "  \"function\": \"" << funcNameStr << "\","
+     << "\n";
   os << "  \"dataFlow\": ";
   dataFlowInfo.exportToJSON(os);
   os << "}\n";

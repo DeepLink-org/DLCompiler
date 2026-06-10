@@ -39,7 +39,7 @@ def _is_ascend_backend():
     rather than the driver type so the logic is duck-type-safe.
     """
     try:
-        return getattr(triton.runtime.driver.active, 'target', None) == 'ascend'
+        return getattr(triton.runtime.driver.active, "target", None) == "ascend"
     except Exception:
         return False
 
@@ -49,6 +49,7 @@ def _ascend_autotune_fn():
     global _ASCEND_AUTOTUNE
     if _ASCEND_AUTOTUNE is None:
         from .ascend_autotune_runtime.autotuner import autotune as _fn
+
         _ASCEND_AUTOTUNE = _fn
     return _ASCEND_AUTOTUNE
 
@@ -58,6 +59,7 @@ def _ascend_max_autotune_fn():
     global _ASCEND_MAX_AUTOTUNE
     if _ASCEND_MAX_AUTOTUNE is None:
         from .ascend_autotune_runtime.autotuner import max_autotune as _fn
+
         _ASCEND_MAX_AUTOTUNE = _fn
     return _ASCEND_MAX_AUTOTUNE
 
@@ -69,6 +71,7 @@ def _autotune_proxy(configs, key, **kwargs):
     if _is_ascend_backend():
         return _ascend_autotune_fn()(configs=configs, key=key, **kwargs)
     from triton.runtime.autotuner import autotune as _stock
+
     return _stock(configs=configs, key=key, **kwargs)
 
 

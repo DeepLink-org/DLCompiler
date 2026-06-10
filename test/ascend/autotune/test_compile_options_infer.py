@@ -40,55 +40,67 @@ def _make_tuner(fn, hints=None):
 
 
 def test_dot_call_parser_detects_tl_dot():
-    func_ast = _func_ast("""
+    func_ast = _func_ast(
+        """
 def kernel(a, b, c):
     acc = tl.dot(a, b)
     return acc
-""")
+"""
+    )
 
     assert DotCallParser(func_ast).parse() is True
 
 
 def test_dot_call_parser_detects_tl_dot_scaled():
-    func_ast = _func_ast("""
+    func_ast = _func_ast(
+        """
 def kernel(a, b, scales):
     acc = tl.dot_scaled(a, b, scales)
     return acc
-""")
+"""
+    )
 
     assert DotCallParser(func_ast).parse() is True
 
 
 def test_dot_call_parser_ignores_non_tl_dot_alias():
-    func_ast = _func_ast("""
+    func_ast = _func_ast(
+        """
 def kernel(a, b):
     acc = dot(a, b)
     return acc
-""")
+"""
+    )
 
     assert DotCallParser(func_ast).parse() is False
 
 
 def test_dot_call_parser_detects_dot_in_called_jit_helper():
-    helper = _make_dummy_kernel("""
+    helper = _make_dummy_kernel(
+        """
 def helper(a, b):
     acc = tl.dot(a, b)
     return acc
-""")
-    func_ast = _func_ast("""
+"""
+    )
+    func_ast = _func_ast(
+        """
 def kernel(a, b):
     return helper(a, b)
-""")
+"""
+    )
 
     assert DotCallParser(func_ast, {"helper": helper}).parse() is True
 
 
 def test_compile_options_infers_mixcv_when_kernel_has_dot():
-    fn = _make_dummy_kernel("""
+    fn = _make_dummy_kernel(
+        """
 def kernel(a, b):
     acc = tl.dot(a, b)
     return acc
-""")
+"""
+    )
 
     tuner = _make_tuner(fn)
 
@@ -98,15 +110,20 @@ def kernel(a, b):
 
 
 def test_compile_options_infers_mixcv_when_called_helper_has_dot():
-    helper = _make_dummy_kernel("""
+    helper = _make_dummy_kernel(
+        """
 def helper(a, b):
     acc = tl.dot(a, b)
     return acc
-""")
-    fn = _make_dummy_kernel("""
+"""
+    )
+    fn = _make_dummy_kernel(
+        """
 def kernel(a, b):
     return helper(a, b)
-""", scope={"helper": helper})
+""",
+        scope={"helper": helper},
+    )
 
     tuner = _make_tuner(fn)
 
@@ -115,11 +132,13 @@ def kernel(a, b):
 
 
 def test_compile_options_infers_vector_when_kernel_has_no_dot():
-    fn = _make_dummy_kernel("""
+    fn = _make_dummy_kernel(
+        """
 def kernel(a, b):
     acc = a + b
     return acc
-""")
+"""
+    )
 
     tuner = _make_tuner(fn)
 
@@ -129,11 +148,13 @@ def kernel(a, b):
 
 
 def test_compile_options_infers_through_libentry_like_wrapper():
-    jit_fn = _make_dummy_kernel("""
+    jit_fn = _make_dummy_kernel(
+        """
 def kernel(a, b):
     acc = tl.dot(a, b)
     return acc
-""")
+"""
+    )
 
     class LibEntryLike:
         def __init__(self, fn):

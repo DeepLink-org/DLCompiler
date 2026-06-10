@@ -168,6 +168,7 @@ class DICPDriver(DriverBase):
             self.launcher_cls = NPULauncher
 
             from .ascend_autotune_hooks import hook_autotune_for_ascend
+
             hook_autotune_for_ascend()
         elif backend == "nvidia":
             from triton.backends.nvidia.driver import CudaLauncher, CudaUtils

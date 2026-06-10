@@ -32,7 +32,9 @@ def torch_log1p(x0, x1):
 
 
 @triton.jit
-def triton_log1p(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr):
+def triton_log1p(
+    in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
     xoffset = tl.program_id(0) * XBLOCK
     for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
         x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
@@ -43,10 +45,12 @@ def triton_log1p(in_ptr0, in_ptr1, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOC
         tl.store(out_ptr0 + x_index, tmp2, xmask)
 
 
-@pytest.mark.parametrize('param_list',
-                         [
-                             ['float32', (2, 4096, 8), 2, 32768, 1024],
-                         ])
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+    ],
+)
 def test_log1p(param_list):
     # 生成数据
     dtype, shape, ncore, xblock, xblock_sub = param_list

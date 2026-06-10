@@ -6,7 +6,7 @@ import torch_npu
 import triton
 import triton.language as tl
 
-import triton.backends.dicp_triton.ascend_autotune_hooks # noqa: F401 - install proxy before decorators
+import triton.backends.dicp_triton.ascend_autotune_hooks  # noqa: F401 - install proxy before decorators
 
 os.environ.setdefault("TRITON_AUTOTUNE_PARALLEL_COMPILE", "0")
 
@@ -41,7 +41,9 @@ def _explicit_config_exp_add(x, y):
 
 @triton.autotune(configs=[], key=["n_elements"])
 @triton.jit
-def _auto_tiling_add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _auto_tiling_add_kernel(
+    x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
@@ -129,7 +131,9 @@ def _hinted_tiling_add(x, y):
     hints={"auto_gen_config": True},
 )
 @triton.jit
-def _auto_and_user_config_add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _auto_and_user_config_add_kernel(
+    x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
@@ -153,7 +157,9 @@ def _auto_and_user_config_add(x, y):
     enable_ubuf_saving=[True, False],
 )
 @triton.jit
-def _max_autotune_vector_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _max_autotune_vector_kernel(
+    x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
@@ -176,7 +182,9 @@ def _max_autotune_vector(x, y):
     enable_ubuf_saving=[True, False],
 )
 @triton.jit
-def _max_autotune_default_stage_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _max_autotune_default_stage_kernel(
+    x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0)

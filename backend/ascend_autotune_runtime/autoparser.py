@@ -149,8 +149,9 @@ class AxesKeyParser(AutoParser):
             elif isinstance(child_node, ast.Assign):
                 axis = self.handle_assign_node(var, child_node)
 
-            elif isinstance(child_node, ast.BinOp) and \
-                 isinstance(child_node.op, ast.BitAnd):
+            elif isinstance(child_node, ast.BinOp) and isinstance(
+                child_node.op, ast.BitAnd
+            ):
 
                 axis = self.handle_lt_node(var, child_node.left)
                 if axis is None:
@@ -192,10 +193,11 @@ class AxesKeyParser(AutoParser):
             return None
 
         comparator = node.comparators[0]
-        if not isinstance(comparator, ast.Name) and \
-           not (isinstance(comparator, ast.Call) and \
-           isinstance(comparator.func, ast.Name) and \
-           comparator.func.id == 'min'):
+        if not isinstance(comparator, ast.Name) and not (
+            isinstance(comparator, ast.Call)
+            and isinstance(comparator.func, ast.Name)
+            and comparator.func.id == "min"
+        ):
             return None
 
         for k, v in self.keys.items():
@@ -222,7 +224,9 @@ class SplitAxesParser(AxesKeyParser):
        only those parameters that can be dynamically adjusted through the autotune process are considered.
     """
 
-    def __init__(self, func_ast: ast.AST, keys: Dict[str, str], candidates_params: List[str]):
+    def __init__(
+        self, func_ast: ast.AST, keys: Dict[str, str], candidates_params: List[str]
+    ):
         """
         :param func_ast: Abstract syntax tree of the triton kernel function
         :type func_ast: ast.AST
@@ -253,8 +257,11 @@ class SplitAxesParser(AxesKeyParser):
     def visit_Assign(self, node):
         pid_dim = self._get_program_id_dim(node.value)
         if pid_dim is not None:
-            if (len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
-                    and node.targets[0].id not in self.program_id_vars):
+            if (
+                len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id not in self.program_id_vars
+            ):
                 self.program_id_vars.append(node.targets[0].id)
                 self.program_id_var_dims[node.targets[0].id] = pid_dim
         num_programs_dim = self._get_num_programs_dim(node.value)
@@ -271,28 +278,45 @@ class SplitAxesParser(AxesKeyParser):
                 if isinstance(node.right, ast.Name):
                     split_axes_val = node.right.id
                     split_axis_pid_dim = self.program_id_var_dims.get(node.left.id)
-            elif isinstance(node.left, ast.Call) and isinstance(node.left.func, ast.Attribute):
-                if (isinstance(node.left.func.value, ast.Name) and node.left.func.value.id == "tl"
-                        and node.left.func.attr == "program_id"):
+            elif isinstance(node.left, ast.Call) and isinstance(
+                node.left.func, ast.Attribute
+            ):
+                if (
+                    isinstance(node.left.func.value, ast.Name)
+                    and node.left.func.value.id == "tl"
+                    and node.left.func.attr == "program_id"
+                ):
                     if isinstance(node.right, ast.Name):
                         split_axes_val = node.right.id
                         split_axis_pid_dim = self._get_program_id_dim(node.left)
 
-            if isinstance(node.right, ast.Name) and node.right.id in self.program_id_vars:
+            if (
+                isinstance(node.right, ast.Name)
+                and node.right.id in self.program_id_vars
+            ):
                 if isinstance(node.left, ast.Name):
                     split_axes_val = node.left.id
                     split_axis_pid_dim = self.program_id_var_dims.get(node.right.id)
-            elif isinstance(node.right, ast.Call) and isinstance(node.right.func, ast.Attribute):
-                if (isinstance(node.right.func.value, ast.Name) and node.right.func.value.id == "tl"
-                        and node.right.func.attr == "program_id"):
+            elif isinstance(node.right, ast.Call) and isinstance(
+                node.right.func, ast.Attribute
+            ):
+                if (
+                    isinstance(node.right.func.value, ast.Name)
+                    and node.right.func.value.id == "tl"
+                    and node.right.func.attr == "program_id"
+                ):
                     if isinstance(node.left, ast.Name):
                         split_axes_val = node.left.id
                         split_axis_pid_dim = self._get_program_id_dim(node.right)
 
-            if split_axes_val in self.candidates_params and \
-               split_axes_val not in self.split_axes.values():
+            if (
+                split_axes_val in self.candidates_params
+                and split_axes_val not in self.split_axes.values()
+            ):
                 split_axes_key = self.get_axis(split_axes_val)
-                if split_axes_key and not self._is_tiling_only_split(split_axes_key, split_axes_val):
+                if split_axes_key and not self._is_tiling_only_split(
+                    split_axes_key, split_axes_val
+                ):
                     self.split_axes[split_axes_key] = split_axes_val
                     if split_axis_pid_dim is not None:
                         self._record_axis_pid_dim(split_axes_key, split_axis_pid_dim)
@@ -305,8 +329,12 @@ class SplitAxesParser(AxesKeyParser):
 
         iter_fn = node.iter.func
         is_range = isinstance(iter_fn, ast.Name) and iter_fn.id == "range"
-        is_tl_range = (isinstance(iter_fn, ast.Attribute) and isinstance(iter_fn.value, ast.Name)
-                       and iter_fn.value.id == "tl" and iter_fn.attr == "range")
+        is_tl_range = (
+            isinstance(iter_fn, ast.Attribute)
+            and isinstance(iter_fn.value, ast.Name)
+            and iter_fn.value.id == "tl"
+            and iter_fn.attr == "range"
+        )
         if not (is_range or is_tl_range):
             self.generic_visit(node)
             return
@@ -323,27 +351,38 @@ class SplitAxesParser(AxesKeyParser):
             self._record_axis_pid_dim(axis, pid_dim)
             if len(node.iter.args) >= 3:
                 step = node.iter.args[2]
-                loop_tiling_only_param = self._extract_grid_stride_split_param(start, step, pid_dim)
+                loop_tiling_only_param = self._extract_grid_stride_split_param(
+                    start, step, pid_dim
+                )
                 if loop_tiling_only_param is not None:
                     self._mark_tiling_only_param(axis, loop_tiling_only_param)
 
         self.generic_visit(node)
 
     def _get_program_id_dim(self, node):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(
-                node.func.value, ast.Name) and node.func.value.id == "tl" and node.func.attr == "program_id"):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "tl"
+            and node.func.attr == "program_id"
+        ):
             return None
 
         axis_dim = 0
         if len(node.args) > 0:
-            if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, int):
+            if isinstance(node.args[0], ast.Constant) and isinstance(
+                node.args[0].value, int
+            ):
                 axis_dim = node.args[0].value
             else:
                 return None
 
         for kw in node.keywords:
             if kw.arg == "axis":
-                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, int):
+                if isinstance(kw.value, ast.Constant) and isinstance(
+                    kw.value.value, int
+                ):
                     axis_dim = kw.value.value
                 else:
                     return None
@@ -351,20 +390,29 @@ class SplitAxesParser(AxesKeyParser):
         return axis_dim
 
     def _get_num_programs_dim(self, node):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(
-                node.func.value, ast.Name) and node.func.value.id == "tl" and node.func.attr == "num_programs"):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "tl"
+            and node.func.attr == "num_programs"
+        ):
             return None
 
         axis_dim = 0
         if len(node.args) > 0:
-            if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, int):
+            if isinstance(node.args[0], ast.Constant) and isinstance(
+                node.args[0].value, int
+            ):
                 axis_dim = node.args[0].value
             else:
                 return None
 
         for kw in node.keywords:
             if kw.arg == "axis":
-                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, int):
+                if isinstance(kw.value, ast.Constant) and isinstance(
+                    kw.value.value, int
+                ):
                     axis_dim = kw.value.value
                 else:
                     return None
@@ -405,7 +453,11 @@ class SplitAxesParser(AxesKeyParser):
         return False
 
     def _is_candidate_name(self, node, candidate_name):
-        return (isinstance(node, ast.Name) and node.id == candidate_name and candidate_name in self.candidates_params)
+        return (
+            isinstance(node, ast.Name)
+            and node.id == candidate_name
+            and candidate_name in self.candidates_params
+        )
 
     def _extract_pid_multiplied_candidate(self, node, pid_dim):
         if node is None:
@@ -416,17 +468,25 @@ class SplitAxesParser(AxesKeyParser):
                 continue
             left = child.left
             right = child.right
-            if isinstance(left, ast.Name) and left.id in self.candidates_params and \
-               self._contains_pid_dim(right, pid_dim):
+            if (
+                isinstance(left, ast.Name)
+                and left.id in self.candidates_params
+                and self._contains_pid_dim(right, pid_dim)
+            ):
                 candidates.add(left.id)
-            if isinstance(right, ast.Name) and right.id in self.candidates_params and \
-               self._contains_pid_dim(left, pid_dim):
+            if (
+                isinstance(right, ast.Name)
+                and right.id in self.candidates_params
+                and self._contains_pid_dim(left, pid_dim)
+            ):
                 candidates.add(right.id)
         if len(candidates) == 1:
             return next(iter(candidates))
         return None
 
-    def _contains_num_programs_multiplied_candidate(self, node, candidate_name, pid_dim):
+    def _contains_num_programs_multiplied_candidate(
+        self, node, candidate_name, pid_dim
+    ):
         if node is None:
             return False
         for child in ast.walk(node):
@@ -446,7 +506,9 @@ class SplitAxesParser(AxesKeyParser):
         candidate_name = self._extract_pid_multiplied_candidate(start, pid_dim)
         if candidate_name is None:
             return None
-        if self._contains_num_programs_multiplied_candidate(step, candidate_name, pid_dim):
+        if self._contains_num_programs_multiplied_candidate(
+            step, candidate_name, pid_dim
+        ):
             return candidate_name
         return None
 
@@ -492,7 +554,9 @@ class TilingAxesParser(AxesKeyParser):
        only those parameters that can be dynamically adjusted through the autotune process are considered.
     """
 
-    def __init__(self, func_ast: ast.AST, keys: Dict[str, str], candidates_params: List[str]):
+    def __init__(
+        self, func_ast: ast.AST, keys: Dict[str, str], candidates_params: List[str]
+    ):
         """
         :param func_ast: Abstract syntax tree of the triton kernel function
         :type func_ast: ast.AST
@@ -517,24 +581,33 @@ class TilingAxesParser(AxesKeyParser):
         if isinstance(node.iter, ast.Call) and len(node.iter.args) == 3:
             step_expr = node.iter.args[2]
             for_loop_param = self._extract_unique_candidate(step_expr)
-            if (for_loop_param is not None and for_loop_param not in self.candidates_params_for_loop):
+            if (
+                for_loop_param is not None
+                and for_loop_param not in self.candidates_params_for_loop
+            ):
                 self.candidates_params_for_loop.append(for_loop_param)
         self.generic_visit(node)
 
     def visit_Assign(self, node):
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             # handle FloorDiv
-            if isinstance(node.value, ast.BinOp) and isinstance(node.value.op, ast.FloorDiv):
+            if isinstance(node.value, ast.BinOp) and isinstance(
+                node.value.op, ast.FloorDiv
+            ):
                 denominator = node.value.right
                 denominator_param = self._extract_unique_candidate(denominator)
-                if denominator_param is not None and \
-                   denominator_param not in self.candidates_params_for_loop:
+                if (
+                    denominator_param is not None
+                    and denominator_param not in self.candidates_params_for_loop
+                ):
                     self.candidates_params_for_loop.append(denominator_param)
                     self.visit(self.func_ast)
 
             tiling_axes_val = self.get_tiling_axes_val(node.value)
-            if tiling_axes_val is not None and \
-               tiling_axes_val in self.candidates_params_for_loop:
+            if (
+                tiling_axes_val is not None
+                and tiling_axes_val in self.candidates_params_for_loop
+            ):
                 tiling_axes_key = self.get_axis(tiling_axes_val)
                 if tiling_axes_key:
                     self.tiling_axes[tiling_axes_key] = tiling_axes_val
@@ -542,9 +615,11 @@ class TilingAxesParser(AxesKeyParser):
 
     def get_tiling_axes_val(self, node):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr == 'arange' and \
-               isinstance(node.func.value, ast.Name) and \
-               node.func.value.id == 'tl':
+            if (
+                node.func.attr == "arange"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "tl"
+            ):
                 if isinstance(node.args, list) and len(node.args) == 2:
                     for param in self.candidates_params_for_loop:
                         if self.contains_target_var(node.args[1], param):
@@ -569,7 +644,11 @@ class TilingAxesParser(AxesKeyParser):
         """
         if expr is None:
             return None
-        candidates = [param for param in self.candidates_params if self.contains_target_var(expr, param)]
+        candidates = [
+            param
+            for param in self.candidates_params
+            if self.contains_target_var(expr, param)
+        ]
         if len(candidates) == 1:
             return candidates[0]
         return None
@@ -605,7 +684,14 @@ class ReductionAxesParser(AxesKeyParser):
         """
         super().__init__(func_ast, keys)
         self.reduction_axes = list()
-        self.reduction_func = ('sum', 'xor_sum', 'max', 'min', 'argmax', 'argmin')  # tl.xxx
+        self.reduction_func = (
+            "sum",
+            "xor_sum",
+            "max",
+            "min",
+            "argmax",
+            "argmin",
+        )  # tl.xxx
         self.ndim = 1
 
     def parse(self) -> List[str]:
@@ -631,7 +717,9 @@ class ReductionAxesParser(AxesKeyParser):
         if isinstance(slice_node, ast.Tuple):
             # e.g. [:, None] -> Tuple(elts=[Slice(), Constant(None)])
             return len(slice_node.elts)
-        elif isinstance(slice_node, (ast.Slice, ast.Constant, ast.Name, ast.UnaryOp, ast.BinOp)):
+        elif isinstance(
+            slice_node, (ast.Slice, ast.Constant, ast.Name, ast.UnaryOp, ast.BinOp)
+        ):
             # e.g. [0], [:], [i], [-1], [i+1]
             return 1
         else:
@@ -642,7 +730,7 @@ class ReductionAxesParser(AxesKeyParser):
         if not isinstance(node.func, ast.Attribute):
             return
         func = node.func
-        if not isinstance(func.value, ast.Name) or func.value.id != 'tl':
+        if not isinstance(func.value, ast.Name) or func.value.id != "tl":
             self.generic_visit(node)
             return
         if func.attr not in self.reduction_func:
@@ -653,7 +741,7 @@ class ReductionAxesParser(AxesKeyParser):
         if len(args) == 1:
             # Axis passed as keyword argument
             for keyword in node.keywords:
-                if keyword.arg == 'axis':
+                if keyword.arg == "axis":
                     axis_dim = self.get_axis_dim(keyword.value)
                     break
 
@@ -672,8 +760,7 @@ class ReductionAxesParser(AxesKeyParser):
     def get_axis_dim(self, node):
         if isinstance(node, ast.Constant):
             axis_dim = node.value
-        elif isinstance(node, ast.UnaryOp) and \
-            isinstance(node.op, ast.USub):
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
             operand = node.operand
             if isinstance(operand, ast.Constant):
                 axis_dim = self.ndim - operand.value
@@ -681,8 +768,10 @@ class ReductionAxesParser(AxesKeyParser):
             raise ValueError(f"Reduction function axis error, got: {ast.dump(node)}")
 
         if not isinstance(axis_dim, int):
-            raise ValueError("Reduction function axis must be an integer, "
-                             f"got {type(node.value).__name__}: {node.value}")
+            raise ValueError(
+                "Reduction function axis must be an integer, "
+                f"got {type(node.value).__name__}: {node.value}"
+            )
         return axis_dim
 
     def get_axis(self, axis_dim: int):
@@ -723,13 +812,17 @@ class ReductionAxesParser(AxesKeyParser):
         # handel compare left var
         if isinstance(node.value.left, ast.Name):
             if self.check_compare_left(node.value.left.id, axis_dim):
-                reduction_axis = next((k for k, v in self.keys.items() if target_axis_len == v), None)
+                reduction_axis = next(
+                    (k for k, v in self.keys.items() if target_axis_len == v), None
+                )
                 if reduction_axis and reduction_axis not in self.reduction_axes:
                     return reduction_axis
         # handel compare target var
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             if self.check_compare_target(node.targets[0].id, axis_dim):
-                reduction_axis = next((k for k, v in self.keys.items() if target_axis_len == v), None)
+                reduction_axis = next(
+                    (k for k, v in self.keys.items() if target_axis_len == v), None
+                )
                 if reduction_axis and reduction_axis not in self.reduction_axes:
                     return reduction_axis
         return None
@@ -738,9 +831,11 @@ class ReductionAxesParser(AxesKeyParser):
         for node in ast.walk(self.func_ast):
             if not isinstance(node, ast.Assign):
                 continue
-            if len(node.targets) != 1 or \
-               not isinstance(node.targets[0], ast.Name) or \
-               node.targets[0].id != var:
+            if (
+                len(node.targets) != 1
+                or not isinstance(node.targets[0], ast.Name)
+                or node.targets[0].id != var
+            ):
                 continue
             if self.is_current_dim_slice(node.value, axis_dim):
                 return True
@@ -767,7 +862,9 @@ class ReductionAxesParser(AxesKeyParser):
 
     def is_current_dim_slice(self, node, dim):
         for node in ast.walk(node):
-            if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Tuple):
+            if not isinstance(node, ast.Subscript) or not isinstance(
+                node.slice, ast.Tuple
+            ):
                 continue
             elts = node.slice.elts
             if len(elts) != 0 and isinstance(elts[dim], ast.Slice):
@@ -818,8 +915,9 @@ class LowDimsAxesParser(AxesKeyParser):
                     low_dims_axis = self.get_axis(node.targets[0].id)
                 elif not partin_other_slice[0]:
                     low_dims_axis = self.get_axis(node.targets[0].id)
-            elif isinstance(tl_arange_node, ast.Subscript) and \
-                 self.is_low_dim_slice(tl_arange_node, [False]):
+            elif isinstance(tl_arange_node, ast.Subscript) and self.is_low_dim_slice(
+                tl_arange_node, [False]
+            ):
                 low_dims_axis = self.get_axis(node.targets[0].id)
 
             if low_dims_axis and low_dims_axis not in self.low_dims_axis:
@@ -850,16 +948,20 @@ class LowDimsAxesParser(AxesKeyParser):
         `tl.arange()[None, :]`
         """
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr == 'arange' and \
-               isinstance(node.func.value, ast.Name) and \
-               node.func.value.id == 'tl':
+            if (
+                node.func.attr == "arange"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "tl"
+            ):
                 return True
         elif isinstance(node, ast.Subscript):
             return self.is_tl_arange_call(node.value)
         return False
 
     def is_low_dim_slice(self, node: ast.Subscript, partin_other_slice):
-        if not isinstance(node.slice, ast.Tuple) or not isinstance(node.slice.elts, list):
+        if not isinstance(node.slice, ast.Tuple) or not isinstance(
+            node.slice.elts, list
+        ):
             return False
         elts = node.slice.elts
         if len(elts) != 0 and not isinstance(elts[-1], ast.Slice):
@@ -871,20 +973,28 @@ class LowDimsAxesParser(AxesKeyParser):
         if not node:
             node = self.func_ast
         for child_node in ast.walk(node):
-            if isinstance(child_node, ast.Subscript) and isinstance(child_node.value, ast.Name):
-                if var == child_node.value.id and self.is_low_dim_slice(child_node, partin_other_slice):
+            if isinstance(child_node, ast.Subscript) and isinstance(
+                child_node.value, ast.Name
+            ):
+                if var == child_node.value.id and self.is_low_dim_slice(
+                    child_node, partin_other_slice
+                ):
                     return True
             elif isinstance(child_node, ast.Assign):
-                if len(child_node.targets) == 1 and \
-                   isinstance(child_node.targets[0], ast.Name) and \
-                   var != child_node.targets[0].id: # Prevent cyclic assignment.
+                if (
+                    len(child_node.targets) == 1
+                    and isinstance(child_node.targets[0], ast.Name)
+                    and var != child_node.targets[0].id
+                ):  # Prevent cyclic assignment.
                     if not self.contains_target_var(child_node.value, var):
                         continue
                     target_var = child_node.targets[0].id
                     if target_var in self.checked_slice_vars:
                         continue
 
-                    if self.is_partin_low_dim_slice(var, partin_other_slice, child_node.value):
+                    if self.is_partin_low_dim_slice(
+                        var, partin_other_slice, child_node.value
+                    ):
                         return True
                     if self.is_partin_low_dim_slice(target_var, partin_other_slice):
                         return True
@@ -943,9 +1053,11 @@ class PtrNumsParser(AutoParser):
 
                 if isinstance(arg.annotation, ast.Attribute):
                     # var modified by tl.constexpr are not pointer type var, passed
-                    is_tl = isinstance(arg.annotation.value, ast.Name) and \
-                            arg.annotation.value.id == 'tl'
-                    if is_tl and arg.annotation.attr == 'constexpr':
+                    is_tl = (
+                        isinstance(arg.annotation.value, ast.Name)
+                        and arg.annotation.value.id == "tl"
+                    )
+                    if is_tl and arg.annotation.attr == "constexpr":
                         if arg.arg not in self.constexpr_params:
                             self.constexpr_params.append(arg.arg)
                         continue
@@ -956,34 +1068,49 @@ class PtrNumsParser(AutoParser):
 
         for miss_param in self.miss_params:
             if miss_param not in self.constexpr_params:
-                print(f"[WARNING] The parameter '{miss_param}' needs to be declared as tl.constexpr!")
+                print(
+                    f"[WARNING] The parameter '{miss_param}' needs to be declared as tl.constexpr!"
+                )
         self.generic_visit(node)
 
     def is_in_addr_calc(self, var):
         for node in ast.walk(self.func_ast):
             if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Attribute) and \
-                   isinstance(node.func.value, ast.Name):
-                    if node.func.value.id == "tl" and \
-                       (node.func.attr == "load" or node.func.attr == "store"):
-                        if [arg for arg in node.args if self.contains_target_var(arg, var)]:
+                if isinstance(node.func, ast.Attribute) and isinstance(
+                    node.func.value, ast.Name
+                ):
+                    if node.func.value.id == "tl" and (
+                        node.func.attr == "load" or node.func.attr == "store"
+                    ):
+                        if [
+                            arg
+                            for arg in node.args
+                            if self.contains_target_var(arg, var)
+                        ]:
                             return True
 
             elif isinstance(node, ast.Assign):
-                if len(node.targets) == 1 and \
-                   isinstance(node.targets[0], ast.Name) and \
-                   var != node.targets[0].id: # Prevent cyclic assignment.
+                if (
+                    len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and var != node.targets[0].id
+                ):  # Prevent cyclic assignment.
                     target_var = node.targets[0].id
                     if target_var in self.checked_vars:
                         continue
-                    if isinstance(node.value, ast.BinOp) and \
-                       isinstance(node.value.op, ast.Add):
-                        if isinstance(node.value.left, ast.Name) and \
-                           node.value.left.id == var:
+                    if isinstance(node.value, ast.BinOp) and isinstance(
+                        node.value.op, ast.Add
+                    ):
+                        if (
+                            isinstance(node.value.left, ast.Name)
+                            and node.value.left.id == var
+                        ):
                             if self.is_in_addr_calc(node.targets[0].id):
                                 return True
-                        elif isinstance(node.value.right, ast.Name) and \
-                             node.value.right.id == var:
+                        elif (
+                            isinstance(node.value.right, ast.Name)
+                            and node.value.right.id == var
+                        ):
                             if self.is_in_addr_calc(node.targets[0].id):
                                 return True
         self.checked_vars.append(var)

@@ -7,17 +7,21 @@ import triton.language as tl
 
 import test_common
 
-os.environ['TRITON_ALWAYS_COMPILE'] = '1'
-os.environ['TRITON_AUTOTUNE_PARALLEL_COMPILE'] = '0'
+os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+os.environ["TRITON_AUTOTUNE_PARALLEL_COMPILE"] = "0"
 
 
 def case_torch(x):
     return torch.permute(x, (1, 0))
 
 
-@triton.autotune(configs=[], key=['xnumel', 'ynumel'], hints={
-    "auto_gen_config": True,
-})
+@triton.autotune(
+    configs=[],
+    key=["xnumel", "ynumel"],
+    hints={
+        "auto_gen_config": True,
+    },
+)
 @triton.jit
 def triton_permute_2d(
     output_ptr,
@@ -47,15 +51,22 @@ def case_triton(x_cal):
     xnumel = x_cal.shape[0]
     ynumel = x_cal.shape[1]
     output = torch.randint(1, (ynumel, xnumel), dtype=x_cal.dtype, device=x_cal.device)
-    triton_permute_2d[lambda meta: (triton.cdiv(xnumel, meta['XBLOCK']), triton.cdiv(ynumel, meta['YBLOCK']), 1)](
-        output, x_cal, xnumel, ynumel)
+    triton_permute_2d[
+        lambda meta: (
+            triton.cdiv(xnumel, meta["XBLOCK"]),
+            triton.cdiv(ynumel, meta["YBLOCK"]),
+            1,
+        )
+    ](output, x_cal, xnumel, ynumel)
     return output
 
 
-@pytest.mark.parametrize('shape', [(1024, 32), (32, 8)])
-@pytest.mark.parametrize('dtype', ['bfloat16'])
+@pytest.mark.parametrize("shape", [(1024, 32), (32, 8)])
+@pytest.mark.parametrize("dtype", ["bfloat16"])
 def test_permute(shape, dtype):
     x_cal = test_common.generate_tensor(shape, dtype).npu()
     torch_output = case_torch(x_cal)
     triton_output = case_triton(x_cal)
-    torch.testing.assert_close(torch_output, triton_output, rtol=1e-03, atol=1e-03, equal_nan=True)
+    torch.testing.assert_close(
+        torch_output, triton_output, rtol=1e-03, atol=1e-03, equal_nan=True
+    )

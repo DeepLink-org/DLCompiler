@@ -1314,7 +1314,8 @@ void addMemEffectsSync(triton::FuncOp funcOp, Graph *graph, OpBuilder &builder,
                             << *cand.setAfter << "\n"
                             << "Cause: " << *cand.setCause << "\n");
 
-    LLVM_DEBUG(llvm::dbgs() << "----------" << "\n"
+    LLVM_DEBUG(llvm::dbgs() << "----------"
+                            << "\n"
                             << *cand.waitBefore << "\n"
                             << "Cause: " << *cand.waitCause << "\n");
 

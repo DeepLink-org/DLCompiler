@@ -28,7 +28,9 @@ def add_torch(x, y):
 def add_autotune(x, y):
     output = torch.empty_like(x)
     n_elements = output.numel()
-    add_kernel[lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]), )](x, y, output, n_elements)
+    add_kernel[lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)](
+        x, y, output, n_elements
+    )
     return output
 
 

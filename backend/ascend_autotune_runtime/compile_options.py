@@ -125,7 +125,9 @@ def _is_mixcv_workspace_multibuffer_active(
     config: Config,
     fixed_options: Dict[str, Any],
 ) -> bool:
-    if not _is_mixcv_multi_buffer_auto_enabled(num_stages, combo, config, fixed_options):
+    if not _is_mixcv_multi_buffer_auto_enabled(
+        num_stages, combo, config, fixed_options
+    ):
         return False
     limit_to_local_only = _resolve_compile_option(
         "limit_auto_multi_buffer_only_for_local_buffer",
@@ -198,10 +200,16 @@ def parse_compile_options_hint(hint: Any) -> CompileOptionsSpec:
         raise TypeError("hints['compile_options'] must be bool, str, or dict")
 
     raw = dict(hint)
-    kernel_type = _normalize_kernel_type(raw.pop("kernel_type", raw.pop("type", "mixcv")))
+    kernel_type = _normalize_kernel_type(
+        raw.pop("kernel_type", raw.pop("type", "mixcv"))
+    )
     max_configs = raw.pop("max_configs", DEFAULT_MAX_CONFIGS)
-    if max_configs is not None and (not isinstance(max_configs, int) or max_configs <= 0):
-        raise ValueError("compile_options max_configs must be a positive integer or None")
+    if max_configs is not None and (
+        not isinstance(max_configs, int) or max_configs <= 0
+    ):
+        raise ValueError(
+            "compile_options max_configs must be a positive integer or None"
+        )
 
     nested_options = raw.pop("options", {})
     if nested_options:
@@ -234,14 +242,14 @@ def parse_compile_options_hint(hint: Any) -> CompileOptionsSpec:
 
 def _make_config_compat(**kwargs):
     supported_config_args = inspect.signature(Config).parameters
-    return Config(**{
-        key: value
-        for key, value in kwargs.items()
-        if key in supported_config_args
-    })
+    return Config(
+        **{key: value for key, value in kwargs.items() if key in supported_config_args}
+    )
 
 
-def _value_space_for_config(config: Config, spec: CompileOptionsSpec, *, generated_tiling: bool) -> Dict[str, List[Any]]:
+def _value_space_for_config(
+    config: Config, spec: CompileOptionsSpec, *, generated_tiling: bool
+) -> Dict[str, List[Any]]:
     supported = _SUPPORTED_PARAMS[spec.kernel_type]
     preset = _AUTO_SEARCH_PRESETS[spec.kernel_type]
 
@@ -261,7 +269,13 @@ def _value_space_for_config(config: Config, spec: CompileOptionsSpec, *, generat
     return value_space
 
 
-def _is_inactive_reason(name: str, num_stages: int, combo: Dict[str, Any], config: Config, fixed_options: Dict[str, Any]) -> Optional[str]:
+def _is_inactive_reason(
+    name: str,
+    num_stages: int,
+    combo: Dict[str, Any],
+    config: Config,
+    fixed_options: Dict[str, Any],
+) -> Optional[str]:
     if not _is_param_effective(name, num_stages, combo, config, fixed_options):
         if name in {
             "limit_auto_multi_buffer_only_for_local_buffer",
@@ -350,7 +364,9 @@ def _mixcv_branch_items(
     ]
     independent_items = _emit_values(independent_names, value_space, fixed_options)
 
-    multibuffer_values = _effective_values("multibuffer", value_space, fixed_options, None)
+    multibuffer_values = _effective_values(
+        "multibuffer", value_space, fixed_options, None
+    )
     branches = []
     for multibuffer in multibuffer_values:
         multibuffer_items = []
@@ -395,7 +411,12 @@ def _mixcv_branch_items(
     return branches
 
 
-def _make_expanded_config(config: Config, spec: CompileOptionsSpec, combo_value: Dict[str, Any], num_stages: int) -> Config:
+def _make_expanded_config(
+    config: Config,
+    spec: CompileOptionsSpec,
+    combo_value: Dict[str, Any],
+    num_stages: int,
+) -> Config:
     new_kwargs = dict(config.kwargs)
     for name in _SUPPORTED_PARAMS[spec.kernel_type]:
         new_kwargs.pop(name, None)
@@ -433,7 +454,11 @@ def _hashable_value(value: Any):
 
 def _config_key(config: Config) -> tuple:
     return (
-        tuple(sorted((key, _hashable_value(value)) for key, value in config.kwargs.items())),
+        tuple(
+            sorted(
+                (key, _hashable_value(value)) for key, value in config.kwargs.items()
+            )
+        ),
         getattr(config, "num_warps", 4),
         getattr(config, "num_stages", None),
         getattr(config, "num_ctas", 1),
@@ -461,7 +486,9 @@ def expand_compile_option_configs(
     expanded_configs = []
     emitted_config_keys = set()
     for config in configs:
-        value_space = _value_space_for_config(config, spec, generated_tiling=generated_tiling)
+        value_space = _value_space_for_config(
+            config, spec, generated_tiling=generated_tiling
+        )
         if "num_stages" in fixed_options:
             num_stage_values = [fixed_options["num_stages"]]
             value_space.pop("num_stages", None)
@@ -486,13 +513,18 @@ def expand_compile_option_configs(
                 combo_iter = _product_dict(list(value_space.items()))
 
             for combo_value in combo_iter:
-                new_config = _make_expanded_config(config, spec, combo_value, num_stages)
+                new_config = _make_expanded_config(
+                    config, spec, combo_value, num_stages
+                )
                 config_key = _config_key(new_config)
                 if config_key in emitted_config_keys:
                     continue
                 emitted_config_keys.add(config_key)
 
-                if spec.max_configs is not None and len(expanded_configs) >= spec.max_configs:
+                if (
+                    spec.max_configs is not None
+                    and len(expanded_configs) >= spec.max_configs
+                ):
                     raise ValueError(
                         "compile_options generated more than "
                         f"{spec.max_configs} configs. Narrow the search space or raise max_configs."
@@ -530,11 +562,13 @@ def format_compile_option_result(
         for key, value in sorted(config.kwargs.items())
         if key in compile_param_names
     }
-    effective.update({
-        key: value
-        for key, value in sorted(fixed_options.items())
-        if key in compile_param_names
-    })
+    effective.update(
+        {
+            key: value
+            for key, value in sorted(fixed_options.items())
+            if key in compile_param_names
+        }
+    )
 
     if spec.kernel_type == "mixcv":
         num_stages = selected_meta["num_stages"]
@@ -545,7 +579,9 @@ def format_compile_option_result(
         for name in _SUPPORTED_PARAMS[spec.kernel_type]:
             if name == "num_stages":
                 continue
-            reason = _is_inactive_reason(name, num_stages, config.kwargs, config, fixed_options)
+            reason = _is_inactive_reason(
+                name, num_stages, config.kwargs, config, fixed_options
+            )
             if reason is not None and name not in effective:
                 effective[name] = f"<inactive: {reason}>"
             if reason is not None and name in effective:
@@ -557,12 +593,16 @@ def format_compile_option_result(
     selected_items = [f"{key}={value}" for key, value in selected_meta.items()]
     effective_items = [f"{key}={value}" for key, value in sorted(effective.items())]
     return (
-        "selected_meta: " + ", ".join(selected_items) +
-        "; effective_compile_options: " + ", ".join(effective_items)
+        "selected_meta: "
+        + ", ".join(selected_items)
+        + "; effective_compile_options: "
+        + ", ".join(effective_items)
     )
 
 
-def summarize_compile_option_configs(configs: List[Config], limit: Optional[int] = None) -> List[str]:
+def summarize_compile_option_configs(
+    configs: List[Config], limit: Optional[int] = None
+) -> List[str]:
     summary = []
     selected_configs = configs if limit is None else configs[:limit]
     for config in selected_configs:

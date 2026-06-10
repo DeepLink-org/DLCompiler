@@ -197,6 +197,7 @@ def sub_vec_id(_semantic=None) -> tl.tensor:
 @builtin
 def copy_from_ub_to_l1(src, dst, _semantic=None):
     from warnings import warn
+
     warn("copy_from_ub_to_l1 is deprecated, please use copy instead.")
     return semantic.copy_from_ub_to_l1(src, dst, _semantic)
 
@@ -206,13 +207,25 @@ def copy(src, dst, _semantic=None):
     return semantic.copy(src, dst, _semantic)
 
 
-def create_sync_block(sender, receiver, event_id, is_set: bool,
-                      sender_pipe=None, receiver_pipe=None,
-                      _semantic=None):
+def create_sync_block(
+    sender,
+    receiver,
+    event_id,
+    is_set: bool,
+    sender_pipe=None,
+    receiver_pipe=None,
+    _semantic=None,
+):
     sender = _unwrap_if_constexpr(sender)
     receiver = _unwrap_if_constexpr(receiver)
-    assert isinstance(sender, str) and sender in ("cube", "vector"), f"ERROR: sender = {sender}"
-    assert isinstance(receiver, str) and receiver in ("cube", "vector"), f"ERROR: receiver = {receiver}"
+    assert isinstance(sender, str) and sender in (
+        "cube",
+        "vector",
+    ), f"ERROR: sender = {sender}"
+    assert isinstance(receiver, str) and receiver in (
+        "cube",
+        "vector",
+    ), f"ERROR: receiver = {receiver}"
     if isinstance(event_id, int):
         assert 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
     if sender == receiver:
@@ -227,18 +240,30 @@ def create_sync_block(sender, receiver, event_id, is_set: bool,
     if not isinstance(sender_pipe, PIPE) or not isinstance(receiver_pipe, PIPE):
         raise TypeError("sender_pipe and receiver_pipe must be instances of PIPE enum")
     if is_set:
-        return semantic.create_sync_block_set(sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic)
-    return semantic.create_sync_block_wait(sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic)
+        return semantic.create_sync_block_set(
+            sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic
+        )
+    return semantic.create_sync_block_wait(
+        sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic
+    )
 
 
 @builtin
-def sync_block_set(sender, receiver, event_id, sender_pipe=None, receiver_pipe=None, _semantic=None):
-    return create_sync_block(sender, receiver, event_id, True, sender_pipe, receiver_pipe, _semantic)
+def sync_block_set(
+    sender, receiver, event_id, sender_pipe=None, receiver_pipe=None, _semantic=None
+):
+    return create_sync_block(
+        sender, receiver, event_id, True, sender_pipe, receiver_pipe, _semantic
+    )
 
 
 @builtin
-def sync_block_wait(sender, receiver, event_id, sender_pipe=None, receiver_pipe=None, _semantic=None):
-    return create_sync_block(sender, receiver, event_id, False, sender_pipe, receiver_pipe, _semantic)
+def sync_block_wait(
+    sender, receiver, event_id, sender_pipe=None, receiver_pipe=None, _semantic=None
+):
+    return create_sync_block(
+        sender, receiver, event_id, False, sender_pipe, receiver_pipe, _semantic
+    )
 
 
 @builtin
@@ -246,9 +271,13 @@ def sync_block_all(mode, event_id, _semantic=None):
     mode = _unwrap_if_constexpr(mode)
     event_id = _unwrap_if_constexpr(event_id)
     assert isinstance(mode, str), f"mode: {mode} is not string"
-    assert isinstance(event_id, int) and 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
+    assert (
+        isinstance(event_id, int) and 0 <= event_id < 16
+    ), f"event_id: {event_id} should be 0 ~ 15"
     assert mode in ("all_cube", "all_vector", "all"), f"ERROR: mode = {mode}"
-    semantic.custom_sync_op(_semantic.builder, "sync_block_all", mode=mode, event_id=event_id)
+    semantic.custom_sync_op(
+        _semantic.builder, "sync_block_all", mode=mode, event_id=event_id
+    )
 
 
 @builtin
@@ -310,7 +339,9 @@ def _get_cross_flag_pipes(sender):
 def set_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     sender = _unwrap_if_constexpr(sync_flag_type.sender())
     event_id = _unwrap_if_constexpr(event_id)
-    assert isinstance(event_id, int) and 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
+    assert (
+        isinstance(event_id, int) and 0 <= event_id < 16
+    ), f"event_id: {event_id} should be 0 ~ 15"
     receiver, sender_pipe, receiver_pipe = _get_cross_flag_pipes(sender)
     return sync_block_set(
         sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=_semantic
@@ -321,7 +352,9 @@ def set_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
 def wait_cross_flag(sync_flag_type: SyncFlagType, event_id: int, _semantic=None):
     sender = _unwrap_if_constexpr(sync_flag_type.sender())
     event_id = _unwrap_if_constexpr(event_id)
-    assert isinstance(event_id, int) and 0 <= event_id < 16, f"event_id: {event_id} should be 0 ~ 15"
+    assert (
+        isinstance(event_id, int) and 0 <= event_id < 16
+    ), f"event_id: {event_id} should be 0 ~ 15"
     receiver, sender_pipe, receiver_pipe = _get_cross_flag_pipes(sender)
     return sync_block_wait(
         sender, receiver, event_id, sender_pipe, receiver_pipe, _semantic=_semantic

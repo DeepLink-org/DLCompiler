@@ -41,7 +41,6 @@ shapes = [
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_pow_vv(sigtype, N):
-
     def torch_func(x0, x1):
         res = torch.pow(x0, x1)
         return res
@@ -66,11 +65,11 @@ def test_pow_vv(sigtype, N):
     torch_ref = torch_func(x0, x1)
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
+
 @pytest.mark.skip(reason="waiting for bishengir-compile to support")
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_pow_vs_dynamic(sigtype, N):
-
     def torch_func(x0, x1):
         res = torch.pow(x0, x1)
         return res
@@ -95,11 +94,11 @@ def test_pow_vs_dynamic(sigtype, N):
     torch_ref = torch_func(x0, x1)
     test_common.validate_cmp(sigtype, triton_cal, torch_ref)
 
+
 # @pytest.mark.skip(reason="waiting for bishengir-compile to support")
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)
 def test_pow_vs_const(sigtype, N):
-
     def torch_func(x0, x1):
         res = torch.pow(x0, x1)
         return res

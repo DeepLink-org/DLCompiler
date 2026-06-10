@@ -42,23 +42,50 @@ def test_compile_options_string_hint_expands_mixcv_auto_search_space_without_lim
     stage1_configs = [cfg for cfg in configs if cfg.num_stages == 1]
     assert len(stage1_configs) == 4
     assert all("multibuffer" not in cfg.kwargs for cfg in stage1_configs)
-    assert all("limit_auto_multi_buffer_only_for_local_buffer" not in cfg.kwargs for cfg in stage1_configs)
-    assert all("limit_auto_multi_buffer_of_local_buffer" not in cfg.kwargs for cfg in stage1_configs)
+    assert all(
+        "limit_auto_multi_buffer_only_for_local_buffer" not in cfg.kwargs
+        for cfg in stage1_configs
+    )
+    assert all(
+        "limit_auto_multi_buffer_of_local_buffer" not in cfg.kwargs
+        for cfg in stage1_configs
+    )
     assert all("set_workspace_multibuffer" not in cfg.kwargs for cfg in stage1_configs)
     assert all("tile_mix_vector_loop" not in cfg.kwargs for cfg in stage1_configs)
     assert all("tile_mix_cube_loop" not in cfg.kwargs for cfg in stage1_configs)
     assert all("enable_preload" not in cfg.kwargs for cfg in stage1_configs)
-    assert {cfg.kwargs["enable_auto_bind_sub_block"] for cfg in stage1_configs} == {True}
+    assert {cfg.kwargs["enable_auto_bind_sub_block"] for cfg in stage1_configs} == {
+        True
+    }
 
     stage2_configs = [cfg for cfg in configs if cfg.num_stages == 2]
     assert len(stage2_configs) == 152
     assert all("multibuffer" not in cfg.kwargs for cfg in stage2_configs)
-    assert {cfg.kwargs["limit_auto_multi_buffer_only_for_local_buffer"] for cfg in stage2_configs} == {False, True}
-    assert {cfg.kwargs["limit_auto_multi_buffer_of_local_buffer"] for cfg in stage2_configs} == {"no-limit", "no-l0c"}
-    assert {cfg.kwargs["set_workspace_multibuffer"] for cfg in stage2_configs if "set_workspace_multibuffer" in cfg.kwargs} == {2, 4}
-    assert {cfg.kwargs["tile_mix_vector_loop"] for cfg in stage2_configs if "tile_mix_vector_loop" in cfg.kwargs} == {1, 2, 4}
-    assert {cfg.kwargs["tile_mix_cube_loop"] for cfg in stage2_configs if "tile_mix_cube_loop" in cfg.kwargs} == {1, 2, 4}
-    assert {cfg.kwargs["enable_auto_bind_sub_block"] for cfg in stage2_configs} == {True}
+    assert {
+        cfg.kwargs["limit_auto_multi_buffer_only_for_local_buffer"]
+        for cfg in stage2_configs
+    } == {False, True}
+    assert {
+        cfg.kwargs["limit_auto_multi_buffer_of_local_buffer"] for cfg in stage2_configs
+    } == {"no-limit", "no-l0c"}
+    assert {
+        cfg.kwargs["set_workspace_multibuffer"]
+        for cfg in stage2_configs
+        if "set_workspace_multibuffer" in cfg.kwargs
+    } == {2, 4}
+    assert {
+        cfg.kwargs["tile_mix_vector_loop"]
+        for cfg in stage2_configs
+        if "tile_mix_vector_loop" in cfg.kwargs
+    } == {1, 2, 4}
+    assert {
+        cfg.kwargs["tile_mix_cube_loop"]
+        for cfg in stage2_configs
+        if "tile_mix_cube_loop" in cfg.kwargs
+    } == {1, 2, 4}
+    assert {cfg.kwargs["enable_auto_bind_sub_block"] for cfg in stage2_configs} == {
+        True
+    }
     assert any(
         "set_workspace_multibuffer" in cfg.kwargs
         and "tile_mix_vector_loop" in cfg.kwargs
@@ -71,10 +98,15 @@ def test_compile_options_string_hint_expands_mixcv_auto_search_space_without_lim
         and "tile_mix_cube_loop" not in cfg.kwargs
         for cfg in stage2_configs
     )
-    workspace_configs = [cfg for cfg in stage2_configs if "set_workspace_multibuffer" in cfg.kwargs]
+    workspace_configs = [
+        cfg for cfg in stage2_configs if "set_workspace_multibuffer" in cfg.kwargs
+    ]
     assert len(workspace_configs) == 144
     assert {cfg.num_stages for cfg in workspace_configs} == {2}
-    assert {cfg.kwargs["limit_auto_multi_buffer_only_for_local_buffer"] for cfg in workspace_configs} == {False}
+    assert {
+        cfg.kwargs["limit_auto_multi_buffer_only_for_local_buffer"]
+        for cfg in workspace_configs
+    } == {False}
 
 
 def test_compile_options_workspace_pruned_when_auto_multibuffer_disabled():
@@ -96,7 +128,10 @@ def test_compile_options_workspace_pruned_when_workspace_limit_enabled():
         [triton.Config({"BLOCK_SIZE": 1024})],
         spec,
         generated_tiling=True,
-        fixed_options={"limit_auto_multi_buffer_only_for_local_buffer": True, "num_stages": 2},
+        fixed_options={
+            "limit_auto_multi_buffer_only_for_local_buffer": True,
+            "num_stages": 2,
+        },
     )
 
     assert configs
@@ -104,20 +139,22 @@ def test_compile_options_workspace_pruned_when_workspace_limit_enabled():
 
 
 def test_compile_options_explicit_mixcv_values_are_not_restricted_by_auto_search_space():
-    spec = parse_compile_options_hint({
-        "kernel_type": "mixcv",
-        "num_stages": [2],
-        "multibuffer": [False],
-        "unit_flag": [True],
-        "limit_auto_multi_buffer_only_for_local_buffer": [True],
-        "limit_auto_multi_buffer_of_local_buffer": ["no-limit"],
-        "set_workspace_multibuffer": [4],
-        "enable_hivm_auto_cv_balance": [False],
-        "tile_mix_vector_loop": [8],
-        "tile_mix_cube_loop": [8],
-        "enable_ubuf_saving": [False],
-        "enable_auto_bind_sub_block": [False],
-    })
+    spec = parse_compile_options_hint(
+        {
+            "kernel_type": "mixcv",
+            "num_stages": [2],
+            "multibuffer": [False],
+            "unit_flag": [True],
+            "limit_auto_multi_buffer_only_for_local_buffer": [True],
+            "limit_auto_multi_buffer_of_local_buffer": ["no-limit"],
+            "set_workspace_multibuffer": [4],
+            "enable_hivm_auto_cv_balance": [False],
+            "tile_mix_vector_loop": [8],
+            "tile_mix_cube_loop": [8],
+            "enable_ubuf_saving": [False],
+            "enable_auto_bind_sub_block": [False],
+        }
+    )
     configs = expand_compile_option_configs(
         [triton.Config({"BLOCK_SIZE": 1024})],
         spec,
@@ -139,17 +176,19 @@ def test_compile_options_explicit_mixcv_values_are_not_restricted_by_auto_search
 
 
 def test_compile_options_explicit_mixcv_stage1_values_are_preserved():
-    spec = parse_compile_options_hint({
-        "kernel_type": "mixcv",
-        "num_stages": [1],
-        "multibuffer": [True],
-        "limit_auto_multi_buffer_only_for_local_buffer": [False],
-        "limit_auto_multi_buffer_of_local_buffer": ["no-l0c"],
-        "set_workspace_multibuffer": [2],
-        "tile_mix_vector_loop": [4],
-        "tile_mix_cube_loop": [4],
-        "enable_auto_bind_sub_block": [True],
-    })
+    spec = parse_compile_options_hint(
+        {
+            "kernel_type": "mixcv",
+            "num_stages": [1],
+            "multibuffer": [True],
+            "limit_auto_multi_buffer_only_for_local_buffer": [False],
+            "limit_auto_multi_buffer_of_local_buffer": ["no-l0c"],
+            "set_workspace_multibuffer": [2],
+            "tile_mix_vector_loop": [4],
+            "tile_mix_cube_loop": [4],
+            "enable_auto_bind_sub_block": [True],
+        }
+    )
     configs = expand_compile_option_configs(
         [triton.Config({"BLOCK_SIZE": 1024})],
         spec,
@@ -192,14 +231,40 @@ def test_compile_options_auto_search_overrides_base_compile_options():
     assert {cfg.kwargs["enable_tuning_mode"] for cfg in configs} == {True}
     assert {cfg.kwargs["unit_flag"] for cfg in configs} == {False, True}
     assert {cfg.kwargs["enable_ubuf_saving"] for cfg in configs} == {False, True}
-    assert all("multibuffer" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert all("limit_auto_multi_buffer_only_for_local_buffer" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert all("limit_auto_multi_buffer_of_local_buffer" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert all("set_workspace_multibuffer" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert all("tile_mix_vector_loop" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert all("tile_mix_cube_loop" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert all("enable_preload" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1)
-    assert {cfg.kwargs["enable_auto_bind_sub_block"] for cfg in configs if cfg.num_stages == 1} == {True}
+    assert all(
+        "multibuffer" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1
+    )
+    assert all(
+        "limit_auto_multi_buffer_only_for_local_buffer" not in cfg.kwargs
+        for cfg in configs
+        if cfg.num_stages == 1
+    )
+    assert all(
+        "limit_auto_multi_buffer_of_local_buffer" not in cfg.kwargs
+        for cfg in configs
+        if cfg.num_stages == 1
+    )
+    assert all(
+        "set_workspace_multibuffer" not in cfg.kwargs
+        for cfg in configs
+        if cfg.num_stages == 1
+    )
+    assert all(
+        "tile_mix_vector_loop" not in cfg.kwargs
+        for cfg in configs
+        if cfg.num_stages == 1
+    )
+    assert all(
+        "tile_mix_cube_loop" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1
+    )
+    assert all(
+        "enable_preload" not in cfg.kwargs for cfg in configs if cfg.num_stages == 1
+    )
+    assert {
+        cfg.kwargs["enable_auto_bind_sub_block"]
+        for cfg in configs
+        if cfg.num_stages == 1
+    } == {True}
 
 
 def test_compile_options_runtime_fixed_options_are_not_redefined():
@@ -293,11 +358,13 @@ def test_compile_options_format_stage2_effective_options():
 
 
 def test_compile_options_dict_hint_limits_search_space():
-    spec = parse_compile_options_hint({
-        "kernel_type": "vector",
-        "num_stages": [2],
-        "enable_ubuf_saving": [True],
-    })
+    spec = parse_compile_options_hint(
+        {
+            "kernel_type": "vector",
+            "num_stages": [2],
+            "enable_ubuf_saving": [True],
+        }
+    )
     configs = expand_compile_option_configs(
         [triton.Config({"BLOCK_SIZE": 1024})],
         spec,
@@ -311,10 +378,12 @@ def test_compile_options_dict_hint_limits_search_space():
 
 
 def test_compile_options_respects_max_configs():
-    spec = parse_compile_options_hint({
-        "kernel_type": "vector",
-        "max_configs": 2,
-    })
+    spec = parse_compile_options_hint(
+        {
+            "kernel_type": "vector",
+            "max_configs": 2,
+        }
+    )
 
     with pytest.raises(ValueError, match="generated more than 2 configs"):
         expand_compile_option_configs(

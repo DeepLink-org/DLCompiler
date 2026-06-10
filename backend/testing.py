@@ -31,7 +31,9 @@ def get_home_dir():
     return os.getenv("TRITON_HOME", Path.home())
 
 
-def do_bench_npu(funcs, warmup=5, active=30, clear_l2_cache=False, prof_dir=None, keep_res=False):
+def do_bench_npu(
+    funcs, warmup=5, active=30, clear_l2_cache=False, prof_dir=None, keep_res=False
+):
     import torch
     import torch_npu
 
@@ -57,9 +59,7 @@ def do_bench_npu(funcs, warmup=5, active=30, clear_l2_cache=False, prof_dir=None
         pid = process.pid
         process_name = process.name
         timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
-        base_path = os.path.join(
-            get_home_dir(), ".triton", "profile_results"
-        )
+        base_path = os.path.join(get_home_dir(), ".triton", "profile_results")
         torch_path = os.path.join(base_path, f"prof_{timestamp}_{process_name}-{pid}")
 
     if clear_l2_cache:
@@ -103,7 +103,9 @@ def _rm_dic(keep_res, torch_path):
         shutil.rmtree(torch_path)
 
 
-def _collect_prof_result(base_dir: str, funcs, num_warmup: int, num_active: int, key: str = None):
+def _collect_prof_result(
+    base_dir: str, funcs, num_warmup: int, num_active: int, key: str = None
+):
     """
     Collect kernel performance from kernel_details.csv, returned in millisecond.
     The first `num_warmup` rows of each function are warmup data and will be ignored, the next `num_active` rows will be averaged.

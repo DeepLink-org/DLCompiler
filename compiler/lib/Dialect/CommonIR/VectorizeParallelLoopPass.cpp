@@ -21,7 +21,7 @@ using namespace mlir;
 namespace mlir::dicp::CommonIR {
 #define GEN_PASS_DEF_VECTORIZEPARALLELLOOPPASS
 #include "dicp/Dialect/CommonIR/Passes.h.inc"
-}
+} // namespace mlir::dicp::CommonIR
 
 #define DEBUG_TYPE "vectorize-parallel-loop-pass"
 
@@ -574,8 +574,9 @@ public:
                 op.getLoc(), destMemref.getType(), vectorResult, nullptr);
             rewriter.create<memref::CopyOp>(op.getLoc(), toBufferOp.getResult(),
                                             destMemref);
-            LLVM_DEBUG(llvm::dbgs() << "     Created ToBuffer + Copy for "
-                                       "explicit tensor->memref data movement.\n");
+            LLVM_DEBUG(llvm::dbgs()
+                       << "     Created ToBuffer + Copy for "
+                          "explicit tensor->memref data movement.\n");
 
             // 记录 store 目标 memref → tensor，后续替换 post-loop memref.copy
             storeTargetToTensor[destMemref] = vectorResult;
@@ -669,9 +670,8 @@ public:
           continue;
         // 替换 post-loop memref.copy 为 materialize_in_destination
         rewriter.setInsertionPoint(copyOp);
-        auto matOp =
-            rewriter.create<bufferization::MaterializeInDestinationOp>(
-                op.getLoc(), tensorIt->second, copyOp.getTarget());
+        auto matOp = rewriter.create<bufferization::MaterializeInDestinationOp>(
+            op.getLoc(), tensorIt->second, copyOp.getTarget());
         matOp.setWritable(true);
         LLVM_DEBUG(llvm::dbgs()
                    << "[VectorizeParallelLoop] Replaced post-loop memref.copy "

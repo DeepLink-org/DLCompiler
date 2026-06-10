@@ -63,7 +63,8 @@ LogicalResult LoadConverter::matchAndRewrite(triton::LoadOp op,
       llvm::dbgs() << "----------------------------------------------\n";
       llvm::dbgs() << "compileOn91095Flag :" << compileOn91095Flag << "\n";
       llvm::dbgs() << "!existDotFlag :" << !existDotFlag << "\n";
-      llvm::dbgs() << "no need to analyze and rewrite Load" << "\n";
+      llvm::dbgs() << "no need to analyze and rewrite Load"
+                   << "\n";
       llvm::dbgs() << "----------------------------------------------\n";
     });
     return success();

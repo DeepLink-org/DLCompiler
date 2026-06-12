@@ -22,7 +22,7 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink.libdevice as libdevice
+import triton.language.extra.deeplink.cann.libdevice as libdevice
 import numpy as np
 import test_common
 import pytest
@@ -38,7 +38,6 @@ import pytest
     ],
 )
 def test_gather(src_shape, indices_shape, axis):
-
     @triton.jit
     def gather_kernel(
         src_ptr,
@@ -115,7 +114,6 @@ def test_gather(src_shape, indices_shape, axis):
     ],
 )
 def test_gather_flip(param_list):
-
     def torch_func(inp, idx):
         return torch.gather(input=inp, dim=-1, index=idx)
 

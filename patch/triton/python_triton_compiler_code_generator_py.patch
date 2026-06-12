@@ -1,8 +1,17 @@
 diff --git a/python/triton/compiler/code_generator.py b/python/triton/compiler/code_generator.py
-index df09b3198..3dac7c740 100644
+index 176b6b515..be2b5aff3 100644
 --- a/python/triton/compiler/code_generator.py
 +++ b/python/triton/compiler/code_generator.py
-@@ -20,7 +20,6 @@ from .._utils import find_paths_if, get_iterable_path, set_iterable_path
+@@ -12,7 +12,7 @@ from types import ModuleType
+ from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, Iterable, List
+ 
+ from .. import knobs, language
+-from .._C.libtriton import ir, gluon_ir
++from .._C.libtriton import ir, gluon_ir, dicp_triton
+ from ..language import constexpr, str_to_ty, tensor, tuple as tl_tuple
+ from ..language.core import _unwrap_if_constexpr, base_value, base_type
+ # ideally we wouldn't need any runtime component
+@@ -21,7 +21,6 @@ from .._utils import find_paths_if, get_iterable_path, set_iterable_path
  
  from .errors import (CompilationError, CompileTimeAssertionFailure, UnsupportedLanguageConstruct)
  
@@ -10,7 +19,76 @@ index df09b3198..3dac7c740 100644
  def check_identifier_legality(name, type):
      pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
      if not re.match(pattern, name):
-@@ -578,6 +577,39 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -29,6 +28,17 @@ def check_identifier_legality(name, type):
+     return name
+ 
+ 
++# Central registry for 'with' statement handlers
++WITH_DISPATCH = {}
++
++# Import and register deeplink extension dispatch handlers
++from triton.language.extra.deeplink.cann.extension.dispatch import ASCEND_WITH_DISPATCH as DEEPLINK_WITH_DISPATCH
++from triton.language.extra.deeplink.cann.extension.builder import setup_unified_builder
++from triton.language.extra.deeplink.cann.buffer.builder import setup_unified_builder_with_buffer_builder
++from triton.language.extra.deeplink.cann.buffer.core import is_builtin as is_dicp_builtin
++WITH_DISPATCH.update(DEEPLINK_WITH_DISPATCH)
++
++
+ def mangle_fn(name, arg_tys, constants, caller_context):
+     # doesn't mangle ret type, which must be a function of arg tys
+     mangled_arg_names = '_'.join([ty.mangle() for ty in arg_tys])
+@@ -308,6 +318,14 @@ class CodeGenerator(ast.NodeVisitor):
+             self.builder = ir.builder(context)
+             self.semantic = TritonSemantic(self.builder)
+ 
++            self.dicp_builder = dicp_triton.ir.dicp_npu_ir_builder(context, getattr(options, "arch", ""))
++            self.dicp_builder.set_loc(file_name, begin_line, 0)
++            setup_unified_builder(self.builder, self.dicp_builder)
++
++            self.buffer_builder = dicp_triton.ir.buffer_builder(context)
++            self.buffer_builder.set_loc(file_name, begin_line, 0)
++            setup_unified_builder_with_buffer_builder(self.builder, self.buffer_builder)
++
+         self.name_loc_as_prefix = None
+         self.file_name = file_name
+         # node.lineno starts from 1, so we need to subtract 1
+@@ -456,17 +474,19 @@ class CodeGenerator(ast.NodeVisitor):
+         self.lscope[name] = value
+         self.local_defs[name] = value
+ 
+-    def _get_insertion_point_and_loc(self):
++    def _get_insertion_point_and_loc(self, builder=None):
+         # XXX: this is a hack to get the location of the insertion point.
+         # The insertion point's location could be invalid sometimes,
+         # so we need to explicitly set the location
+-        loc = self.builder.get_loc()
+-        ip = self.builder.get_insertion_point()
++        _builder = builder if builder else self.builder
++        loc = _builder.get_loc()
++        ip = _builder.get_insertion_point()
+         return ip, loc
+ 
+-    def _set_insertion_point_and_loc(self, ip, loc):
+-        self.builder.restore_insertion_point(ip)
+-        self.builder.set_loc(loc)
++    def _set_insertion_point_and_loc(self, ip, loc, builder=None):
++        _builder = builder if builder else self.builder
++        _builder.restore_insertion_point(ip)
++        _builder.set_loc(loc)
+ 
+     def _find_carries(self, node, liveins):
+         # create loop body block
+@@ -474,7 +494,8 @@ class CodeGenerator(ast.NodeVisitor):
+         self.builder.set_insertion_point_to_start(block)
+         # dry visit loop body
+         self.scf_stack.append(node)
+-        self.visit_compound_statement(node.body)
++        with language.extra.deeplink.cann.extension.semantic.dry_run_context():
++            self.visit_compound_statement(node.body)
+         self.scf_stack.pop()
+         block.erase()
+ 
+@@ -579,6 +600,39 @@ class CodeGenerator(ast.NodeVisitor):
          assert isinstance(args, language.core.tuple)
          return args.values
  
@@ -50,9 +128,39 @@ index df09b3198..3dac7c740 100644
      def visit_FunctionDef(self, node):
          arg_names, kwarg_names = self.visit(node.args)
          if self.fn:
-@@ -1044,6 +1076,10 @@ class CodeGenerator(ast.NodeVisitor):
-             f'but is re-assigned to {loop_val.type} in loop! '\
-             f'Please make sure that the type stays consistent.'
+@@ -972,16 +1026,20 @@ class CodeGenerator(ast.NodeVisitor):
+                 return self.visit(node.orelse)
+ 
+     def visit_With(self, node):
+-        # Lower `with` statements by constructing context managers and calling their enter/exit hooks
+-        # Instantiate each context manager with builder injection
+-        if len(node.items) == 1:  # Handle async_task
++        # Try dispatch mechanism for deeplink context managers (e.g., scope)
++        if len(node.items) == 1:
+             context = node.items[0].context_expr
+-            withitemClass = self.visit(context.func)
+-            if withitemClass == language.async_task:
+-                args = [self.visit(arg) for arg in context.args]
+-                with withitemClass(*args, _builder=self.builder):
+-                    self.visit_compound_statement(node.body)
+-                return
++            if isinstance(context, ast.Call):
++                withitemClass = self.visit(context.func)
++                handler = WITH_DISPATCH.get(withitemClass)
++                if handler:
++                    return handler(self, node)
++                # Handle async_task
++                if withitemClass == language.async_task:
++                    args = [self.visit(arg) for arg in context.args]
++                    with withitemClass(*args, _builder=self.builder):
++                        self.visit_compound_statement(node.body)
++                    return
+ 
+         cm_list = []
+         for item in node.items:
+@@ -1058,6 +1116,10 @@ class CodeGenerator(ast.NodeVisitor):
+     def visit_withitem(self, node):
+         return self.visit(node.context_expr)
  
 +    def visit_With(self, node):
 +        assert len(node.items) == 1
@@ -61,36 +169,47 @@ index df09b3198..3dac7c740 100644
      def visit_While(self, node):
          with enter_sub_region(self) as sr:
              liveins, insert_block = sr
-@@ -1137,7 +1173,8 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1151,7 +1213,7 @@ class CodeGenerator(ast.NodeVisitor):
          flatten = False
          warp_specialize = False
          disable_licm = False
 -        if IteratorClass is language.range:
-+        bind_sub_block = None
 +        if IteratorClass in [language.range, language.extra.deeplink.parallel]:
              iterator = IteratorClass(*iter_args, **iter_kwargs)
              # visit iterator arguments
              # note: only `range` iterator is supported now
-@@ -1151,6 +1188,8 @@ class CodeGenerator(ast.NodeVisitor):
-             flatten = iterator.flatten
-             warp_specialize = iterator.warp_specialize
-             disable_licm = iterator.disable_licm
-+            if (IteratorClass is language.extra.deeplink.parallel):
-+                bind_sub_block = iterator.bind_sub_block
-         elif IteratorClass is range:
-             # visit iterator arguments
-             # note: only `range` iterator is supported now
-@@ -1210,6 +1249,9 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1224,6 +1286,8 @@ class CodeGenerator(ast.NodeVisitor):
              if disable_licm:
                  for_op.set_attr("llvm.loop_annotation", self.builder.get_disable_loop_licm_attr())
  
-+            if (bind_sub_block is not None) and bind_sub_block:
-+                for_op.set_attr("bind_sub_block", self.builder.get_bool_attr(bind_sub_block))
-+
++            if (IteratorClass is language.extra.deeplink.parallel):
++                for_op.set_attr("hivm.parallel_loop", self.builder.get_unit_attr())
              self.scf_stack.append(node)
              for_op_body = for_op.get_body(0)
              self.builder.set_insertion_point_to_start(for_op_body)
-@@ -1363,6 +1405,13 @@ class CodeGenerator(ast.NodeVisitor):
+@@ -1338,6 +1402,11 @@ class CodeGenerator(ast.NodeVisitor):
+             return self.call_JitFunction(fn, args, kws)
+         if (hasattr(fn, '__self__') and _is_triton_value(fn.__self__)) or language.core.is_builtin(fn) or isinstance(
+                 fn, ConstexprFunction):
++            # Copy builder's location and insertion point.
++            ip, last_loc = self._get_insertion_point_and_loc()
++            # Use dicp_builder if this function is a DICP builtin extension operation.
++            _builder = getattr(self, 'dicp_builder', self.builder) if is_dicp_builtin(fn) else self.builder
++            self._set_insertion_point_and_loc(ip, last_loc, _builder)
+             extra_kwargs = dict()
+ 
+             if isinstance(fn, ConstexprFunction):
+@@ -1353,6 +1422,9 @@ class CodeGenerator(ast.NodeVisitor):
+                 # builtin functions return plain tuples for readability
+                 if isinstance(ret, tuple):
+                     ret = language.tuple(ret)
++                # Sync the builder's location before return.
++                ip, last_loc = self._get_insertion_point_and_loc(_builder)
++                self._set_insertion_point_and_loc(ip, last_loc)
+                 return ret
+             except Exception as e:
+                 if knobs.compilation.front_end_debugging:
+@@ -1385,6 +1457,13 @@ class CodeGenerator(ast.NodeVisitor):
  
      def visit_Call(self, node):
          fn = _unwrap_if_constexpr(self.visit(node.func))

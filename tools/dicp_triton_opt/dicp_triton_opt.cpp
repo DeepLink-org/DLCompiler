@@ -1,14 +1,17 @@
-#include "dicp/Conversion/DiscreteMaskAccessConversion/Passes.h"
-#include "dicp/Conversion/LinalgToLinked/Passes.h"
-#include "dicp/Conversion/LinalgToNPU/Passes.h"
-#include "dicp/Conversion/LinkedToHIVM/Passes.h"
-#include "dicp/Conversion/TritonToLinalgNPU/MemRefCopyGatherToTensorInsert/Passes.h"
-#include "dicp/Conversion/TritonToLinalgNPU/TritonToLinalgNPUCoversion/Passes.h"
-#include "dicp/Conversion/TritonToUnstructure/Passes.h"
-#include "dicp/Dialect/LinalgExt/IR/LinalgExtOps.h"
-#include "dicp/Dialect/LinalgExt/Transforms/Passes.h"
-#include "dicp/Dialect/NPU/IR/NPUDialect.h"
-#include "dicp/Dialect/TritonExt/Transforms/Passes.h"
+#include "bishengir/InitAllDialects.h"
+#include "dicp/AscendLegalize/Passes.h"
+#include "dicp/AutoBlockify/Passes.h"
+#include "dicp/Dialect/CommonIR/Passes.h"
+#include "dicp/Dialect/TritonDicp/IR/TritonDicpDialect.h"
+#include "dicp/DiscreteMaskAccessConversion/Passes.h"
+#include "dicp/TritonAffinityOpt/Passes.h"
+#include "dicp/TritonToAnnotation/Passes.h"
+#include "dicp/TritonToHFusion/Passes.h"
+#include "dicp/TritonToHIVM/Passes.h"
+#include "dicp/TritonToLLVM/Passes.h"
+#include "dicp/TritonToLinalg/Passes.h"
+#include "dicp/TritonToStructured/Passes.h"
+#include "dicp/TritonToUnstructure/Passes.h"
 
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -80,43 +83,39 @@
 #include "mlir/Target/LLVMIR/Dialect/XeVM/XeVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
-#include "triton-shared/Conversion/TritonToLinalgExperimental/Passes.h.inc"
-#include "triton-shared/Dialect/TritonTilingExt/IR/TritonTilingExtDialect.h"
-
 using namespace mlir;
 
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllPasses();
   mlir::registerLinalgPasses();
 
-  mlir::triton::registerDiscreteMaskAccessConversionPass();
-  mlir::triton::registerTritonToUnstructurePass();
-  mlir::triton::registerBubbleUpOperationPass();
+  // triton-dicp pass registrations
+  triton::registerAutoBlockifyPass();
+  triton::registerAscendLegalizePass();
+  mlir::dicp::CommonIR::registerCommonIRPasses();
+  triton::registerTritonToStructuredPass();
+  triton::registerDiscreteMaskAccessConversionPass();
+  triton::registerTritonToAnnotationPass();
+  triton::registerTritonToUnstructurePass();
+  triton::registerTritonToHIVMPass();
+  triton::registerTritonToHFusionPass();
+  triton::registerTritonToLLVMPass();
+  triton::registerBubbleUpOperationPass();
+  triton::registerTritonToLinalgPass();
+  triton::registerDAGSyncPass();
+  triton::registerDAGScopePass();
+  triton::registerDAGSSBufferPass();
 
-  dicp::npu::registerLinalgToNPUPass();
-  dicp::linked::registerLinalgToLinkedPass();
-  dicp::trtion_ext::registerCanonicalizeTritonIRAscendPass();
-  dicp::trtion_ext::registerCanonicalizeCmpiPass();
-  dicp::linked::registerLinkedToHIVMPass();
-  dicp::linked::registerTritonToLinalgNPUCoversionPass();
-  dicp::linked::registerMemRefCopyGatherToTensorInsertPass();
-  dicp::linked::registerDebugCPUVerifyPass();
+  registry
+      .insert<bufferization::BufferizationDialect, arith::ArithDialect,
+              cf::ControlFlowDialect, func::FuncDialect, linalg::LinalgDialect,
+              index::IndexDialect, LLVM::LLVMDialect, math::MathDialect,
+              memref::MemRefDialect, pdl::PDLDialect, scf::SCFDialect,
+              tensor::TensorDialect, transform::TransformDialect,
+              vector::VectorDialect, ub::UBDialect, triton::TritonDialect,
+              affine::AffineDialect, triton::dicp::TritonDicpDialect>();
 
-  dicp::LinalgExt::registerLinalgIfToSelectPass();
-  dicp::LinalgExt::registerLinalgGenericToSCFPass();
-  dicp::LinalgExt::registerScalarTo1DTensorPass();
-  dicp::LinalgExt::registerNormalizeSliceOpsPass();
-  dicp::LinalgExt::registerVectorizeParallelLoopPass();
-
-  registry.insert<bufferization::BufferizationDialect, dicp::npu::NPUDialect,
-                  dicp::LinalgExt::LinalgExtDialect, arith::ArithDialect,
-                  cf::ControlFlowDialect, func::FuncDialect, gpu::GPUDialect,
-                  linalg::LinalgDialect, index::IndexDialect, LLVM::LLVMDialect,
-                  math::MathDialect, memref::MemRefDialect, pdl::PDLDialect,
-                  scf::SCFDialect, tensor::TensorDialect,
-                  transform::TransformDialect, vector::VectorDialect,
-                  ub::UBDialect, triton::TritonDialect, affine::AffineDialect,
-                  ttx::TritonTilingExtDialect>();
+  bishengir::registerAllDialects(registry);
 }
 
 int main(int argc, char **argv) {

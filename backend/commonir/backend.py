@@ -1,9 +1,61 @@
 import functools
 import os
+import re
+import tempfile
+from pathlib import Path
 from typing import Any
+
+from triton._C.libtriton import ir, dicp_triton, passes
 from ..compiler import DICPOptions
 from ..driver import DICPDriver
 from ..utils import get_current_backend
+
+replace_commonir_ir = os.environ.get("DLC_REPLACE_COMMON_IR_FILE", None)
+replace_commonir_linked_ir = os.environ.get("DLC_REPLACE_COMMONIR_LINKED_IR_FILE", None)
+
+
+def add_matmul_input_precision(commonir: str) -> str:
+    # TODO: Temporary string-level patch for TileLang-generated CommonIR.
+    # TileLang should eventually use a pybind-based codegen path, similar to
+    # Triton's codegen, to emit linalg.matmul attributes directly.
+    return re.sub(
+        r"\blinalg\.matmul\s+(?!\{)",
+        'linalg.matmul {input_precision = "ieee"} ',
+        commonir,
+    )
+
+
+def commonir_to_linkedir(commonir, metadata, opt, named_ops=True):
+    if replace_commonir_ir is not None:
+        print(f"[DEBUG] Replace common ir with {replace_commonir_ir}")
+        commonir = Path(replace_commonir_ir).read_text()
+
+    commonir = add_matmul_input_precision(commonir)
+
+    compile_on_910_95 = metadata["compile_on_910_95"]
+    enable_nd2nz_on_vector = metadata["enable_nd2nz_on_vector"]
+    enable_select_analysis = metadata["enable_select_analysis"]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        src_path = os.path.join(tmpdir, "kernel.commonir.mlir")
+        Path(src_path).write_text(commonir)
+        context = ir.context()
+        commonir_backend.load_dialects(context)
+        mod = ir.parse_mlir_module(src_path, context)
+        pm = ir.pass_manager(context)
+        dicp_triton.passes.commonir.add_vectorize_parallel_loop(pm)
+        passes.common.add_cse(pm)
+        passes.common.add_canonicalizer(pm)
+        dicp_triton.passes.commonir.add_annotate_kernel_attrs(pm)
+        dicp_triton.passes.ttir.add_ascend_npu_ir_legalize(pm, False)
+        pm.run(mod)
+        content = str(mod)
+        print(content)
+
+    if replace_commonir_linked_ir is not None:
+        print(f"[DEBUG] Replace Linkedir with {replace_commonir_linked_ir}")
+        return Path(replace_commonir_linked_ir).read_text()
+    return content
 
 
 class CommonIRBackend:
@@ -12,9 +64,8 @@ class CommonIRBackend:
     def __init__(self) -> None:
         target = get_current_backend()
         self.driver = DICPDriver(target)
-        if self.driver.target == "dicp":
-            self.binary_ext = "ttlinalgdir"
-        elif self.driver.target == "mlu":
+        self.target = target
+        if self.driver.target == "mlu":
             self.capability = target.arch
             assert isinstance(self.capability, int)
             self.binary_ext = "cnbin"
@@ -24,32 +75,31 @@ class CommonIRBackend:
         elif self.driver.target == "ascend":
             self.binary_ext = "npubin"
         else:
-            raise RuntimeError(f"Target '{self.target_type}' is not supported.")
-
-    def get_attrs_descriptor(self, params, args):
-        if self.driver.target == "ascend":
-            from triton.backends.dicp_triton.npu import AscendAttrsDescriptor
-
-            return AscendAttrsDescriptor(params, args)
-        else:
-            raise RuntimeError(
-                f"backend {self.driver.target} not supported for get_attrs_descriptor."
-            )
+            raise RuntimeError(f"Target '{self.driver.target}' is not supported.")
 
     def add_stages(self, stages, options, language=None):
-
         if self.driver.target == "ascend":
             from triton.backends.dicp_triton.npu import (
-                commonir_to_linkedir,
-                linalg_to_bin_enable_npu_compile,
+                linalg_to_bin_enable_npu_compile_910_95,
+                linalg_to_bin_enable_npu_compile_A2_A3,
             )
 
             stages["linkedir"] = lambda src, metadata: commonir_to_linkedir(
                 src, metadata, options, named_ops=True
             )
-            stages["npubin"] = lambda src, metadata: linalg_to_bin_enable_npu_compile(
-                src, metadata, options
-            )
+
+            if options.compile_on_910_95:
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_910_95(
+                        src, metadata, options
+                    )
+                )
+            else:
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+                        src, metadata, options
+                    )
+                )
         else:
             raise RuntimeError("backend not supported")
 
@@ -58,6 +108,13 @@ class CommonIRBackend:
             from triton._C.libtriton import mlu
 
             mlu.load_dialects(ctx)
+        elif self.driver.target == "ascend":
+            from triton._C.libtriton import dicp_triton
+
+            dicp_triton.load_dialects(ctx)
+        from triton._C.libtriton import dicp_triton
+
+        dicp_triton.ir.load_dialects(ctx)
         return
 
     def get_driver(self):
@@ -164,30 +221,17 @@ class CommonIRBackend:
 
     def pack_metadata(self, metadata):
         if self.driver.target == "ascend":
-            from triton.backends.dicp_triton.npu import TRITON_PROFILER_REGISTERED
-
-            # collect necessary metadata to launch kernels
-            # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES=1 could set unique name.
-            # Get this name as the kernel_name to CANN runtime.
-            # kernel_name is unique to Ascend backend and should not be public.
-            # CANN runtime limits the length of kernel name <= 50.
-            # Considering '\n' is appended, thus the real kernel name <= 49.
             KERNEL_NAME_MAX_LEN = 49
-            kernel_name_orig, mix_mode = metadata.name.split()
+            kernel_name_orig = metadata.kernel_name
             if len(kernel_name_orig) > KERNEL_NAME_MAX_LEN:
                 kernel_name = kernel_name_orig[-KERNEL_NAME_MAX_LEN:]
-                # import warnings
-                # # red = "\x1b[31;20m"
-                # # reset = "\x1b[0m"
-                # warnings.warn(kernel_name_orig + " is truncated to " + kernel_name)
-                # warnings.warn("because '" + kernel_name_orig + "' exceeds torchnpu profiler's length limit < 50")
             else:
                 kernel_name = kernel_name_orig
             return {
                 "kernel_name": kernel_name,
                 "hash": metadata.hash,
                 "debug": metadata.debug,
-                "profiler_registered": TRITON_PROFILER_REGISTERED,
+                "tensor_kinds": metadata.tensor_kinds,
             }
         elif self.driver.target == "mlu":
             return (metadata.num_warps,)

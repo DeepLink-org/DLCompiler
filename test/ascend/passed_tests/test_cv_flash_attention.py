@@ -3,7 +3,8 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink as dl
+import triton.language.extra.deeplink.cann.extension as dl
+from triton.language.extra.deeplink import async_task
 
 DEVICE = "npu"
 
@@ -258,7 +259,6 @@ def _attn_fwd_base(
 
 
 class AttentionBase(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, q, k, v, sm_scale, BM, BN):
         """
@@ -447,7 +447,7 @@ def _attn_fwd_split_cv(
             block_shape=(BLOCK_M, HEAD_DIM),
             order=(1, 0),
         )
-        with dl.async_task(scope=dl.async_task.cube):
+        with async_task(scope=async_task.cube):
             q = tl.load(Q_block_ptr)
             lo, hi = 0, N_CTX  # Process the entire context
             K_block_ptr = tl.advance(
@@ -477,7 +477,7 @@ def _attn_fwd_split_cv(
                 V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
                 K_block_ptr = tl.advance(K_block_ptr, (BLOCK_N, 0))
 
-        with dl.async_task(scope=dl.async_task.vector):
+        with async_task(scope=async_task.vector):
             offs_m = task_m_idx * BLOCK_M + tl.arange(0, BLOCK_M)
             m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
             l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
@@ -517,7 +517,6 @@ def _attn_fwd_split_cv(
 
 
 class AttentionSplitCV(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, q, k, v, sm_scale, BM, BN):
         """

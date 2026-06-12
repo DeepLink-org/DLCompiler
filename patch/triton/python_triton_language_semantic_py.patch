@@ -1,5 +1,5 @@
 diff --git a/python/triton/language/semantic.py b/python/triton/language/semantic.py
-index 8341c2c4a..1fca39d66 100644
+index 5fc9cf67e..c8d1217a3 100644
 --- a/python/triton/language/semantic.py
 +++ b/python/triton/language/semantic.py
 @@ -115,6 +115,7 @@ class TritonSemantic(Generic[TensorTy]):

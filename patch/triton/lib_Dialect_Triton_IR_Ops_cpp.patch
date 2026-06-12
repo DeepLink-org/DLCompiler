@@ -1,0 +1,22 @@
+diff --git a/lib/Dialect/Triton/IR/Ops.cpp b/lib/Dialect/Triton/IR/Ops.cpp
+index 06082cf9d..48e08e526 100644
+--- a/lib/Dialect/Triton/IR/Ops.cpp
++++ b/lib/Dialect/Triton/IR/Ops.cpp
+@@ -995,6 +995,9 @@ void MakeTensorPtrOp::build(OpBuilder &builder, OperationState &state,
+ }
+
+ //-- AddPtrOp --
++#ifdef WITH_ASCEND
++OpFoldResult AddPtrOp::fold(FoldAdaptor adaptor) { return {}; }
++#else
+ OpFoldResult AddPtrOp::fold(FoldAdaptor adaptor) {
+   // addptr(ptr, 0) -> ptr
+   if (matchPattern(adaptor.getOffset(), m_Zero())) {
+@@ -1002,6 +1005,7 @@ OpFoldResult AddPtrOp::fold(FoldAdaptor adaptor) {
+   }
+   return {};
+ }
++#endif
+
+ //-- AdvanceOp --
+ OpFoldResult AdvanceOp::fold(FoldAdaptor adaptor) {

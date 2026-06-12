@@ -38,7 +38,7 @@ import torch
 import torch_npu
 import triton
 import triton.language as tl
-import triton.language.extra.deeplink as dl
+import triton.language.extra.deeplink.cann.extension as dl
 
 DEVICE = "npu"
 
@@ -334,7 +334,6 @@ def _attn_fwd(
 
 
 class _attention(torch.autograd.Function):
-
     @staticmethod
     def forward(ctx, q, k, v, causal, sm_scale, BM, BN):
         """

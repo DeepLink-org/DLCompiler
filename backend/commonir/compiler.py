@@ -1,6 +1,8 @@
 import functools
 import hashlib
 import json
+import re
+import os
 from pathlib import Path
 from typing import Any, List
 from triton._C.libtriton import get_cache_invalidating_env_vars
@@ -72,7 +74,11 @@ class CompiledKernel:
             self.n_regs,
             self.n_spills,
         ) = commonir_backend.get_driver().utils.load_binary(
-            self.name, self.kernel, self.metadata.shared, device
+            self.name,
+            self.kernel,
+            self.metadata.shared,
+            device,
+            mix_mode=self.metadata.mix_mode,
         )
 
     @property
@@ -129,17 +135,34 @@ class CompiledKernel:
         return runner
 
 
-class CommonIRCompiler(object):
+def _inject_npu_attrs(module: str, metadata: dict) -> str:
+    target = metadata.get("target")
+    arch = target.arch if target and hasattr(target, "arch") else ""
+    if arch:
+        module = re.sub(
+            r'(module\s+attributes\s*\{dicp\.backend\s*=\s*"ascend")',
+            rf'\1, hacc.target = #hacc.target<"{arch}">',
+            module,
+            count=1,
+        )
+    return module
 
+
+class CommonIRCompiler(object):
     def compile(self, commonir_src: CommonIRSource, options=None, _env_vars=None):
 
         target = commonir_backend.get_driver().get_current_target()
         assert isinstance(target, GPUTarget), "target must be of GPUTarget type"
 
         extra_options = {}
-        options = commonir_backend.parse_options(
-            dict(options or dict(), **extra_options)
-        )
+        options = dict(options or dict(), **extra_options)
+        if "debug" not in options and (
+            os.environ.get("TRITON_DEBUG", "0") == "1"
+            or os.environ.get("DEBUG", "0") == "1"
+        ):
+            options["debug"] = True
+
+        options = commonir_backend.parse_options(options)
         # create cache manager
         env_vars = get_cache_invalidating_env_vars() if _env_vars is None else _env_vars
 
@@ -162,6 +185,9 @@ class CommonIRCompiler(object):
         stages = dict()
         commonir_backend.add_stages(stages, options)
         module = commonir_src.src
+        module = _inject_npu_attrs(module, metadata)
+        print(module)
+
         ir_filename = f"{file_name}.source"
         metadata_group[ir_filename] = fn_cache_manager.put(module, ir_filename)
 

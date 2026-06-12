@@ -242,7 +242,7 @@ def test_matmul_shape(param_list):
     golden = torch.matmul(mat_a, mat_b)
 
     mask = golden.abs() < 1.0
-    tmpatol = tmprtol = 2 ** -6
+    tmpatol = tmprtol = 2**-6
     try:
         print(f"[ERROR] golden: {golden}")
         torch.testing.assert_close(result[mask], golden[mask], atol=tmpatol, rtol=0)

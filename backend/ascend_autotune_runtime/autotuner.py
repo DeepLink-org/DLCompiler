@@ -1477,9 +1477,11 @@ def get_max_configs(config, kernel_type="mixcv", **kwargs):
         config_args = {
             "kwargs": new_kwargs,
             "num_warps": getattr(config, "num_warps", 4),
-            "num_stages": num_stages_val
-            if num_stages_val is not None
-            else getattr(config, "num_stages", 2),
+            "num_stages": (
+                num_stages_val
+                if num_stages_val is not None
+                else getattr(config, "num_stages", 2)
+            ),
             "num_ctas": getattr(config, "num_ctas", 1),
             "maxnreg": getattr(config, "maxnreg", None),
             "pre_hook": getattr(config, "pre_hook", None),

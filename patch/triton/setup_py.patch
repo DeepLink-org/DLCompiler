@@ -70,7 +70,7 @@ index 8a3007ce4..68a1d9447 100644
                  yield f"triton.tools.extra.{x}"
  
      if check_env_flag("TRITON_BUILD_PROTON", "ON"):  # Default ON
-@@ -795,14 +835,14 @@ PYTHON_CLASSIFIERS = [
+@@ -795,17 +835,18 @@ PYTHON_CLASSIFIERS = [
  CLASSIFIERS = BASE_CLASSIFIERS + PYTHON_CLASSIFIERS
  
  setup(
@@ -88,7 +88,11 @@ index 8a3007ce4..68a1d9447 100644
      ],
      packages=list(get_packages()),
      package_dir=dict(get_package_dirs()),
-@@ -823,7 +863,7 @@ setup(
++    package_data={"triton.backends.dicp_triton": ["npu_utils.cpp"]},
+     entry_points=get_entry_points(),
+     include_package_data=True,
+     ext_modules=[CMakeExtension("triton", "triton/_C/")],
+@@ -823,7 +864,7 @@ setup(
      zip_safe=False,
      # for PyPI
      keywords=["Compiler", "Deep Learning"],

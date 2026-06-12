@@ -2,6 +2,7 @@
 Matrix Multiplication
 ===============
 """
+
 import torch_npu
 import torch
 import triton

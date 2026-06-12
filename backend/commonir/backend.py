@@ -89,16 +89,16 @@ class CommonIRBackend:
             )
 
             if options.compile_on_910_95:
-                stages[
-                    "npubin"
-                ] = lambda src, metadata: linalg_to_bin_enable_npu_compile_910_95(
-                    src, metadata, options
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_910_95(
+                        src, metadata, options
+                    )
                 )
             else:
-                stages[
-                    "npubin"
-                ] = lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
-                    src, metadata, options
+                stages["npubin"] = (
+                    lambda src, metadata: linalg_to_bin_enable_npu_compile_A2_A3(
+                        src, metadata, options
+                    )
                 )
         else:
             raise RuntimeError("backend not supported")
@@ -180,7 +180,7 @@ class CommonIRBackend:
             # args["allow_fp8e4nv"] = False
             args["allow_fp8e4b15"] = False
             args["max_num_imprecise_acc_default"] = (
-                2 ** 30 if self.capability == 90 else 0
+                2**30 if self.capability == 90 else 0
             )
             return MACAOptions(**args)
         else:

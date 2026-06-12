@@ -237,9 +237,9 @@ class LibEntry(triton.KernelInterface):
                 return arg.dtype
             if not isinstance(arg, int):
                 return type(arg)
-            if -(2 ** 31) <= arg and arg <= 2 ** 31 - 1:
+            if -(2**31) <= arg and arg <= 2**31 - 1:
                 return "i32"
-            if 2 ** 63 <= arg and arg <= 2 ** 64 - 1:
+            if 2**63 <= arg and arg <= 2**64 - 1:
                 return "u64"
             return "i64"
 

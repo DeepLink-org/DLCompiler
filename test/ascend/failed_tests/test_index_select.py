@@ -32,6 +32,7 @@ import test_common
 # dtype： same as load
 # profiling: 0.6x AscendC
 
+
 # known issue: runtime error when src_tensor.stride(dim) is not 32B aligned
 @pytest.mark.parametrize(
     "src_shape, dim, indice_shape, dtype",

@@ -40,6 +40,7 @@ shapes = [
     # 781,
 ]
 
+
 @pytest.mark.skip(reason="waiting for bishengir-compile to support")
 @pytest.mark.parametrize("sigtype", types)
 @pytest.mark.parametrize("N", shapes)

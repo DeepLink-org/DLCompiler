@@ -72,6 +72,7 @@ __all__ = [
     "distributed_type",
     "shared_memory_descriptor_type",
     "static_range",
+    "dot",
     "tuple",
     "tuple_type",
     "num_ctas",
@@ -253,18 +254,27 @@ class shared_memory_descriptor(base_value):
         return str(self.type)
 
     @builtin
-    def load(self, layout, _semantic: GluonSemantic = None) -> tensor:
+    def load(self, layout, dtype=None, intrinsic=None, is_constant_offs=None, mma_mode=None,
+             _semantic: GluonSemantic = None) -> tensor:
         """
         Load a tensor from shared memory.
 
         Args:
             layout (DistributedLayout): The destination layout of the tensor.
+            dtype (dtype, optional): Override the loaded element type.
+            intrinsic (bool, optional): Set the local_load intrinsic attribute.
+            is_constant_offs (bool, optional): Set the local_load isConstantOffs attribute.
+            mma_mode (int, optional): Set the local_load mmaMode attribute.
 
         Returns:
             tensor: A Gluon tensor containing the loaded data.
         """
         layout = _unwrap_if_constexpr(layout)
-        return _semantic.shared_load(self, layout)
+        dtype = _unwrap_if_constexpr(dtype)
+        intrinsic = _unwrap_if_constexpr(intrinsic)
+        is_constant_offs = _unwrap_if_constexpr(is_constant_offs)
+        mma_mode = _unwrap_if_constexpr(mma_mode)
+        return _semantic.shared_load(self, layout, dtype, intrinsic, is_constant_offs, mma_mode)
 
     @builtin
     def store(self, value, _semantic: GluonSemantic = None) -> None:
@@ -566,6 +576,20 @@ def to_linear_layout(layout, shape, _semantic=None):
     layout = _unwrap_if_constexpr(layout)
     shape = _unwrap_shape(shape)
     return _semantic.to_linear_layout(layout, shape)
+
+
+@builtin
+def dot(input, other, acc=None, input_precision=None, max_num_imprecise_acc=None, out_dtype=float32, _semantic=None):
+    input_precision = _unwrap_if_constexpr(input_precision)
+    max_num_imprecise_acc = _unwrap_if_constexpr(max_num_imprecise_acc)
+    out_dtype = _unwrap_if_constexpr(out_dtype)
+    acc = _unwrap_if_constexpr(acc)
+
+    result = _semantic.dot(input, other, acc, input_precision=input_precision,
+                           max_num_imprecise_acc=max_num_imprecise_acc, out_dtype=out_dtype)
+    if acc is not None and isinstance(acc.type, distributed_type):
+        return tensor(result.handle, acc.type)
+    return _semantic._wrap_tensor_infer_layout(result)
 
 
 @builtin

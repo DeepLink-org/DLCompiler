@@ -31,8 +31,24 @@ def get_home_dir():
     return os.getenv("TRITON_HOME", Path.home())
 
 
+_AIC_METRIC_NAMES = {
+    "pipe": "PipeUtilization",
+    "memory": "Memory",
+    "memory_l0": "MemoryL0",
+    "memory_ub": "MemoryUB",
+    "l2": "L2Cache",
+    "arith": "ArithmeticUtilization",
+}
+
+
 def do_bench_npu(
-    funcs, warmup=5, active=30, clear_l2_cache=False, prof_dir=None, keep_res=False
+    funcs,
+    warmup=5,
+    active=30,
+    clear_l2_cache=False,
+    prof_dir=None,
+    keep_res=False,
+    aic_metrics="pipe",
 ):
     import torch
     import torch_npu
@@ -40,13 +56,27 @@ def do_bench_npu(
     if not isinstance(funcs, list):
         funcs = [funcs]
 
+    if aic_metrics not in _AIC_METRIC_NAMES:
+        raise ValueError(
+            f"unknown aic_metrics={aic_metrics!r}, "
+            f"candidates={list(_AIC_METRIC_NAMES)}"
+        )
+    metric_attr_name = _AIC_METRIC_NAMES[aic_metrics]
+    metric_attr = getattr(torch_npu.profiler.AiCMetrics, metric_attr_name, None)
+    if metric_attr is None:
+        raise AttributeError(
+            f"torch_npu.profiler.AiCMetrics has no member "
+            f"{metric_attr_name!r} (aic_metrics={aic_metrics!r}); "
+            f"installed torch_npu may be too old"
+        )
+
     # warmup kernel
     for fn in funcs:
         fn()
         torch.npu.synchronize()
 
     experimental_config = torch_npu.profiler._ExperimentalConfig(
-        aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
+        aic_metrics=metric_attr,
         profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
         l2_cache=False,
         data_simplification=False,

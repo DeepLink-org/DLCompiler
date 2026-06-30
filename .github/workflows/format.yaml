@@ -43,12 +43,28 @@ jobs:
       - name: Install clang-format
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format-17
+          sudo apt-get install -y clang-format-15
 
       - name: Check changed files
         run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            diff_range="${{ github.event.pull_request.base.sha }}...HEAD"
+          elif [ "${{ github.event_name }}" = "push" ] && \
+               [ -n "${{ github.event.before }}" ] && \
+               [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            diff_range="${{ github.event.before }}..${{ github.sha }}"
+          else
+            default_branch="${{ github.event.repository.default_branch }}"
+            git fetch --no-tags --prune origin \
+              "+refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"
+            diff_range="origin/${default_branch}...HEAD"
+          fi
+
+          echo "Checking files changed in ${diff_range}"
           git diff --diff-filter=d --name-only \
-            origin/${{ github.base_ref }}...HEAD \
+            "${diff_range}" -- \
             > all_changed_files.txt
 
           awk '/\.(cc|cpp|cxx|h|hpp)$/ && $0 !~ /^third_party\// { print }' \
@@ -60,7 +76,7 @@ jobs:
             exit 0
           fi
 
-          xargs -a changed_files.txt clang-format-17 --dry-run -Werror
+          xargs -r -a changed_files.txt clang-format-15 --dry-run -Werror
 
   python-black:
     needs: markdownlint

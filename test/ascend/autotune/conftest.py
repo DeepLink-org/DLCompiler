@@ -2,3 +2,7 @@
 # We import this early so every test module sees the proxy (which auto-detects
 # ascend via triton.runtime.driver.active.target at call time).
 import triton.backends.dicp_triton.ascend_autotune_hooks  # noqa: F401 — side-effect import
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "autotune: tests that require Ascend autotune")

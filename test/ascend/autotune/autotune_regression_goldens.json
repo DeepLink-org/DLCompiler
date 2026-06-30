@@ -1,0 +1,102 @@
+{
+  "fa2": {
+    "script": "fa2_case.py",
+    "expected_operator_kind": "DOT_STATEFUL",
+    "expected_compile_options": "mixcv",
+    "golden_precise_cost": [
+      0.06627206666666666,
+      13.949780766666668
+    ],
+    "golden_triton_ms": [
+      66.048,
+      13963.672666666665
+    ],
+    "expected_autotune_runs": 2,
+    "max_search_time_s": [
+      165.0,
+      175.0
+    ],
+    "max_precise_cost_ratio": 1.2,
+    "max_triton_ms_ratio": 1.25,
+    "timeout_s": 900
+  },
+  "fla_cumsum": {
+    "script": "fla_cumsum_case.py",
+    "expected_operator_kind": "VECTOR_DISCRETE_OR_STATEFUL",
+    "expected_compile_options": "vector",
+    "golden_precise_cost": [
+      0.003098033333333334
+    ],
+    "golden_triton_ms": [
+      0.285451,
+      0.301398,
+      0.287805
+    ],
+    "expected_autotune_runs": 1,
+    "max_search_time_s": 50.0,
+    "max_precise_cost_ratio": 1.2,
+    "max_triton_ms_ratio": 1.25,
+    "timeout_s": 300
+  },
+  "fla_chunk_delta_hupdate": {
+    "script": "fla_chunk_delta_hupdate_case.py",
+    "expected_operator_kind": "DOT_STATEFUL",
+    "expected_compile_options": "mixcv",
+    "golden_precise_cost": [
+      0.013484333333333336
+    ],
+    "golden_triton_ms": [
+      0.598872,
+      0.559796,
+      0.55266
+    ],
+    "expected_autotune_runs": 1,
+    "max_search_time_s": 120.0,
+    "max_precise_cost_ratio": 1.2,
+    "max_triton_ms_ratio": 1.25,
+    "timeout_s": 600
+  },
+  "gdn_chunk_meta": {
+    "script": "gdn_chunk_meta_case.py",
+    "expected_operator_kind": "VECTOR_AFFINE",
+    "expected_compile_options": "vector",
+    "golden_precise_cost": [
+      0.0015280666666666668,
+      0.04506756666666667,
+      0.0012441
+    ],
+    "golden_triton_ms": [
+      0.7816,
+      1.05994,
+      4.20512
+    ],
+    "expected_autotune_runs": 3,
+    "max_search_time_s": [
+      70.0,
+      55.0,
+      55.0
+    ],
+    "max_precise_cost_ratio": 1.2,
+    "max_triton_ms_ratio": 1.25,
+    "timeout_s": 600
+  },
+  "batch_invariant_mean": {
+    "script": "batch_invariant_mean_case.py",
+    "expected_operator_kind": "VECTOR_REDUCTION",
+    "expected_compile_options": "vector",
+    "golden_precise_cost": [
+      0.0218057
+    ],
+    "golden_triton_ms": [
+      0.307106,
+      0.28717,
+      0.27884,
+      0.277523
+    ],
+    "expected_autotune_runs": 1,
+    "max_search_time_s": 75.0,
+    "max_precise_cost_ratio": 1.2,
+    "max_triton_ms_ratio": 1.25,
+    "timeout_s": 300
+  }
+}

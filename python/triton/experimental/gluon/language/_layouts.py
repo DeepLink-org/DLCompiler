@@ -307,6 +307,94 @@ class NVMMADistributedLayout(DistributedLayout):
         return len(self.warps_per_cta)
 
 
+@dataclass(frozen=True, eq=True)
+class MACAMmaLayout(DistributedLayout):
+    """
+    Represents a layout for MetaX/MACA MMA operations.
+
+    Args:
+        version_major (int): MACA MMA major version.
+        version_minor (int): MACA MMA minor version, usually compute capability % 10.
+        warps_per_cta (List[int]): Number of warps per CTA along M/N.
+        elements_mnk (List[int]): Per-thread MMA element shape in M/N/K.
+        col_major (int): Whether the accumulator layout is column-major.
+        is_a_trans (bool): Whether A uses LDS transpose mode.
+        is_b_trans (bool): Whether B uses LDS transpose mode.
+        elements_stride (List[int]): LDS transpose stride for A/B.
+        cga_layout (List[List[int]]): Bases describing CTA tiling.
+    """
+    version_major: int
+    version_minor: int
+    warps_per_cta: List[int]
+    elements_mnk: List[int]
+    col_major: int = 0
+    is_a_trans: bool = False
+    is_b_trans: bool = False
+    elements_stride: List[int] = field(default_factory=lambda: [1, 1])
+    cga_layout: List[List[int]] = field(default_factory=list)
+
+    def __post_init__(self):
+        super().__setattr__("version_major", _unwrap_if_constexpr(self.version_major))
+        super().__setattr__("version_minor", _unwrap_if_constexpr(self.version_minor))
+        super().__setattr__("warps_per_cta", _unwrap_if_constexpr(self.warps_per_cta))
+        super().__setattr__("elements_mnk", _unwrap_if_constexpr(self.elements_mnk))
+        super().__setattr__("col_major", _unwrap_if_constexpr(self.col_major))
+        super().__setattr__("is_a_trans", _unwrap_if_constexpr(self.is_a_trans))
+        super().__setattr__("is_b_trans", _unwrap_if_constexpr(self.is_b_trans))
+        super().__setattr__("elements_stride", _unwrap_if_constexpr(self.elements_stride))
+        object.__setattr__(self, "cga_layout", _unwrap_if_constexpr(self.cga_layout))
+
+        assert len(self.warps_per_cta) > 0
+        assert len(self.elements_mnk) == 3
+        assert len(self.elements_stride) == 2
+        rank = len(self.warps_per_cta)
+        assert all(len(vec) == rank for vec in self.cga_layout), "cga_layout basis rank mismatch"
+
+    def _to_ir(self, builder):
+        return builder.get_maca_mma_layout(
+            self.version_major,
+            self.version_minor,
+            self.warps_per_cta,
+            self.elements_mnk,
+            self.col_major,
+            self.is_a_trans,
+            self.is_b_trans,
+            self.elements_stride,
+            self.cga_layout,
+        )
+
+    def mangle(self) -> str:
+
+        def stringify(x):
+            if x is None:
+                return ""
+            return "_".join(map(str, x))
+
+        cga_layout = stringify(["~".join(map(str, vec)) for vec in self.cga_layout] if self.cga_layout else None)
+        return (
+            f"MACA_{self.version_major}_{self.version_minor}_{stringify(self.warps_per_cta)}_"
+            f"{stringify(self.elements_mnk)}_{self.col_major}_{self.is_a_trans}_{self.is_b_trans}_"
+            f"{stringify(self.elements_stride)}_{cga_layout}_MACA"
+        )
+
+    def __hash__(self):
+        return hash((
+            self.version_major,
+            self.version_minor,
+            tuple(self.warps_per_cta),
+            tuple(self.elements_mnk),
+            self.col_major,
+            self.is_a_trans,
+            self.is_b_trans,
+            tuple(self.elements_stride),
+            tuple(tuple(vec) for vec in self.cga_layout),
+        ))
+
+    @property
+    def rank(self):
+        return len(self.warps_per_cta)
+
+
 class SharedLayout:
     """
     Base class for shared memory layouts in Gluon IR.

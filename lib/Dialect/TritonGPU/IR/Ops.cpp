@@ -243,8 +243,8 @@ struct CanonicalizeConvertFromLocalStore
     auto convert = op.getSrc().getDefiningOp<ConvertLayoutOp>();
     if (!convert)
       return failure();
-    rewriter.replaceOpWithNewOp<triton::gpu::LocalStoreOp>(op, convert.getSrc(),
-                                                           op.getDst());
+    rewriter.replaceOpWithNewOp<triton::gpu::LocalStoreOp>(
+        op, convert.getSrc(), op.getDst(), op.getIntrinsic());
     return mlir::success();
   }
 };

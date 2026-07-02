@@ -39,6 +39,8 @@ class GluonASTSource(ASTSource):
 
         module = ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
                              module_map=module_map, module=module)
+        if "#gluon.auto_encoding" not in module.str():
+            module.set_attr("ttg.gluon.manual-layouts", builder.get_int32_attr(1))
         return module
 
 

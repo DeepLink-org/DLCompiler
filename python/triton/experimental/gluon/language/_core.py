@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from triton._C.libtriton.gluon_ir import GluonOpBuilder
     from ._semantic import GluonSemantic
 
-from ._layouts import SharedLayout, DistributedLayout, BlockedLayout, DotOperandLayout, AutoLayout, CoalescedLayout
+from ._layouts import SharedLayout, DistributedLayout, BlockedLayout, DotOperandLayout, AutoLayout, CoalescedLayout, SwizzledSharedLayout
 from triton._C.libtriton import ir
 import triton.language.core as tl_core
 from triton.language.core import (
@@ -72,9 +72,11 @@ __all__ = [
     "distributed_type",
     "shared_memory_descriptor_type",
     "static_range",
+    "dot",
     "tuple",
     "tuple_type",
     "num_ctas",
+    "local_alloc",
 ]
 
 T = TypeVar("T")
@@ -253,18 +255,27 @@ class shared_memory_descriptor(base_value):
         return str(self.type)
 
     @builtin
-    def load(self, layout, _semantic: GluonSemantic = None) -> tensor:
+    def load(self, layout=None, dtype=None, intrinsic=None, is_constant_offs=None, mma_mode=None,
+             _semantic: GluonSemantic = None) -> tensor:
         """
         Load a tensor from shared memory.
 
         Args:
             layout (DistributedLayout): The destination layout of the tensor.
+            dtype (dtype, optional): Override the loaded element type.
+            intrinsic (bool, optional): Set the local_load intrinsic attribute.
+            is_constant_offs (bool, optional): Set the local_load isConstantOffs attribute.
+            mma_mode (int, optional): Set the local_load mmaMode attribute.
 
         Returns:
             tensor: A Gluon tensor containing the loaded data.
         """
         layout = _unwrap_if_constexpr(layout)
-        return _semantic.shared_load(self, layout)
+        dtype = _unwrap_if_constexpr(dtype)
+        intrinsic = _unwrap_if_constexpr(intrinsic)
+        is_constant_offs = _unwrap_if_constexpr(is_constant_offs)
+        mma_mode = _unwrap_if_constexpr(mma_mode)
+        return _semantic.shared_load(self, layout, dtype, intrinsic, is_constant_offs, mma_mode)
 
     @builtin
     def store(self, value, _semantic: GluonSemantic = None) -> None:
@@ -464,6 +475,33 @@ def allocate_shared_memory(element_ty, shape, layout, value=None, _semantic=None
 
 
 @builtin
+def local_alloc(element_ty, shape, num_buffers=1, layout=None, value=None,
+                _semantic=None) -> shared_memory_descriptor:
+    """
+    Allocate a staged shared-memory buffer without requiring a user-written layout.
+
+    Args:
+        element_ty (dtype): The element data type.
+        shape (Sequence[int]): Logical tile shape excluding the pipeline buffer dimension.
+        num_buffers (int): Number of leading pipeline slots.
+        layout (SharedLayout, optional): Explicit shared layout for debugging/manual kernels.
+        value (tensor, optional): Initial value to copy into shared memory.
+
+    Returns:
+        shared_memory_descriptor: Descriptor for the allocated memory.
+    """
+    element_ty = _unwrap_if_constexpr(element_ty)
+    shape = _unwrap_if_constexpr(shape)
+    shape = [_unwrap_if_constexpr(s) for s in shape]
+    num_buffers = _unwrap_if_constexpr(num_buffers)
+    layout = _unwrap_if_constexpr(layout)
+    if layout is None:
+        layout = SwizzledSharedLayout(1, 1, 1, list(reversed(range(len(shape)))))
+    alloc_shape = [num_buffers] + shape if num_buffers is not None and num_buffers != 1 else shape
+    return _semantic.allocate_shared(element_ty, alloc_shape, layout, value)
+
+
+@builtin
 def set_auto_layout(value, layout, _semantic=None):
     """
     Set a tensor with AutoLayout to a concrete layout
@@ -566,6 +604,20 @@ def to_linear_layout(layout, shape, _semantic=None):
     layout = _unwrap_if_constexpr(layout)
     shape = _unwrap_shape(shape)
     return _semantic.to_linear_layout(layout, shape)
+
+
+@builtin
+def dot(input, other, acc=None, input_precision=None, max_num_imprecise_acc=None, out_dtype=float32, _semantic=None):
+    input_precision = _unwrap_if_constexpr(input_precision)
+    max_num_imprecise_acc = _unwrap_if_constexpr(max_num_imprecise_acc)
+    out_dtype = _unwrap_if_constexpr(out_dtype)
+    acc = _unwrap_if_constexpr(acc)
+
+    result = _semantic.dot(input, other, acc, input_precision=input_precision,
+                           max_num_imprecise_acc=max_num_imprecise_acc, out_dtype=out_dtype)
+    if acc is not None and isinstance(acc.type, distributed_type):
+        return tensor(result.handle, acc.type)
+    return _semantic._wrap_tensor_infer_layout(result)
 
 
 @builtin

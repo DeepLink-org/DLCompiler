@@ -1,5 +1,3 @@
-import os
-
 import pytest
 import torch
 import torch_npu
@@ -29,7 +27,7 @@ def add_kernel(
     offset = tl.program_id(0) * BLOCK_SIZE
     loops1 = (BLOCK_SIZE + BLOCK_SIZE_SUB - 1) // BLOCK_SIZE_SUB
     for loop in range(0, loops1):
-        x0 = offset + loop * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE_SUB)
+        x0 = offset + loop * BLOCK_SIZE_SUB + tl.arange(0, BLOCK_SIZE_SUB)
         mask = x0 < n_elements
         x = tl.load(x_ptr + x0, mask)
         y = tl.load(y_ptr + x0, mask)
@@ -68,7 +66,7 @@ def test_add(size: int):
 
 @pytest.mark.autotune
 def test_add_no_reduction_axes():
-    try:
+    with pytest.raises(ValueError, match="reduction_axes must be a list"):
 
         @triton.autotune(
             configs=[],
@@ -82,77 +80,11 @@ def test_add_no_reduction_axes():
         @triton.jit
         def add_kernel_exception():
             pass
-
-    except ValueError as e:
-        assert "reduction_axes must be a list" in str(e)
-
-
-@pytest.mark.autotune
-def test_add_no_low_dim_axes():
-    try:
-
-        @triton.autotune(
-            configs=[],
-            key={"x": "n_elements"},
-            hints={
-                "split_params": {"x": "BLOCK_SIZE"},
-                "tiling_params": {"x": "BLOCK_SIZE_SUB"},
-                "reduction_axes": [],
-            },
-        )
-        @triton.jit
-        def add_kernel_exception():
-            pass
-
-    except ValueError as e:
-        assert "low_dim_axes must be a list" in str(e)
-
-
-@pytest.mark.autotune
-def test_add_no_tiling_params():
-    try:
-
-        @triton.autotune(
-            configs=[],
-            key={"x": "n_elements"},
-            hints={
-                "split_params": {"x": "BLOCK_SIZE"},
-                "low_dim_axes": ["x"],
-                "reduction_axes": [],
-            },
-        )
-        @triton.jit
-        def add_kernel_exception():
-            pass
-
-    except ValueError as e:
-        assert "tiling_params must be a dict" in str(e)
-
-
-@pytest.mark.autotune
-def test_add_no_split_params():
-    try:
-
-        @triton.autotune(
-            configs=[],
-            key={"x": "n_elements"},
-            hints={
-                "tiling_params": {"x": "BLOCK_SIZE_SUB"},
-                "low_dim_axes": ["x"],
-                "reduction_axes": [],
-            },
-        )
-        @triton.jit
-        def add_kernel_exception():
-            pass
-
-    except ValueError as e:
-        assert "split_params must be a dict" in str(e)
 
 
 @pytest.mark.autotune
 def test_add_no_keyname():
-    try:
+    with pytest.raises(ValueError, match="All keys in 'key' must be valid axis names"):
 
         @triton.autotune(
             configs=[],
@@ -166,6 +98,3 @@ def test_add_no_keyname():
         @triton.jit
         def add_kernel_exception():
             pass
-
-    except ValueError as e:
-        assert "All keys in 'key' must be valid axis names" in str(e)

@@ -48,7 +48,7 @@ def _ascend_autotune_fn():
     """Lazy singleton accessor for ascend ``autotune``."""
     global _ASCEND_AUTOTUNE
     if _ASCEND_AUTOTUNE is None:
-        from .ascend_autotune_runtime.autotuner import autotune as _fn
+        from .ascend_autotune_runtime.ascend_kernel_autotuner import autotune as _fn
 
         _ASCEND_AUTOTUNE = _fn
     return _ASCEND_AUTOTUNE
@@ -58,7 +58,7 @@ def _ascend_max_autotune_fn():
     """Lazy singleton accessor for ascend ``max_autotune``."""
     global _ASCEND_MAX_AUTOTUNE
     if _ASCEND_MAX_AUTOTUNE is None:
-        from .ascend_autotune_runtime.autotuner import max_autotune as _fn
+        from .ascend_autotune_runtime.ascend_kernel_autotuner import max_autotune as _fn
 
         _ASCEND_MAX_AUTOTUNE = _fn
     return _ASCEND_MAX_AUTOTUNE
@@ -68,7 +68,7 @@ def _ascend_max_autotune_fn():
 # Proxies (installed once on import of this module)
 # ------------------------------------------------------------------
 def _autotune_proxy(configs, key, **kwargs):
-    if _is_ascend_backend():
+    if _is_ascend_backend() or kwargs.get("hints") is not None:
         return _ascend_autotune_fn()(configs=configs, key=key, **kwargs)
     from triton.runtime.autotuner import autotune as _stock
 

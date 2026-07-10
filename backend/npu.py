@@ -29,7 +29,6 @@ from .utils import (
     _check_bishengir_api_change,
     _check_bishengir_able_save_ir,
     _is_debug_line_info_disabled,
-    _enable_print_ub_bits,
     _enable_dump_memory_info,
     _enable_msdebug,
     _enable_unpublished_feature,
@@ -515,6 +514,41 @@ def get_libdevice():
     return os.path.join(current, "lib/libdevice.10.bc")
 
 
+def _collect_required_ub_bits_from_memory_info(tmpdir: str, *, debug: bool = False):
+    """Parse compiler memory display JSONs produced in ``tmpdir``.
+
+    This runs only after bishengir-compile succeeds and while ``tmpdir`` still
+    exists. ``memory_info`` is a compiler side artifact, so do not try to infer
+    it from runtime benchmark/profiler data.
+    """
+    from .ascend_autotune_runtime.resource_memory_parser import peak_ub_bits
+
+    peak = 0
+    parsed = []
+    for side in ("aic", "aiv"):
+        path = os.path.join(tmpdir, f"memory_info_{side}.json")
+        if not os.path.isfile(path):
+            parsed.append((side, "missing", None))
+            continue
+        bits = peak_ub_bits(path)
+        parsed.append((side, "ok", bits))
+        if bits is not None and bits > peak:
+            peak = bits
+
+    if debug or os.getenv("TRITON_MEMORY_DISPLAY_DEBUG", "false").lower() in (
+        "true",
+        "1",
+    ):
+        details = ", ".join(f"{side}:{status}:{bits}" for side, status, bits in parsed)
+        print(
+            f"[DEBUG] memory display parsed required_ub_bits={peak or 0}; "
+            f"files={details}",
+            flush=True,
+        )
+
+    return peak
+
+
 # ---------------------------------------------------------------------------
 # Shared NPU compilation orchestration
 # ---------------------------------------------------------------------------
@@ -598,6 +632,7 @@ def _compile_linalg_to_npu_bin(
             ret = subprocess.run(
                 cmd_list,
                 env=env,
+                cwd=tmpdir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=True,
@@ -625,9 +660,13 @@ def _compile_linalg_to_npu_bin(
                 stdout_bytes, stderr_bytes, tmpdir, metadata["hash"]
             )
 
-        match = re.search(r"UB\s+size\s*=\s*(\d+)\s*bits", stdout_str)
-        if match:
-            metadata["required_ub_bits"] = int(match.group(1))
+        # When `--enable-memory-display=true` is in the option list, parse the
+        # compiler memory plan while cwd tmpdir still contains
+        # memory_info_{aic,aiv}.json.
+        if "--enable-memory-display=true" in _compile_option_list:
+            peak = _collect_required_ub_bits_from_memory_info(tmpdir, debug=opt.debug)
+            if peak > 0:
+                metadata["required_ub_bits"] = peak
 
         if not Path(bin_path).exists():
             error_msg = ret.stderr.decode("utf-8") if ret.stderr else ""
@@ -688,8 +727,6 @@ def linalg_to_bin_enable_npu_compile_910_95(linalg: str, metadata, opt):
             opts.append("--enable-sanitizer=true")
         if not _is_debug_line_info_disabled():
             opts.append("--enable-debug-info=true")
-        if _enable_print_ub_bits():
-            opts.append("--enable-print-memory-allocated-size")
 
         enable_hivm_auto_cv_balance = m["enable_hivm_auto_cv_balance"]
         if enable_hivm_auto_cv_balance is not None:
@@ -866,8 +903,6 @@ def linalg_to_bin_enable_npu_compile_A2_A3(linalg: str, metadata, opt):
             opts.append("--enable-sanitizer=true")
         if not _is_debug_line_info_disabled():
             opts.append("--enable-debug-info=true")
-        if _enable_print_ub_bits():
-            opts.append("--enable-print-memory-allocated-size")
         if _enable_dump_memory_info():
             opts.append("--enable-memory-display=true")
         if _enable_msdebug():

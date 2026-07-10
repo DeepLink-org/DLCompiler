@@ -48,6 +48,7 @@
 #include "mlir/Dialect/GPU/TransformOps/GPUTransformOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/IR/ValueBoundsOpInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -88,6 +89,9 @@ using namespace mlir;
 inline void registerDICPDialects(mlir::DialectRegistry &registry) {
   mlir::registerAllPasses();
   mlir::registerLinalgPasses();
+
+  mlir::func::registerAllExtensions(registry);
+  mlir::LLVM::registerInlinerInterface(registry);
 
   // triton-dicp pass registrations
   triton::registerAutoBlockifyPass();

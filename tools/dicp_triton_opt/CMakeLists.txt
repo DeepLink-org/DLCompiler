@@ -9,6 +9,7 @@ llvm_update_compile_flags(dicp_opt)
 target_link_libraries(dicp_opt PRIVATE
   TritonAnalysis
   TritonTransforms
+  MLIRFunctionInterfaces
   ${dialect_libs}
   ${translation_libs}
   ${conversion_libs}

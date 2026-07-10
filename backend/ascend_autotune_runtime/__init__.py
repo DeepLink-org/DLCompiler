@@ -4,7 +4,7 @@ Previously from triton-ascend/third_party/ascend/backend/runtime.
 Adapted for DLCompiler (triton.backends.dicp_triton).
 """
 
-from .autoparser import (
+from .kernel_ast_analyzer import (
     AutoParser,
     AxesKeyParser,
     SplitAxesParser,
@@ -13,13 +13,22 @@ from .autoparser import (
     LowDimsAxesParser,
     PtrNumsParser,
 )
-from .tile_generator import AxisInfo, BlockInfo, KernelMeta, TileGenerator
-from .compile_options import (
+from .tile_candidate_generator import AxisInfo, BlockInfo, KernelMeta, TileGenerator
+from .schedule_profiles import (
     CompileOptionsSpec,
+    CompileFailureRegionSet,
+    classify_compile_failure,
+    compile_profile_to_config,
+    effective_compile_profile_key,
     expand_compile_option_configs,
+    generate_linked_compile_neighbors,
+    get_stage1_probe_configs,
+    get_stage1_probe_profiles,
+    make_stage2_seed_profiles,
     parse_compile_options_hint,
+    validate_compile_profile,
 )
-from .autotuner import (
+from .ascend_kernel_autotuner import (
     AutoTilingTuner,
     autotune,
     max_autotune,
@@ -46,8 +55,17 @@ __all__ = [
     "KernelMeta",
     "TileGenerator",
     "CompileOptionsSpec",
+    "CompileFailureRegionSet",
+    "classify_compile_failure",
+    "compile_profile_to_config",
+    "effective_compile_profile_key",
     "expand_compile_option_configs",
+    "generate_linked_compile_neighbors",
+    "get_stage1_probe_configs",
+    "get_stage1_probe_profiles",
+    "make_stage2_seed_profiles",
     "parse_compile_options_hint",
+    "validate_compile_profile",
     "AutoTilingTuner",
     "autotune",
     "max_autotune",

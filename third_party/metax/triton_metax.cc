@@ -1,3 +1,4 @@
+#include "Gluon/GluonPythonBindings.h"
 #include "TritonMETAXGPUToLLVM/Passes.h"
 #include "TritonMETAXGPUTransforms/Passes.h"
 #include "mlir/Dialect/LLVMIR/MACADialect.h"
@@ -57,6 +58,7 @@ void init_triton_metax_passes_ttgpuir(py::module &&m) {
                      mlir::createTritonMETAXGPUAddPtrOptPass, int, bool, bool);
   ADD_PASS_WRAPPER_1("add_tritonmetaxgpu_optimize_smem_usage",
                      mlir::createTritonMETAXGPUOptimizeSmemUsage, bool);
+  mlir::triton::gpu::metax::gluon::registerPassBindings(m);
 }
 
 void init_triton_metax(py::module &&m) {
@@ -70,6 +72,8 @@ void init_triton_metax(py::module &&m) {
     context.appendDialectRegistry(registry);
     context.loadAllAvailableDialects();
   });
+
+  mlir::triton::gpu::metax::gluon::registerCandidateBundleBinding(m);
 
   m.def(
       "mlir_opt",
@@ -167,8 +171,6 @@ void init_triton_metax(py::module &&m) {
   m.def("translate_llvmir_to_mcfatbin",
         [](const std::string llvmIR, std::string mxcc_arch,
            std::string maca_path, std::string extra_option) -> py::object {
-          py::gil_scoped_release allow_threads;
-
           // compile llvmir with mxcc
           llvm::SmallString<64> fsrc;
           llvm::sys::fs::createTemporaryFile("compile-maca-src", "ll", fsrc);
@@ -224,7 +226,10 @@ void init_triton_metax(py::module &&m) {
             srcRemover.releaseFile(); // don't remove src file for debug
           }
           int err;
-          err = system(cmd.c_str());
+          {
+            py::gil_scoped_release allow_threads;
+            err = system(cmd.c_str());
+          }
           if (err != 0) {
             std::ifstream _log(_flog);
             std::string log(std::istreambuf_iterator<char>(_log), {});

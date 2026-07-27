@@ -6,6 +6,7 @@ try:
 except ImportError:
     enable_dist = False
 from triton import knobs
+from . import gluon_layout
 
 from dataclasses import dataclass, field
 import functools
@@ -13,7 +14,6 @@ from typing import Any, Dict, Tuple, Optional
 from types import ModuleType
 import hashlib
 import re
-import tempfile
 import signal
 import os
 import subprocess
@@ -308,24 +308,20 @@ class MACABackend(BaseBackend):
         pm.run(mod, 'make_ttgir')
         return mod
 
+    def _finalize_standalone_gluon_ttgir(
+        self, mod, metadata, opt, capability
+    ):
+        return gluon_layout.finalize_standalone_ttgir(mod, metadata)
+
     def gluon_to_ttgir(self, src, metadata, options, capability):
-        mod = src
-        pm = ir.pass_manager(mod.context)
-        pm.enable_debug()
-
-        passes.gluon.add_inliner(pm)
-        passes.gluon.add_resolve_auto_encodings(pm)
-        passes.common.add_sccp(pm)
-        passes.ttir.add_loop_aware_cse(pm)
-        passes.gluon.add_canonicalizer(pm)
-        passes.ttgpuir.add_combine_tensor_select_and_if(pm)
-
-        pm.run(mod, 'gluon_to_ttgir')
-        metadata["tensordesc_meta"] = mod.get_tensordesc_metadata()
-        return mod
+        return gluon_layout.build_candidate_bundle(
+            src, metadata, options, capability
+        )
 
     @staticmethod
     def make_mlir(src, metadata, options, capability):
+        gluon_layout.record_variant_identity(src, metadata)
+
         # warp-specialization mutates num_warps
         num_warp_groups = src.get_int_attr("triton_gpu.num-warp-groups-per-cta")
         if num_warp_groups is not None:
@@ -334,9 +330,20 @@ class MACABackend(BaseBackend):
 
         # TritonGPU -> LLVM-IR (MLIR)
         pm = ir.pass_manager(mod.context)
-        pm.enable_debug()
+        # A standalone layout candidate is compiled in a killable worker and
+        # may fail at any downstream lowering stage. Avoid materializing a
+        # complete MLIR reproducer for every rejected candidate unless the
+        # developer explicitly requests it; the worker reports a bounded
+        # digest-qualified diagnostic through the runtime protocol.
+        if gluon_layout.should_enable_downstream_debug(metadata):
+            pm.enable_debug()
         # metax.passes.ttgpuir.add_decompose_unsupported_conversions(pm)
-        passes.ttgpuir.add_combine_tensor_select_and_if(pm)
+        # Gluon already runs this combine immediately before its final
+        # GVM/shared synchronization analysis.  Re-running it here could
+        # invalidate that analysis.  Preserve the historical behavior for
+        # every non-Gluon TTGIR module.
+        if gluon_layout.needs_generic_tensor_select_combine(src):
+            passes.ttgpuir.add_combine_tensor_select_and_if(pm)
         passes.convert.add_scf_to_cf(pm)
         passes.convert.add_index_to_llvmir(pm)
         passes.ttgpuir.add_allocate_shared_memory(pm)
@@ -374,7 +381,10 @@ class MACABackend(BaseBackend):
             maca_path = os.environ.get('MACA_PATH')
             assert maca_path, "Not found MACA_PATH"
             llir = metax.link_extern_libs(llir, paths, maca_path)
-        metadata["name"] = maca_get_kernel_name(llir)
+        if gluon_layout.has_variant_identity(metadata):
+            metadata["name"] = gluon_layout.get_single_kernel_name(llir)
+        else:
+            metadata["name"] = maca_get_kernel_name(llir)
         return llir
 
     @staticmethod
@@ -453,6 +463,12 @@ class MACABackend(BaseBackend):
             stages["ttgir"] = lambda src, metadata: self.make_ttgir(src, metadata, options, capability)
         elif language == Language.GLUON:
             stages["ttgir"] = lambda src, metadata: self.gluon_to_ttgir(src, metadata, options, capability)
+        # Cached candidate sources must already be closed by the C++ bundle.
+        # This stage rejects legacy pre-finalization sources and otherwise
+        # leaves ordinary TTGIR and finalized Gluon candidates unchanged.
+        stages["gluon_ttgir"] = lambda src, metadata: self._finalize_standalone_gluon_ttgir(
+            src, metadata, options, capability
+        )
         stages["mlir"] = lambda src, metadata: self.make_mlir(src, metadata, options, capability)
         stages["llir"] = lambda src, metadata: self.make_llir(src, metadata, options, capability)
         stages["mcfatbin"] = lambda src, metadata: self.make_mcfatbin(src, metadata, options, capability)

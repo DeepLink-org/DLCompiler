@@ -1,9 +1,12 @@
 from __future__ import annotations
-from triton.compiler.compiler import ASTSource
-from triton.backends.compiler import Language
-from triton.runtime.jit import JITFunction, constexpr_function
-from typing import TypeVar, Optional, Callable, Iterable, Union
+from typing import Callable, Iterable, Optional, TypeVar, Union
+
 from triton._C.libtriton import ir
+from triton.backends.compiler import Language
+from triton.compiler.compiler import ASTSource
+from triton.runtime.jit import JITFunction, constexpr_function
+
+from ._layout_autotune_runtime import GluonLayoutAutotuneRuntimeMixin
 
 T = TypeVar("T")
 
@@ -37,14 +40,11 @@ class GluonASTSource(ASTSource):
         if is_cuda and options.maxnreg is not None:
             module.set_attr("ttg.maxnreg", builder.get_int32_attr(options.maxnreg))
 
-        module = ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
-                             module_map=module_map, module=module)
-        if "#gluon.auto_encoding" not in module.str():
-            module.set_attr("ttg.gluon.manual-layouts", builder.get_int32_attr(1))
-        return module
+        return ast_to_ttir(self.fn, self, context=context, options=options, codegen_fns=codegen_fns,
+                           module_map=module_map, module=module)
 
 
-class GluonJITFunction(JITFunction[T]):
+class GluonJITFunction(GluonLayoutAutotuneRuntimeMixin, JITFunction[T]):
 
     def create_binder(self):
         result = super().create_binder()
@@ -65,6 +65,7 @@ def jit(
     do_not_specialize_on_alignment: Optional[Iterable[int | str]] = None,
     debug: Optional[bool] = None,
     noinline: Optional[bool] = None,
+    layout_autotune: bool = True,
 ) -> Union[GluonJITFunction[T], Callable[[T], JITFunction[T]]]:
     """
     Decorator for JIT-compiling a function using the Triton compiler.
@@ -82,6 +83,10 @@ def jit(
 
     :param fn: the function to be jit-compiled
     :type fn: Callable
+    :param layout_autotune: whether to compile and benchmark compiler-generated
+        Gluon layout alternatives. When disabled, the mandatory compiler
+        fallback is used and Triton's ordinary autotune remains available.
+    :type layout_autotune: bool
     """
 
     def decorator(fn: T) -> JITFunction[T]:
@@ -95,6 +100,7 @@ def jit(
             noinline=noinline,
             repr=repr,
             launch_metadata=launch_metadata,
+            layout_autotune=layout_autotune,
         )
 
     if fn is not None:

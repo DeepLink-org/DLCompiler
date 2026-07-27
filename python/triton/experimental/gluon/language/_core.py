@@ -349,14 +349,16 @@ class shared_memory_descriptor(base_value):
         return _semantic.memdesc_reshape(self, shape)
 
     @builtin
-    def _reinterpret(self, dtype, shape, layout, _semantic: GluonSemantic = None) -> shared_memory_descriptor:
+    def _reinterpret(self, dtype, shape, layout=None, _semantic: GluonSemantic = None) -> shared_memory_descriptor:
         """
         Reinterpret the shared memory descriptor as a different dtype, shape, or layout.
 
         Args:
             dtype (dtype): The new data type.
             shape (List[int]): The new shape.
-            layout (SharedLayout): The new layout.
+            layout (SharedLayout, optional): Explicit shared layout. When
+                omitted, the reinterpret result starts an independent
+                compiler-managed shared-layout family.
 
         Returns:
             shared_memory_descriptor: Descriptor with updated type and layout.
@@ -364,8 +366,20 @@ class shared_memory_descriptor(base_value):
         dtype = _unwrap_if_constexpr(dtype)
         shape = [_unwrap_if_constexpr(s) for s in shape]
         layout = _unwrap_if_constexpr(layout)
+        uses_default_layout = layout is None
+        if uses_default_layout:
+            source_layout_rank = _shared_layout_rank(self.layout)
+            layout_rank = (
+                source_layout_rank
+                if source_layout_rank in (len(shape), len(shape) - 1)
+                else len(shape)
+            )
+            layout = _default_shared_layout(layout_rank)
 
-        return _semantic.memdesc_reinterpret(self, dtype, shape, layout)
+        return _semantic.memdesc_reinterpret(
+            self, dtype, shape, layout,
+            uses_default_layout=uses_default_layout,
+        )
 
     @builtin
     def _keep_alive(self, _semantic: GluonSemantic = None) -> None:
@@ -474,6 +488,23 @@ def allocate_shared_memory(element_ty, shape, layout, value=None, _semantic=None
     return _semantic.allocate_shared(element_ty, shape, layout, value)
 
 
+def _shared_layout_rank(layout):
+    """Read only the rank needed to make a placeholder type legal."""
+    rank = getattr(layout, "rank", None)
+    if rank is not None:
+        return int(rank)
+    dimensions = getattr(layout, "order", None)
+    if dimensions is None:
+        dimensions = getattr(layout, "shape", None)
+    if dimensions is None:
+        dimensions = layout.offset_bases[0]
+    return len(dimensions)
+
+
+def _default_shared_layout(rank):
+    return SwizzledSharedLayout(1, 1, 1, list(reversed(range(rank))))
+
+
 @builtin
 def local_alloc(element_ty, shape, num_buffers=1, layout=None, value=None,
                 _semantic=None) -> shared_memory_descriptor:
@@ -495,10 +526,12 @@ def local_alloc(element_ty, shape, num_buffers=1, layout=None, value=None,
     shape = [_unwrap_if_constexpr(s) for s in shape]
     num_buffers = _unwrap_if_constexpr(num_buffers)
     layout = _unwrap_if_constexpr(layout)
-    if layout is None:
-        layout = SwizzledSharedLayout(1, 1, 1, list(reversed(range(len(shape)))))
+    uses_default_layout = layout is None
+    if uses_default_layout:
+        layout = _default_shared_layout(len(shape))
     alloc_shape = [num_buffers] + shape if num_buffers is not None and num_buffers != 1 else shape
-    return _semantic.allocate_shared(element_ty, alloc_shape, layout, value)
+    return _semantic.allocate_shared(element_ty, alloc_shape, layout, value,
+                                     uses_default_layout=uses_default_layout)
 
 
 @builtin

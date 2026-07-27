@@ -21,6 +21,19 @@
 
 namespace mlir::triton::gluon {
 
+bool hasSameTensorEncodingRelation(Operation *op) {
+  return op &&
+         (op->hasTrait<mlir::OpTrait::SameOperandsAndResultEncoding>() ||
+          op->hasTrait<mlir::OpTrait::Elementwise>());
+}
+
+bool hasSameLoadStoreTensorEncodingRelation(Operation *op) {
+  return op &&
+         (op->hasTrait<mlir::OpTrait::SameLoadStoreOperandsEncoding>() ||
+          op->hasTrait<
+              mlir::OpTrait::SameLoadStoreOperandsAndResultEncoding>());
+}
+
 namespace {
 struct LayoutInfo {
   Attribute encoding;
@@ -78,48 +91,7 @@ LayoutInfo combineInfo(LayoutInfo lhs, LayoutInfo rhs, Operation *op,
 
 bool encodingsMayVary(Operation *op) {
   return isa<triton::JoinOp, triton::SplitOp, triton::ReshapeOp, triton::CatOp,
-             triton::TransOp, triton::AddPtrOp, ExtractSliceOp, InsertSliceOp>(
-      op);
-}
-
-Attribute inferGluonDstEncoding(Operation *op, Attribute encoding) {
-  if (isa<InsertSliceOp>(op))
-    return encoding;
-  return {};
-}
-
-Attribute inferGluonSrcEncoding(Operation *op, Attribute encoding) {
-  if (isa<ExtractSliceOp>(op))
-    return encoding;
-  if (isa<InsertSliceOp>(op))
-    return encoding;
-  return {};
-}
-
-Attribute inferExtractResultEncoding(ExtractSliceOp,
-                                     Attribute sourceEncoding) {
-  return sourceEncoding;
-}
-
-Attribute inferInsertSubEncoding(InsertSliceOp, Attribute fullEncoding) {
-  return fullEncoding;
-}
-
-Attribute inferExtractSourceEncoding(ExtractSliceOp op,
-                                     Attribute resultEncoding) {
-  auto sourceTy = dyn_cast<RankedTensorType>(op.getSource().getType());
-  if (!sourceTy || !resultEncoding)
-    return {};
-
-  if (isa<triton::gpu::BlockedEncodingAttr>(resultEncoding))
-    return resultEncoding;
-
-  return resultEncoding;
-}
-
-bool hasSameOperandResultEncodingTrait(Operation *op) {
-  return op->hasTrait<mlir::OpTrait::SameOperandsAndResultEncoding>() ||
-         isa<triton::AddPtrOp>(op);
+             triton::TransOp, triton::AddPtrOp>(op);
 }
 
 SmallVector<Value> collectSameEncodingAutoTensors(
@@ -136,10 +108,16 @@ SmallVector<Value> collectSameEncodingAutoTensors(
 
 LogicalResult
 updateEncoding(ArrayRef<Value> values, LayoutInfo info, FuncOp *func,
+               llvm::function_ref<bool(Type)> typeCheck,
                llvm::MapVector<Value, LayoutInfo> &valueToEncoding,
                llvm::PriorityWorklist<Value> &worklist,
                llvm::MapVector<Attribute, uint64_t> &hashMemo) {
   for (auto value : values) {
+    // The caller's type predicate defines the placeholder family being
+    // resolved. Concrete values and other placeholder families are explicit
+    // propagation boundaries.
+    if (!typeCheck(value.getType()))
+      continue;
     auto [it, inserted] = valueToEncoding.insert({value, info});
     if (!inserted) {
       auto defOp = value.getDefiningOp();
@@ -164,13 +142,6 @@ updateEncoding(ArrayRef<Value> values, LayoutInfo info, FuncOp *func,
 LogicalResult inferLayout(
     FuncOp func, llvm::function_ref<bool(Type)> typeCheck,
     const llvm::SmallVector<std::pair<Value, Attribute>> &seedEncodings) {
-  return inferLayout(func, typeCheck, seedEncodings, LayoutInferenceHooks{});
-}
-
-LogicalResult inferLayout(
-    FuncOp func, llvm::function_ref<bool(Type)> typeCheck,
-    const llvm::SmallVector<std::pair<Value, Attribute>> &seedEncodings,
-    const LayoutInferenceHooks &hooks) {
   // Disallow auto encoding accross function call boundaries
   for (auto argTy : func.getArgumentTypes()) {
     if (typeCheck(argTy)) {
@@ -190,7 +161,7 @@ LogicalResult inferLayout(
   llvm::MapVector<Attribute, uint64_t> hashMemo;
   for (auto &[value, encoding] : seedEncodings) {
     if (failed(updateEncoding({value}, LayoutInfo{encoding, false}, &func,
-                              valueToEncoding, worklist, hashMemo)))
+                              typeCheck, valueToEncoding, worklist, hashMemo)))
       return failure();
   }
 
@@ -206,51 +177,30 @@ LogicalResult inferLayout(
       if (isa<scf::ForOp, scf::WhileOp>(op)) {
         auto offset = 3 * isa<scf::ForOp>(op);
         auto tiedArgs = getTiedArgs(op, use.getOperandNumber() - offset);
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
       } else if (isa<scf::YieldOp>(op)) {
         auto tiedArgs = getTiedArgs(op, use.getOperandNumber());
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
-      } else if (hasSameOperandResultEncodingTrait(op)) {
+      } else if (auto dot = dyn_cast<triton::DotOpInterface>(op);
+                 dot && use.getOperandNumber() == 2) {
+        // Dot A/B have independent dot-operand layouts. ODS ties only the
+        // accumulator C and result D, so propagate exactly that local
+        // relation instead of treating the whole op as same-encoding.
+        if (failed(updateEncoding({dot.getD()}, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
+          return failure();
+      } else if (hasSameTensorEncodingRelation(op) ||
+                 hasSameLoadStoreTensorEncodingRelation(op)) {
         bool mayVary = info.mayVary || encodingsMayVary(op);
         LayoutInfo tiedInfo{info.encoding, mayVary};
         auto tiedValues = collectSameEncodingAutoTensors(op, typeCheck);
-        if (failed(updateEncoding(tiedValues, tiedInfo, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedValues, tiedInfo, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
-      } else if (auto extractOp = dyn_cast<ExtractSliceOp>(op)) {
-        auto dstEnc =
-            hooks.inferExtractResult
-                ? hooks.inferExtractResult(extractOp, info.encoding)
-                : inferExtractResultEncoding(extractOp, info.encoding);
-        if (dstEnc) {
-          LayoutInfo dstInfo{dstEnc, true};
-          if (failed(updateEncoding({extractOp.getResult()}, dstInfo, &func,
-                                    valueToEncoding, worklist, hashMemo)))
-            return failure();
-        }
-      } else if (auto insertOp = dyn_cast<InsertSliceOp>(op)) {
-        if (use.getOperandNumber() == 0) {
-          LayoutInfo resultInfo{info.encoding, info.mayVary};
-          if (failed(updateEncoding({insertOp.getResult()}, resultInfo, &func,
-                                    valueToEncoding, worklist, hashMemo)))
-            return failure();
-
-          auto subEnc =
-              hooks.inferInsertSub
-                  ? hooks.inferInsertSub(insertOp, info.encoding)
-                  : inferInsertSubEncoding(insertOp, info.encoding);
-          if (subEnc) {
-            LayoutInfo insertInfo{subEnc, true};
-            if (failed(updateEncoding({insertOp.getUpdate()}, insertInfo,
-                                      &func, valueToEncoding, worklist,
-                                      hashMemo)))
-              return failure();
-          }
-        }
       } else {
         llvm::SmallVector<Value> tensorResults;
         for (Value result : op->getResults())
@@ -259,13 +209,11 @@ LogicalResult inferLayout(
         if (tensorResults.empty())
           continue;
 
-        auto dstEnc = inferGluonDstEncoding(op, info.encoding);
-        if (!dstEnc)
-          dstEnc = inferDstEncoding(op, info.encoding);
+        auto dstEnc = inferDstEncoding(op, info.encoding);
         if (dstEnc) {
           bool mayVary = info.mayVary || encodingsMayVary(op);
           LayoutInfo dstInfo{dstEnc, mayVary};
-          if (failed(updateEncoding(tensorResults, dstInfo, &func,
+          if (failed(updateEncoding(tensorResults, dstInfo, &func, typeCheck,
                                     valueToEncoding, worklist, hashMemo)))
             return failure();
         }
@@ -277,40 +225,15 @@ LogicalResult inferLayout(
       auto definingOp = opResult.getOwner();
       if (isa<scf::ForOp, scf::WhileOp, scf::IfOp>(definingOp)) {
         auto tiedArgs = getTiedArgs(definingOp, opResult.getResultNumber());
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
-      } else if (auto extractOp = dyn_cast<ExtractSliceOp>(definingOp)) {
-        auto srcEnc = hooks.inferExtractSource
-                          ? hooks.inferExtractSource(extractOp, info.encoding)
-                          : inferExtractSourceEncoding(extractOp,
-                                                       info.encoding);
-        if (srcEnc) {
-          LayoutInfo srcInfo{srcEnc, true};
-          if (failed(updateEncoding({extractOp.getSource()}, srcInfo, &func,
-                                    valueToEncoding, worklist, hashMemo)))
-            return failure();
-        }
-      } else if (auto insertOp = dyn_cast<InsertSliceOp>(definingOp)) {
-        LayoutInfo insertedInfo{info.encoding, info.mayVary};
-        if (failed(updateEncoding({insertOp.getBase()}, insertedInfo,
-                                  &func, valueToEncoding, worklist, hashMemo)))
+      } else if (auto dot = dyn_cast<triton::DotOpInterface>(definingOp)) {
+        if (failed(updateEncoding({dot->getOperand(2)}, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
-
-        auto subEnc =
-            hooks.inferInsertSub
-                ? hooks.inferInsertSub(insertOp, info.encoding)
-                : inferInsertSubEncoding(insertOp, info.encoding);
-        if (subEnc) {
-          LayoutInfo insertInfo{subEnc, true};
-          if (failed(updateEncoding({insertOp.getUpdate()}, insertInfo, &func,
-                                    valueToEncoding, worklist, hashMemo)))
-            return failure();
-        }
       } else {
-        auto srcEncoding = inferGluonSrcEncoding(definingOp, info.encoding);
-        if (!srcEncoding)
-          srcEncoding = inferSrcEncoding(definingOp, info.encoding);
+        auto srcEncoding = inferSrcEncoding(definingOp, info.encoding);
         if (srcEncoding) {
           bool mayVary = info.mayVary || encodingsMayVary(definingOp);
           LayoutInfo srcInfo{srcEncoding, mayVary};
@@ -319,7 +242,7 @@ LogicalResult inferLayout(
             if (isa<RankedTensorType>(operand.getType()))
               tensorOperands.push_back(operand);
 
-          if (failed(updateEncoding(tensorOperands, srcInfo, &func,
+          if (failed(updateEncoding(tensorOperands, srcInfo, &func, typeCheck,
                                     valueToEncoding, worklist, hashMemo)))
             return failure();
         }
@@ -329,8 +252,8 @@ LogicalResult inferLayout(
       if (isa<scf::ForOp, scf::WhileOp>(parentOp)) {
         auto offset = isa<scf::ForOp>(parentOp);
         auto tiedArgs = getTiedArgs(parentOp, blockArg.getArgNumber() - offset);
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
       }
     }

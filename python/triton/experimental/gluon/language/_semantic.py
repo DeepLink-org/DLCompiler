@@ -247,7 +247,7 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         handle = self.builder.create_convert_layout(ret_ty_ir, value.handle)
         return ttgl.tensor(handle, ret_ty)
 
-    def allocate_shared(self, element_ty, shape, layout, value):
+    def allocate_shared(self, element_ty, shape, layout, value, uses_default_layout=False):
         _check(isinstance(element_ty, ttgl.dtype), lambda: f"expected 'element_ty' to be a dtype but got {element_ty}")
         _check(_is_int_list(shape), lambda: f"all elements of 'shape' must be integers but got {shape}")
         _check(isinstance(layout, ttgl.SharedLayout),
@@ -257,6 +257,8 @@ class GluonSemantic(TritonSemantic[TensorTy]):
             handle = self.builder.create_local_alloc(ty.to_ir(self.builder), value.handle)
         else:
             handle = self.builder.create_local_alloc(ty.to_ir(self.builder))
+        if uses_default_layout:
+            handle.set_attr("ttg.gluon.default-shared-layout", self.builder.get_unit_attr())
         return ttgl.shared_memory_descriptor(handle, element_ty, shape, layout, shape)
 
     def shared_load(self, mem_desc, layout, dtype=None, intrinsic=None, is_constant_offs=None, mma_mode=None):
@@ -399,13 +401,15 @@ class GluonSemantic(TritonSemantic[TensorTy]):
             layout=layout,
         )
 
-    def memdesc_reinterpret(self, mem_desc, dtype, shape, layout):
+    def memdesc_reinterpret(self, mem_desc, dtype, shape, layout, uses_default_layout=False):
         _check(isinstance(dtype, ttgl.dtype), lambda: f"expected 'dtype' to be a dtype but got {dtype}")
         _check(_is_int_list(shape), lambda: f"all elements of 'shape' must be integers but got {shape}")
         _check(isinstance(layout, ttgl.SharedLayout),
                lambda: f"expected 'layout' to be a SharedLayout but got {layout}")
         ty = ttgl.shared_memory_descriptor_type(dtype, shape, layout, shape)
         handle = self.builder.create_memdesc_reinterpret(ty.to_ir(self.builder), mem_desc.handle)
+        if uses_default_layout:
+            handle.set_attr("ttg.gluon.default-shared-layout", self.builder.get_unit_attr())
         return ttgl.shared_memory_descriptor(handle, **ty.__dict__)
 
     def wrap_tensor(self, x, scalar_ty, ret_shape, layout):

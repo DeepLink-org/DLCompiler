@@ -67,7 +67,8 @@ def Gluon_ReleaseLayoutOp : Gluon_Op<"release_layout",
   let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
 }
 
-def Gluon_ExtractSliceOp : Gluon_Op<"extract_slice", [Pure]> {
+def Gluon_ExtractSliceOp
+    : Gluon_Op<"extract_slice", [Pure, SameOperandsAndResultEncoding]> {
   let summary = "layout-parametric register tensor slice glue op";
   let description = [{
     Gluon dataflow-level register slice. This op carries element-offset slice
@@ -84,7 +85,8 @@ def Gluon_ExtractSliceOp : Gluon_Op<"extract_slice", [Pure]> {
   let results = (outs AnyTypeOf<[TT_TensorPtr, TT_Tensor]>:$result);
 }
 
-def Gluon_InsertSliceOp : Gluon_Op<"insert_slice", [Pure]> {
+def Gluon_InsertSliceOp
+    : Gluon_Op<"insert_slice", [Pure, SameOperandsAndResultEncoding]> {
   let summary = "layout-parametric register tensor slice update glue op";
   let description = [{
     Gluon dataflow-level register slice update. This op carries element-offset

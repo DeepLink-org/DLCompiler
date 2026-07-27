@@ -393,6 +393,7 @@ def shared_memory_cast_kernel():
     smem.reshape((128, 64))
 
     smem._reinterpret(ttgl.int8, [1024], ttgl.SwizzledSharedLayout(1, 1, 1, [0]))
+    smem._reinterpret(ttgl.int8, [1024])
 
 
 @pytest.mark.parametrize("target", ALL_TARGETS)
@@ -416,9 +417,38 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %3 = ttg.local_alloc : () -> !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable>
     %4 = ttg.memdesc_reshape %3 : !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable> -> !ttg.memdesc<128x64xf16, #shared3, #smem, mutable>
     %5 = ttg.memdesc_reinterpret %3 : !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable> -> !ttg.memdesc<1024xi8, #shared4, #smem, mutable>
+    %6 = ttg.memdesc_reinterpret %3 {"ttg.gluon.default-shared-layout"} : !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable> -> !ttg.memdesc<1024xi8, #shared4, #smem, mutable>
     tt.return
   }
   tt.func private @"test_frontend.anchor_noinline__MDi8S128_256SLNVMMA_64_8_True_False__NVMMALAS[128, 256]ASMD__"(%arg0: !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>) attributes {noinline = true} {
+    tt.return
+  }
+}
+""")
+
+
+@gluon.jit
+def compiler_managed_reinterpret_index_kernel():
+    storage_layout: ttgl.constexpr = ttgl.SwizzledSharedLayout(16, 4, 4, [1, 0])
+    arena = ttgl.allocate_shared_memory(ttgl.float16, [2, 128, 128], storage_layout)
+    epoch = arena._reinterpret(ttgl.float16, [8, 32, 128])
+    epoch.index(0)
+
+
+@pytest.mark.parametrize("target", ALL_TARGETS)
+def test_compiler_managed_reinterpret_index(target):
+    mod = run_parser(compiler_managed_reinterpret_index_kernel, target=target)
+    expecttest.assert_expected_inline(
+        anonymize_ir(mod.str_nodebug()), """\
+#shared = #ttg.swizzled_shared<{vec = 16, perPhase = 4, maxPhase = 4, order = [1, 0]}>
+#shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0]}>
+#smem = #ttg.shared_memory
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @compiler_managed_reinterpret_index_kernel() attributes {noinline = false} {
+    %0 = ttg.local_alloc : () -> !ttg.memdesc<2x128x128xf16, #shared, #smem, mutable>
+    %1 = ttg.memdesc_reinterpret %0 {"ttg.gluon.default-shared-layout"} : !ttg.memdesc<2x128x128xf16, #shared, #smem, mutable> -> !ttg.memdesc<8x32x128xf16, #shared1, #smem, mutable>
+    %c0_i32 = arith.constant 0 : i32
+    %2 = ttg.memdesc_index %1[%c0_i32] : !ttg.memdesc<8x32x128xf16, #shared1, #smem, mutable> -> !ttg.memdesc<32x128xf16, #shared1, #smem, mutable>
     tt.return
   }
 }

@@ -11,6 +11,7 @@
 #include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
 #include "triton/Analysis/Utility.h"
 #include "triton/Dialect/Gluon/IR/Dialect.h"
+#include "triton/Dialect/Gluon/metax/Transforms/Passes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -127,6 +128,7 @@ struct GluonLayouts {
   py::handle SliceLayout;
   py::handle DistributedLinearLayout;
   py::handle DotOperandLayout;
+  py::handle MACAMmaLayout;
   py::handle NVMMADistributedLayout;
   py::handle TensorMemoryScalesLayout;
   py::handle TensorMemoryLayout;
@@ -151,6 +153,7 @@ struct GluonLayouts {
     DistributedLinearLayout =
         py::object(layouts.attr("DistributedLinearLayout")).release();
     DotOperandLayout = py::object(layouts.attr("DotOperandLayout")).release();
+    MACAMmaLayout = py::object(layouts.attr("MACAMmaLayout")).release();
     NVMMADistributedLayout =
         py::object(layouts.attr("NVMMADistributedLayout")).release();
     TensorMemoryScalesLayout =
@@ -175,10 +178,9 @@ static bool isConvertLayoutTrivial(RankedTensorType dstTy, Value value) {
   auto srcTy = cast<RankedTensorType>(value.getType());
   if (srcTy.getEncoding() == dstTy.getEncoding())
     return true;
-  // Fail safe on unresolved layouts.
-  if (isa<gluon::AutoEncodingAttr>(srcTy.getEncoding()))
-    return false;
-  if (isa<gluon::AutoEncodingAttr>(dstTy.getEncoding()))
+  if (!srcTy.getEncoding() || !dstTy.getEncoding() ||
+      isa<gluon::AutoEncodingAttr>(srcTy.getEncoding()) ||
+      isa<gluon::AutoEncodingAttr>(dstTy.getEncoding()))
     return false;
 
   // Check concrete layouts.
@@ -193,6 +195,8 @@ std::vector<llvm::ValueTypeFromRangeType<R>> toStdVector(R &&range) {
 }
 
 py::object layoutToGluon(Attribute layout) {
+  if (!layout)
+    return py::none();
   static GluonLayouts layouts;
   if (auto blocked = dyn_cast<ttg::BlockedEncodingAttr>(layout)) {
     auto cgaBases = getCgaLayoutBases(blocked.getCTALayout());
@@ -223,6 +227,13 @@ py::object layoutToGluon(Attribute layout) {
         std::vector<unsigned>{mma.getVersionMajor(), mma.getVersionMinor()},
         toStdVector(mma.getWarpsPerCTA()), toStdVector(mma.getInstrShape()),
         cgaBases);
+  } else if (auto mma = dyn_cast<ttg::MACAMmaEncodingAttr>(layout)) {
+    auto cgaBases = getCgaLayoutBases(mma.getCTALayout());
+    return layouts.MACAMmaLayout(
+        mma.getVersionMajor(), mma.getVersionMinor(),
+        toStdVector(mma.getWarpsPerCTA()), toStdVector(mma.getElementsMNK()),
+        mma.getColMajor(), mma.getIsATrans(), mma.getIsBTrans(),
+        toStdVector(mma.getElementsStride()), cgaBases);
   } else if (auto nvmma = dyn_cast<ttg::NVMMASharedEncodingAttr>(layout)) {
     auto ctaLayout = nvmma.getCTALayout();
     auto cgaBases = getCgaLayoutBases(ctaLayout);
@@ -244,9 +255,9 @@ py::object layoutToGluon(Attribute layout) {
     return layouts.SharedLinearLayout(
         toStdVector(ll.getBases().lookup(kOffset)),
         toStdVector(ll.getBases().lookup(kBlock)), sharedLl.getAlignment());
-  } else if (auto autoEnc = dyn_cast<gluon::AutoEncodingAttr>(layout)) {
+  } else if (isa<gluon::AutoEncodingAttr>(layout)) {
     return layouts.AutoLayout();
-  } else if (auto autoEnc = dyn_cast<gluon::CoalescedEncodingAttr>(layout)) {
+  } else if (isa<gluon::CoalescedEncodingAttr>(layout)) {
     return layouts.CoalescedLayout();
   } else if (auto amdMfma = dyn_cast<ttg::AMDMfmaEncodingAttr>(layout)) {
     auto cgaBases = getCgaLayoutBases(amdMfma.getCTALayout());
@@ -299,15 +310,52 @@ template <typename CondT> static void check(CondT &&cond, const char *msg) {
 void init_gluon_ir(py::module &&m) {
   using ret = py::return_value_policy;
 
+  m.def("has_explicit_register_layout", [](ModuleOp module) {
+    bool found = false;
+    module.walk([&](Operation *op) {
+      auto hasEncoding = [](Type type) {
+        auto tensorType = dyn_cast<RankedTensorType>(type);
+        return tensorType && tensorType.getEncoding();
+      };
+      if (llvm::any_of(op->getOperandTypes(), hasEncoding) ||
+          llvm::any_of(op->getResultTypes(), hasEncoding)) {
+        found = true;
+        return WalkResult::interrupt();
+      }
+      for (Region &region : op->getRegions()) {
+        for (Block &block : region) {
+          if (llvm::any_of(block.getArguments(), [&](BlockArgument argument) {
+                return hasEncoding(argument.getType());
+              })) {
+            found = true;
+            return WalkResult::interrupt();
+          }
+        }
+      }
+      return WalkResult::advance();
+    });
+    return found;
+  });
+
+  m.def("export_metax_layout_candidates", [](ModuleOp module) {
+    auto variants =
+        gluon::layout_autotune::exportLayoutCandidateModules(module);
+    if (failed(variants))
+      throw std::runtime_error("failed to export Gluon layout candidates");
+    return std::vector<std::pair<std::string, std::string>>(
+        variants->begin(), variants->end());
+  });
+
   py::class_<GluonOpBuilder, TritonOpBuilder>(
       m, "GluonOpBuilder", py::module_local(), py::dynamic_attr())
       .def(py::init<MLIRContext *>())
       .def("get_op_builder", &GluonOpBuilder::getBuilder, ret::reference)
       .def("get_distributed_ty",
            [](GluonOpBuilder &self, Type &elementType,
-              std::vector<int64_t> &shape, Attribute layout) -> Type {
+              std::vector<int64_t> &shape,
+              std::optional<Attribute> layout) -> Type {
              return self.getChecked<RankedTensorType>(shape, elementType,
-                                                      layout);
+                                                      layout.value_or(Attribute()));
            })
       .def("get_shared_mem_desc_ty",
            [](GluonOpBuilder &self, Type &elementType,
@@ -395,6 +443,20 @@ void init_gluon_ir(py::module &&m) {
              return self.getChecked<ttg::NvidiaMmaEncodingAttr>(
                  ctx, version[0], version[1], warpsPerCta, ctaLayout,
                  instrShape);
+           })
+      .def("get_maca_mma_layout",
+           [](GluonOpBuilder &self, unsigned versionMajor,
+              unsigned versionMinor, std::vector<unsigned> &warpsPerCta,
+              std::vector<unsigned> &elementsMNK, unsigned colMajor,
+              bool isATrans, bool isBTrans,
+              std::vector<unsigned> &elementsStride,
+              std::vector<std::vector<int32_t>> &cgaBases) -> Attribute {
+             auto ctx = self.getContext();
+             auto ctaLayout =
+                 buildCtaLayoutAttr(ctx, cgaBases, warpsPerCta.size());
+             return self.getChecked<ttg::MACAMmaEncodingAttr>(
+                 ctx, versionMajor, versionMinor, warpsPerCta, elementsMNK,
+                 colMajor, ctaLayout, isATrans, isBTrans, elementsStride);
            })
       .def("get_amd_mfma_layout",
            [](GluonOpBuilder &self, unsigned version,
@@ -504,7 +566,8 @@ void init_gluon_ir(py::module &&m) {
       .def("get_gluon_layout_from_tensor",
            [](GluonOpBuilder &self, Value tensor) -> py::object {
              auto ty = dyn_cast<RankedTensorType>(tensor.getType());
-             check(ty.getEncoding(), "expected a tensor with an encoding");
+             if (!ty.getEncoding())
+               return py::none();
              return layoutToGluon(ty.getEncoding());
            })
       .def("get_gluon_layout_from_memdesc",
@@ -512,6 +575,16 @@ void init_gluon_ir(py::module &&m) {
              auto ty = dyn_cast<ttg::MemDescType>(memdesc.getType());
              check(ty.getEncoding(), "expected a memdesc with an encoding");
              return layoutToGluon(ty.getEncoding());
+           })
+      .def("get_storage_alias_spec_type",
+           [](GluonOpBuilder &self, const std::string &storage,
+              std::optional<int64_t> bufferSizeBytes) -> Type {
+             if (storage != "smem")
+               throw std::invalid_argument(
+                   "stage-one Gluon storage aliases support only smem");
+             return gluon::StorageAliasSpecType::get(
+                 self.getContext(), gluon::StorageKind::smem,
+                 bufferSizeBytes);
            })
       .def("get_tensor_descriptor_layout_type",
            [](GluonOpBuilder &self, Type blockType, bool isSigned,
@@ -528,11 +601,13 @@ void init_gluon_ir(py::module &&m) {
            })
       .def("create_histogram",
            [](GluonOpBuilder &self, Value operand, int numBins,
-              std::optional<Value> mask, Attribute layout) -> Value {
+              std::optional<Value> mask,
+              std::optional<Attribute> layout) -> Value {
              auto *ctx = self.getContext();
              auto resultTy =
                  RankedTensorType::get({static_cast<int64_t>(numBins)},
-                                       IntegerType::get(ctx, 32), layout);
+                                       IntegerType::get(ctx, 32),
+                                       layout.value_or(Attribute()));
              if (!mask) {
                return self.create<triton::HistogramOp>(resultTy, operand);
              } else {
@@ -586,6 +661,62 @@ void init_gluon_ir(py::module &&m) {
            [](GluonOpBuilder &self, Type resultTy, Value value) -> Value {
              return self.create<ttg::LocalAllocOp>(resultTy, value);
            })
+      .def("create_storage_alias_spec",
+           [](GluonOpBuilder &self, const std::string &storage,
+              std::optional<int64_t> bufferSizeBytes) -> Value {
+             if (storage != "smem")
+               throw std::invalid_argument(
+                   "stage-one Gluon storage aliases support only smem");
+             auto resultType = gluon::StorageAliasSpecType::get(
+                 self.getContext(), gluon::StorageKind::smem,
+                 bufferSizeBytes);
+             auto storageAttr = gluon::StorageKindAttr::get(
+                 self.getContext(), gluon::StorageKind::smem);
+             IntegerAttr sizeAttr;
+             if (bufferSizeBytes)
+               sizeAttr = self.getBuilder().getI64IntegerAttr(
+                   *bufferSizeBytes);
+             return self.create<gluon::StorageAliasSpecOp>(
+                 resultType, storageAttr, sizeAttr,
+                 /*bufferShape=*/DenseI64ArrayAttr());
+           })
+      .def("create_storage_alias_local_alloc",
+           [](GluonOpBuilder &self, Type resultType,
+              Value storageAlias) -> Value {
+             return self.create<gluon::StorageAliasLocalAllocOp>(
+                 resultType, storageAlias);
+           })
+      .def("create_reuse_group",
+           [](GluonOpBuilder &self, const std::vector<Value> &elements,
+              const std::string &groupKind, int64_t groupSize) -> Value {
+             gluon::ReuseGroupKind kind;
+             if (groupKind == "shared") {
+               kind = gluon::ReuseGroupKind::shared;
+             } else if (groupKind == "distinct") {
+               kind = gluon::ReuseGroupKind::distinct;
+             } else {
+               throw std::invalid_argument(
+                   "unknown reuse-group kind '" + groupKind +
+                   "'; expected 'shared' or 'distinct'");
+             }
+             if (groupSize < 1)
+               throw std::invalid_argument(
+                   "group_size must be a positive integer");
+             auto resultType =
+                 gluon::ReuseGroupType::get(self.getContext(), kind);
+             auto kindAttr =
+                 gluon::ReuseGroupKindAttr::get(self.getContext(), kind);
+             auto groupSizeAttr =
+                 self.getBuilder().getI64IntegerAttr(groupSize);
+             return self.create<gluon::ReuseGroupOp>(
+                 resultType, elements, kindAttr, groupSizeAttr);
+           })
+      .def("create_set_buffer_overlap",
+           [](GluonOpBuilder &self, Value storageAlias,
+              Value overlapDefinition) {
+             self.create<gluon::SetBufferOverlapOp>(storageAlias,
+                                                    overlapDefinition);
+           })
       .def("create_local_store",
            [](GluonOpBuilder &self, Value memDesc, Value value) {
              self.create<ttg::LocalStoreOp>(value, memDesc);
@@ -593,6 +724,41 @@ void init_gluon_ir(py::module &&m) {
       .def("create_local_load",
            [](GluonOpBuilder &self, Type resultTy, Value memDesc) -> Value {
              return self.create<ttg::LocalLoadOp>(resultTy, memDesc);
+           })
+      .def("create_bsm_perm",
+           [](GluonOpBuilder &self, Value src) -> Value {
+             return self.create<ttg::BsmPermOp>(src.getType(), src);
+           })
+      .def("create_extract_slice",
+           [](GluonOpBuilder &self, Type resultTy, Value source,
+              std::vector<int64_t> &offsets) -> Value {
+             return self
+                 .create<gluon::ExtractSliceOp>(resultTy, source, offsets)
+                 .getResult();
+           })
+      .def("create_insert_slice",
+           [](GluonOpBuilder &self, Type resultTy, Value base, Value update,
+              std::vector<int64_t> &offsets) -> Value {
+             return self
+                 .create<gluon::InsertSliceOp>(resultTy, base, update, offsets)
+                 .getResult();
+           })
+      .def("create_gvm_arrive",
+           [](GluonOpBuilder &self, int num) {
+             self.create<ttg::GVMArriveOp>(num);
+           })
+      .def("create_maca_barrier",
+           [](GluonOpBuilder &self) { self.create<ttg::BarrierOp>(); })
+      .def("create_maca_barrier_shared",
+           [](GluonOpBuilder &self) { self.create<ttg::BarrierSharedOp>(); })
+      .def("create_maca_sched_bound",
+           [](GluonOpBuilder &self) { self.create<ttg::SchedBoundOp>(); })
+      .def("create_maca_iglp",
+           [](GluonOpBuilder &self, int config0, int config1, int config2,
+              int config3, int config4, int config5, int config6,
+              int config7) {
+             self.create<ttg::IGLPOp>(config0, config1, config2, config3,
+                                      config4, config5, config6, config7);
            })
       .def("get_shared_bank_conflicts",
            [](GluonOpBuilder &self, Attribute regLayoutAttr,
@@ -632,6 +798,15 @@ void init_gluon_ir(py::module &&m) {
            [](GluonOpBuilder &self, Type resultType, Value src) -> Value {
              return self.create<ttg::MemDescReinterpretOp>(resultType, src);
            })
+      .def("create_memdesc_reinterpret",
+           [](GluonOpBuilder &self, Value src, Type newElementType,
+              std::vector<int64_t> newShape) -> Value {
+             auto sourceType = cast<ttg::MemDescType>(src.getType());
+             auto resultType = ttg::MemDescType::get(
+                 newShape, newElementType, sourceType.getEncoding(),
+                 sourceType.getMemorySpace(), sourceType.getMutableMemory());
+             return self.create<ttg::MemDescReinterpretOp>(resultType, src);
+           })
       .def("create_set_auto_layout",
            [](GluonOpBuilder &self, Attribute layout, Value value) -> Value {
              return self.create<gluon::SetAutoLayoutOp>(layout, value);
@@ -640,9 +815,12 @@ void init_gluon_ir(py::module &&m) {
            [](GluonOpBuilder &self, Value &a) -> py::tuple {
              auto argTy = cast<RankedTensorType>(a.getType());
              auto ctx = argTy.getContext();
-             auto enc = ttg::SliceEncodingAttr::get(
-                 ctx, argTy.getRank() - 1,
-                 cast<ttg::DistributedEncodingTrait>(argTy.getEncoding()));
+             Attribute enc;
+             if (auto distributed =
+                     dyn_cast<ttg::DistributedEncodingTrait>(
+                         argTy.getEncoding()))
+               enc = ttg::SliceEncodingAttr::get(ctx, argTy.getRank() - 1,
+                                                  distributed);
              auto resTy =
                  RankedTensorType::get(ArrayRef(argTy.getShape()).drop_back(),
                                        argTy.getElementType(), enc);

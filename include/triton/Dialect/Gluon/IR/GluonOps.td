@@ -29,4 +29,9 @@ def Gluon_SetAutoLayoutOp : Gluon_Op<"set_auto_layout",
   let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
 }
 
+// Target-specific Gluon operations are declared separately.  Keeping this
+// include at the dialect aggregation point lets the generic dialect register
+// them without mixing their definitions into the generic Gluon source tree.
+include "triton/Dialect/Gluon/metax/IR/GluonOps.td"
+
 #endif // GLUON_OPS

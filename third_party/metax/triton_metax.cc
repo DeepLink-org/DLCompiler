@@ -167,8 +167,6 @@ void init_triton_metax(py::module &&m) {
   m.def("translate_llvmir_to_mcfatbin",
         [](const std::string llvmIR, std::string mxcc_arch,
            std::string maca_path, std::string extra_option) -> py::object {
-          py::gil_scoped_release allow_threads;
-
           // compile llvmir with mxcc
           llvm::SmallString<64> fsrc;
           llvm::sys::fs::createTemporaryFile("compile-maca-src", "ll", fsrc);
@@ -224,7 +222,12 @@ void init_triton_metax(py::module &&m) {
             srcRemover.releaseFile(); // don't remove src file for debug
           }
           int err;
-          err = system(cmd.c_str());
+          {
+            // The compiler can run without holding the Python GIL.  Restore
+            // the GIL before constructing or returning any Python object.
+            py::gil_scoped_release allowThreads;
+            err = system(cmd.c_str());
+          }
           if (err != 0) {
             std::ifstream _log(_flog);
             std::string log(std::istreambuf_iterator<char>(_log), {});

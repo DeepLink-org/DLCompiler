@@ -114,6 +114,7 @@ struct GluonInferLayoutInterface : public triton::DialectInferLayoutInterface {
 namespace mlir::triton::gluon {
 
 void GluonDialect::initialize() {
+  registerMetaXTypes();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "triton/Dialect/Gluon/IR/GluonAttrDefs.cpp.inc"

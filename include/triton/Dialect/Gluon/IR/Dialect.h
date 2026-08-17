@@ -1,4 +1,6 @@
 #pragma once
+#include "triton/Dialect/Gluon/metax/IR/Traits.h"
+#include "triton/Dialect/Gluon/metax/IR/Types.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 

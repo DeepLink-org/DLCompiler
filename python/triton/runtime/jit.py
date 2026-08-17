@@ -742,10 +742,23 @@ class JITFunction(JITCallable, KernelInterface[T]):
             grid_2 = grid[2] if grid_size > 2 else 1
             if hasattr(kernel, "result"):
                 kernel = kernel.result()
+            kernel = self._prepare_kernel_for_launch(
+                kernel,
+                key=key,
+                grid=(grid_0, grid_1, grid_2),
+                stream=stream,
+                bound_args=bound_args,
+                options=options,
+                device=device,
+            )
             # launch kernel
             launch_metadata = kernel.launch_metadata(grid, stream, *bound_args.values())
             kernel.run(grid_0, grid_1, grid_2, stream, kernel.function, kernel.packed_metadata, launch_metadata,
                        knobs.runtime.launch_enter_hook, knobs.runtime.launch_exit_hook, *bound_args.values())
+        return kernel
+
+    def _prepare_kernel_for_launch(self, kernel, **_):
+        """Select the concrete kernel used by the imminent launch."""
         return kernel
 
     def repr(self, _):

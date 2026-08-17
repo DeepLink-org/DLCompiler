@@ -1,5 +1,5 @@
 from triton.backends.compiler import BaseBackend, GPUTarget, Language
-from triton._C.libtriton import ir, passes, llvm, metax
+from triton._C.libtriton import gluon_ir, ir, passes, llvm, metax
 try:
     from triton._C.libtriton import distributed
     enable_dist = True
@@ -18,6 +18,11 @@ import signal
 import os
 import subprocess
 from pathlib import Path
+
+
+replace_gluon_ttgir = os.environ.get("TRITON_REPLACE_GLUON_TTGIR_FILE", None)
+if replace_gluon_ttgir is not None:
+    os.environ["TRITON_ALWAYS_COMPILE"] = "1"
 
 
 def min_dot_size(target: GPUTarget):
@@ -137,6 +142,7 @@ class MACAOptions:
     scenario: str = ""
     pipeline_load_num: int = -1
     inner_stages: Tuple[int, int] = field(default_factory=lambda: (0, 0))
+    enable_gluon_layout_autotune: bool = False
 
     def __post_init__(self):
         default_libdir = os.getenv("MACA_PATH") + '/lib'
@@ -314,13 +320,86 @@ class MACABackend(BaseBackend):
         pm.enable_debug()
 
         passes.gluon.add_inliner(pm)
+        # Explicit-layout Gluon kernels may use the same TLX-style physical
+        # storage reuse contract as the raw-layout path. Materialize logical
+        # alias roots before layout resolution and erase them once their
+        # source-authored Shared encodings are concrete.
+        passes.gluon.metax.add_storage_alias_lowering(pm)
         passes.gluon.add_resolve_auto_encodings(pm)
+        passes.gluon.metax.add_rewrite_local_alias(pm)
+        passes.gluon.metax.add_gluon_to_tritongpu_conversion(pm)
         passes.common.add_sccp(pm)
         passes.ttir.add_loop_aware_cse(pm)
         passes.gluon.add_canonicalizer(pm)
         passes.ttgpuir.add_combine_tensor_select_and_if(pm)
 
         pm.run(mod, 'gluon_to_ttgir')
+        metadata["tensordesc_meta"] = mod.get_tensordesc_metadata()
+        return mod
+
+    def gluon_metax_to_ttgir(self, src, metadata, options, capability):
+        mod = src
+        assert options.pipeline_load_num >= -1, "invalid pipeline_load_num value!"
+        scenarios = parse_option(options.scenario)
+        disable_prefetch = "unprefetch" in scenarios
+        store_coalesce = "storeCoalesce" in scenarios
+        reduce_smem_usage = "reduceSmemUsage" in scenarios
+        assert len(options.inner_stages) == 2, (
+            "inner_stages must contain exactly two values"
+        )
+
+        pm = ir.pass_manager(mod.context)
+        pm.enable_debug()
+        passes.gluon.add_inliner(pm)
+        passes.gluon.metax.add_storage_alias_lowering(pm)
+
+        passes.ttir.add_convert_to_ttgpuir(pm, f"cuda:{capability}", options.num_warps, 64, options.num_ctas)
+        passes.ttgpuir.add_coalesce(pm)
+        passes.ttgpuir.add_f32_dot_tc(pm, False)
+        passes.ttgpuir.add_remove_layout_conversions(pm)
+        passes.ttgpuir.add_optimize_thread_locality(pm)
+        if options.pipeline in ("cpasync", "cpasync-mixed"):
+            disable_prefetch = True
+            metax.passes.ttgpuir.add_tritonmetaxgpu_change_layout_for_int8_pass(
+                pm, options.num_stages, options.pipeline)
+        passes.gluon.metax.add_accelerate_matmul(
+            pm, options.num_stages, disable_prefetch, store_coalesce, capability)
+        passes.gluon.metax.add_align_mma_consumers(pm)
+
+        passes.gluon.metax.add_insert_require_layout(pm)
+        passes.gluon.metax.add_propagate_layout(pm)
+        passes.gluon.metax.add_rewrite_local_alias(pm)
+        # Propagate the selected accumulator layout while logical Gluon
+        # slice/update ops still expose their same-encoding contract.
+        passes.ttgpuir.add_remove_layout_conversions(pm)
+        passes.gluon.metax.add_gluon_to_tritongpu_conversion(pm)
+
+        if not os.getenv("TRITON_DISABLE_CONSTANCY_LOAD_LAYOUT_OPT"):
+            metax.passes.ttgpuir.add_tritonmetaxgpu_change_layout_for_constancy_load_layout(pm)
+            passes.ttgpuir.add_remove_layout_conversions(pm)
+        if store_coalesce:
+            metax.passes.ttgpuir.add_tritonmetaxgpu_change_layout_from_repn_to_elemn_pass(pm)
+            metax.passes.ttgpuir.add_tritonmetaxgpu_optimize_cstore_pass(pm, options.num_stages)
+            passes.ttgpuir.add_remove_layout_conversions(pm)
+        passes.ttgpuir.add_optimize_dot_operands(pm, capability >= 80)
+        passes.common.add_cse(pm)
+        passes.ttgpuir.add_fuse_nested_loops(pm)
+        passes.common.add_canonicalizer(pm)
+        passes.ttir.add_triton_licm(pm)
+        passes.common.add_canonicalizer(pm)
+        passes.ttgpuir.add_optimize_dot_operands(pm, capability >= 80)
+        passes.ttgpuir.add_remove_layout_conversions(pm)
+        metax.passes.ttgpuir.add_tritonmetaxgpu_optimize_smem_usage(pm, reduce_smem_usage)
+        passes.common.add_cse(pm)
+        passes.common.add_symbol_dce(pm)
+        passes.common.add_canonicalizer(pm)
+
+        pm.run(mod, 'gluon_metax_to_ttgir')
+        if replace_gluon_ttgir is not None:
+            print(f"[DEBUG] Replace Gluon TTGIR with {replace_gluon_ttgir}")
+            context = mod.context
+            mod = ir.parse_mlir_module(replace_gluon_ttgir, context)
+            mod.context = context
         metadata["tensordesc_meta"] = mod.get_tensordesc_metadata()
         return mod
 
@@ -452,7 +531,17 @@ class MACABackend(BaseBackend):
             stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
             stages["ttgir"] = lambda src, metadata: self.make_ttgir(src, metadata, options, capability)
         elif language == Language.GLUON:
-            stages["ttgir"] = lambda src, metadata: self.gluon_to_ttgir(src, metadata, options, capability)
+            def lower_gluon(src, metadata):
+                if gluon_ir.has_explicit_register_layout(src):
+                    return self.gluon_to_ttgir(src, metadata, options, capability)
+
+                module = self.gluon_metax_to_ttgir(src, metadata, options, capability)
+                if options.enable_gluon_layout_autotune:
+                    from .gluon_layout_autotune import export_layout_candidates
+                    export_layout_candidates(module, metadata, options, capability)
+                return module
+
+            stages["ttgir"] = lower_gluon
         stages["mlir"] = lambda src, metadata: self.make_mlir(src, metadata, options, capability)
         stages["llir"] = lambda src, metadata: self.make_llir(src, metadata, options, capability)
         stages["mcfatbin"] = lambda src, metadata: self.make_mcfatbin(src, metadata, options, capability)

@@ -1,9 +1,11 @@
 from __future__ import annotations
-from triton.compiler.compiler import ASTSource
 from triton.backends.compiler import Language
+from triton.compiler.compiler import ASTSource
 from triton.runtime.jit import JITFunction, constexpr_function
-from typing import TypeVar, Optional, Callable, Iterable, Union
+from typing import Callable, Iterable, Optional, TypeVar, Union
 from triton._C.libtriton import ir
+
+from ._layout_autotune import LayoutAutotuneRuntime
 
 T = TypeVar("T")
 
@@ -44,6 +46,19 @@ class GluonASTSource(ASTSource):
 
 class GluonJITFunction(JITFunction[T]):
 
+    def __init__(
+        self,
+        *args,
+        enable_gluon_layout_autotune=False,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.enable_gluon_layout_autotune = bool(enable_gluon_layout_autotune)
+        self._layout_autotune_dispatch_args = tuple(
+            param.name for param in self.params if param.do_not_specialize
+        )
+        self._layout_autotune = LayoutAutotuneRuntime()
+
     def create_binder(self):
         result = super().create_binder()
         self.ASTSource = GluonASTSource
@@ -51,6 +66,21 @@ class GluonJITFunction(JITFunction[T]):
 
     def is_gluon(self):
         return True
+
+    def run(self, *args, grid, warmup, **kwargs):
+        # Layout autotune is a JIT policy, not a kernel launch argument. Keep
+        # the backend option in the compilation key without exposing it at
+        # every call site.
+        kwargs["enable_gluon_layout_autotune"] = self.enable_gluon_layout_autotune
+        return super().run(*args, grid=grid, warmup=warmup, **kwargs)
+
+    def _prepare_kernel_for_launch(self, kernel, **context):
+        return self._layout_autotune.prepare(
+            kernel,
+            jit_key=context.pop("key"),
+            do_not_specialize=self._layout_autotune_dispatch_args,
+            **context,
+        )
 
 
 def jit(
@@ -63,6 +93,7 @@ def jit(
     do_not_specialize_on_alignment: Optional[Iterable[int | str]] = None,
     debug: Optional[bool] = None,
     noinline: Optional[bool] = None,
+    enable_gluon_layout_autotune: bool = False,
 ) -> Union[GluonJITFunction[T], Callable[[T], JITFunction[T]]]:
     """
     Decorator for JIT-compiling a function using the Triton compiler.
@@ -93,6 +124,7 @@ def jit(
             noinline=noinline,
             repr=repr,
             launch_metadata=launch_metadata,
+            enable_gluon_layout_autotune=enable_gluon_layout_autotune,
         )
 
     if fn is not None:

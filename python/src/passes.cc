@@ -8,6 +8,7 @@
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/Passes.h"
 #include "triton/Dialect/Gluon/Transforms/Passes.h"
+#include "triton/Dialect/Gluon/metax/Transforms/Passes.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonInstrument/Transforms/Passes.h"
@@ -111,8 +112,41 @@ void init_triton_passes_llvmir(py::module &&m) {
   ADD_PASS_WRAPPER_0("add_di_local_variable", mlir::createLLVMDILocalVariable);
 }
 
-void init_gluon_passes(py::module &&m) {
+void init_gluon_metax_passes(py::module &&m) {
   using namespace mlir;
+  namespace gluon = mlir::triton::gluon;
+  ADD_PASS_WRAPPER_4("add_accelerate_matmul",
+                     gluon::createGluonAccelerateMatmulPass, int, bool, bool,
+                     int);
+  ADD_PASS_WRAPPER_0("add_align_mma_consumers",
+                     gluon::createGluonAlignMmaConsumersPass);
+  ADD_PASS_WRAPPER_0("add_storage_alias_lowering",
+                     gluon::createGluonStorageAliasLoweringPass);
+  ADD_PASS_WRAPPER_0("add_insert_require_layout",
+                     gluon::createGluonInsertRequireLayoutPass);
+  ADD_PASS_WRAPPER_0("add_propagate_layout",
+                     gluon::createGluonPropagateLayoutPass);
+  ADD_PASS_WRAPPER_0("add_rewrite_local_alias",
+                     gluon::createGluonRewriteLocalAliasPass);
+  ADD_PASS_WRAPPER_0("add_gluon_to_tritongpu_conversion",
+                     gluon::createGluonToTritonGPUConversionPass);
+  m.def("add_mma_layout_candidates", [](PassManager &pm, int capability) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        gluon::createGluonMmaLayoutCandidatePass(capability));
+  });
+  m.def("add_shared_layout_candidates", [](PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        gluon::createGluonSharedLayoutCandidatePass());
+  });
+  m.def("add_blocked_layout_candidates", [](PassManager &pm) {
+    pm.addNestedPass<mlir::triton::FuncOp>(
+        gluon::createGluonBlockedLayoutCandidatePass());
+  });
+  ADD_PASS_WRAPPER_1("add_expand_layout_candidates",
+                     gluon::createGluonExpandLayoutCandidatesPass, int);
+}
+
+void init_gluon_passes(py::module &&m) {
   namespace gluon = mlir::triton::gluon;
   ADD_PASS_WRAPPER_0("add_resolve_auto_encodings",
                      gluon::createGluonResolveAutoEncodingsPass);
@@ -120,6 +154,7 @@ void init_gluon_passes(py::module &&m) {
   ADD_PASS_WRAPPER_0("add_inliner", gluon::createGluonInline);
   ADD_PASS_WRAPPER_0("add_infer_coalesced_encodings",
                      gluon::createGluonInferCoalescedEncodingsPass);
+  init_gluon_metax_passes(m.def_submodule("metax"));
 }
 
 void init_triton_passes(py::module &&m) {

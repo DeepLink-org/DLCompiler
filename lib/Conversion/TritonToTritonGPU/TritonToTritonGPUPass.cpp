@@ -4,6 +4,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "triton/Conversion/TritonToTritonGPU/Passes.h"
+#include "triton/Dialect/Gluon/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -21,6 +22,39 @@ namespace {
 using namespace mlir;
 using namespace mlir::triton;
 using namespace mlir::triton::gpu;
+namespace gluon = mlir::triton::gluon;
+
+// Ops carrying SameOperandsAndResultEncoding require every tensor operand and
+// result to use the same encoding. Type conversion may preserve a pinned
+// producer encoding on only one operand, so materialize the explicit boundary
+// here. Later layout propagation can fold a redundant conversion.
+static void
+unifyOperandEncodingsForSameEncoding(Operation *op, TypeRange resultTypes,
+                                     SmallVectorImpl<Value> &operands,
+                                     ConversionPatternRewriter &rewriter) {
+  if (!op->hasTrait<mlir::OpTrait::SameOperandsAndResultEncoding>())
+    return;
+
+  Attribute encoding;
+  for (Type type : resultTypes) {
+    if (auto tensorType = dyn_cast<RankedTensorType>(type)) {
+      encoding = tensorType.getEncoding();
+      break;
+    }
+  }
+  if (!encoding)
+    return;
+
+  for (Value &operand : operands) {
+    auto tensorType = dyn_cast<RankedTensorType>(operand.getType());
+    if (!tensorType || !tensorType.getEncoding() ||
+        tensorType.getEncoding() == encoding)
+      continue;
+    auto targetType = tensorType.cloneWithEncoding(encoding);
+    operand = ConvertLayoutOp::create(rewriter, operand.getLoc(), targetType,
+                                      operand);
+  }
+}
 
 // pass named attrs (e.g., tt.contiguity) from Triton to Triton
 static void addNamedAttrs(Operation *op, DictionaryAttr dictAttrs) {
@@ -39,7 +73,9 @@ template <class Op> struct GenericOpPattern : public OpConversionPattern<Op> {
     if (failed(this->getTypeConverter()->convertTypes(op->getResultTypes(),
                                                       retTypes)))
       return failure();
-    rewriter.replaceOpWithNewOp<Op>(op, retTypes, adaptor.getOperands(),
+    SmallVector<Value> operands(adaptor.getOperands());
+    unifyOperandEncodingsForSameEncoding(op, retTypes, operands, rewriter);
+    rewriter.replaceOpWithNewOp<Op>(op, retTypes, operands,
                                     op->getAttrs());
 
     return success();
@@ -636,9 +672,21 @@ void populateTritonPatterns(TritonGPUTypeConverter &typeConverter,
       GenericOpPattern<triton::DotScaledOp>,
       GenericOpPattern<triton::CallOp>,
       GenericOpPattern<ReturnOp>,
+      GenericOpPattern<triton::gpu::AsyncCopyGlobalToLocalOp>,
+      GenericOpPattern<triton::gpu::LocalAllocOp>,
+      GenericOpPattern<triton::gpu::LocalStoreOp>,
+      GenericOpPattern<triton::gpu::LocalLoadOp>,
+      GenericOpPattern<triton::gpu::BsmPermOp>,
       TritonFuncOpPattern
       // clang-format on
       >(typeConverter, context);
+}
+
+void populateGluonPatterns(TritonGPUTypeConverter &typeConverter,
+                           RewritePatternSet &patterns) {
+  MLIRContext *context = patterns.getContext();
+  patterns.add<GenericOpPattern<gluon::ExtractSliceOp>,
+               GenericOpPattern<gluon::InsertSliceOp>>(typeConverter, context);
 }
 //
 // SCF patterns
@@ -853,6 +901,7 @@ public:
     populateArithPatternsAndLegality(typeConverter, patterns, target);
     populateMathPatternsAndLegality(typeConverter, patterns, target);
     populateTritonPatterns(typeConverter, patterns, numCTAs);
+    populateGluonPatterns(typeConverter, patterns);
     // TODO: can we use
     //    mlir::scf::populateSCFStructurealTypeConversionsAndLegality(...) here?
     populateSCFPatterns(typeConverter, patterns);

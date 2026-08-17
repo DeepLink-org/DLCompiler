@@ -6,12 +6,14 @@
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LLVM.h"
+#include "triton/Dialect/Gluon/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 
 using namespace mlir;
 using namespace mlir::triton::gpu;
+namespace gluon = mlir::triton::gluon;
 
 //
 // TypeConverter
@@ -102,6 +104,18 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
       return true;
     return false;
   });
+  addDynamicallyLegalOp<AsyncCopyGlobalToLocalOp, LocalAllocOp, LocalLoadOp,
+                         LocalStoreOp, BsmPermOp,
+                         gluon::ExtractSliceOp, gluon::InsertSliceOp,
+                         gluon::LocalAliasOp>(
+      [&](Operation *op) {
+        auto hasConcreteTensorEncoding = [](Type type) {
+          auto tensorType = dyn_cast<RankedTensorType>(type);
+          return !tensorType || tensorType.getEncoding();
+        };
+        return llvm::all_of(op->getOperandTypes(), hasConcreteTensorEncoding) &&
+               llvm::all_of(op->getResultTypes(), hasConcreteTensorEncoding);
+      });
   addDynamicallyLegalOp<triton::FuncOp>([](triton::FuncOp funcOp) -> bool {
     for (auto arg : funcOp.getArguments()) {
       if (auto tensor = dyn_cast<RankedTensorType>(arg.getType())) {

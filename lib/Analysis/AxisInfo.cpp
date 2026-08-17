@@ -639,6 +639,70 @@ public:
   }
 };
 
+// Preserve pre-materialization value facts for the logical extract view.
+// This analysis does not define the physical view or choose its encoding;
+// the late Gluon-to-TTG lowering derives ctaIdx/elemIdx from offsets, shapes,
+// and the already concrete parent/subview layouts.
+class GluonExtractSliceOpAxisInfoVisitor final
+    : public AxisInfoVisitorImpl<triton::gluon::ExtractSliceOp> {
+public:
+  using AxisInfoVisitorImpl<
+      triton::gluon::ExtractSliceOp>::AxisInfoVisitorImpl;
+
+  AxisInfo getAxisInfo(
+      triton::gluon::ExtractSliceOp op,
+      ArrayRef<const dataflow::Lattice<AxisInfo> *> operands) override {
+    AxisInfo opInfo = operands[0]->getValue();
+    auto src = dyn_cast<RankedTensorType>(op.getSource().getType());
+    auto result = dyn_cast<RankedTensorType>(op.getResult().getType());
+    if (!src || !result)
+      return AxisInfo();
+    auto srcShape = src.getShape();
+    auto subSizes = result.getShape();
+    AxisInfo::DimVectorT opContiguity = opInfo.getContiguity();
+    AxisInfo::DimVectorT opDivisibility = opInfo.getDivisibility();
+    AxisInfo::DimVectorT opConstancy = opInfo.getConstancy();
+    auto constVal = opInfo.getConstantValue();
+    AxisInfo::DimVectorT contiguity;
+    AxisInfo::DimVectorT divisibility;
+    AxisInfo::DimVectorT constancy;
+    for (int d = 0; d < opInfo.getRank(); ++d) {
+      int64_t divisibleVal = 1;
+      if (opContiguity[d] >= srcShape[d]) {
+        contiguity.push_back(subSizes[d]);
+        divisibleVal = gcd(opDivisibility[d], subSizes[d]);
+      } else {
+        contiguity.push_back(1);
+      }
+      if (opConstancy[d] >= srcShape[d]) {
+        constancy.push_back(subSizes[d]);
+        divisibleVal = opDivisibility[d];
+      } else {
+        constancy.push_back(1);
+      }
+      divisibility.push_back(divisibleVal);
+    }
+    return AxisInfo(contiguity, divisibility, constancy, constVal);
+  }
+};
+
+// insert_slice is the inverse register-view operation of extract_slice.  It
+// does not define a new layout or a second numerical patch analysis here: the
+// result keeps the inserted subview facts.  The late Gluon-to-TTG lowering uses
+// offsets, shapes, and concrete layouts to select the physical registers.
+class GluonInsertSliceOpAxisInfoVisitor final
+    : public AxisInfoVisitorImpl<triton::gluon::InsertSliceOp> {
+public:
+  using AxisInfoVisitorImpl<
+      triton::gluon::InsertSliceOp>::AxisInfoVisitorImpl;
+
+  AxisInfo getAxisInfo(
+      triton::gluon::InsertSliceOp,
+      ArrayRef<const dataflow::Lattice<AxisInfo> *> operands) override {
+    return operands[1]->getValue();
+  }
+};
+
 class InsertTensorOpAxisInfoVisitor final
     : public AxisInfoVisitorImpl<triton::gpu::InsertTensorOp> {
 public:
@@ -1198,8 +1262,7 @@ AxisInfoAnalysis::AxisInfoAnalysis(DataFlowSolver &solver,
                   CastOpAxisInfoVisitor<arith::ExtUIOp>,
                   CastOpAxisInfoVisitor<arith::TruncIOp>,
                   CastOpAxisInfoVisitor<triton::gpu::ConvertLayoutOp>,
-                  CastOpAxisInfoVisitor<triton::BitcastOp>,
-                  CastOpAxisInfoVisitor<triton::gluon::SetAutoLayoutOp>>();
+                  CastOpAxisInfoVisitor<triton::BitcastOp>>();
   visitors.append<MakeRangeOpAxisInfoVisitor>();
   visitors.append<PoisonOpAxisInfoVisitor>();
   visitors.append<ConstantOpAxisInfoVisitor>();
@@ -1214,6 +1277,8 @@ AxisInfoAnalysis::AxisInfoAnalysis(DataFlowSolver &solver,
   visitors.append<BroadcastOpAxisInfoVisitor>();
 #ifdef USE_MACA
   visitors.append<ExtractTensorOpAxisInfoVisitor>();
+  visitors.append<GluonExtractSliceOpAxisInfoVisitor>();
+  visitors.append<GluonInsertSliceOpAxisInfoVisitor>();
   visitors.append<InsertTensorOpAxisInfoVisitor>();
 #endif
   visitors.append<SplatOpAxisInfoVisitor>();

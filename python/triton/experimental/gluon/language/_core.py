@@ -1,14 +1,18 @@
 from __future__ import annotations
+import builtins
+import enum
 import math
-from typing import TypeVar, List, TYPE_CHECKING, Tuple
-from functools import wraps
 import warnings
+from typing import TypeVar, List, Optional, TYPE_CHECKING, Tuple
+from functools import wraps
 
 if TYPE_CHECKING:
     from triton._C.libtriton.gluon_ir import GluonOpBuilder
     from ._semantic import GluonSemantic
 
-from ._layouts import SharedLayout, DistributedLayout, BlockedLayout, DotOperandLayout, AutoLayout, CoalescedLayout
+from ._layouts import (AutoLayout, BlockedLayout, CoalescedLayout,
+                       DistributedLayout, DotOperandLayout, SharedLayout,
+                       SwizzledSharedLayout)
 from triton._C.libtriton import ir
 import triton.language.core as tl_core
 from triton.language.core import (
@@ -72,9 +76,18 @@ __all__ = [
     "distributed_type",
     "shared_memory_descriptor_type",
     "static_range",
+    "dot",
+    "slice",
+    "slice_update",
     "tuple",
     "tuple_type",
     "num_ctas",
+    "local_alloc",
+    "storage_alias_spec",
+    "storage_alias_spec_type",
+    "storage_kind",
+    "reuse_group",
+    "reuse_group_type",
 ]
 
 T = TypeVar("T")
@@ -148,22 +161,29 @@ class distributed_type(block_type):
         shape = _unwrap_if_constexpr(shape)
         super().__init__(element_ty, shape)
         self.layout = layout
-        self.name = f"<{self.shape}, {self.element_ty}, {self.layout}>"
-        assert isinstance(layout, DistributedLayout), "tensor layout must be a DistributedLayout"
-        if not isinstance(layout, (AutoLayout, CoalescedLayout)):
-            assert len(
-                shape
-            ) == layout.rank, f"tensor shape and layout rank mismatch: shape={shape}, layout={layout}, shape rank={len(shape)}, layout rank={layout.rank}"
+        layoutName = "raw" if layout is None else layout
+        self.name = f"<{self.shape}, {self.element_ty}, {layoutName}>"
+        if layout is None:
+            return
+
+        if not isinstance(layout, DistributedLayout):
+            raise TypeError("tensor layout must be a DistributedLayout or None")
+        if not isinstance(layout, (AutoLayout, CoalescedLayout)) and len(shape) != layout.rank:
+            raise ValueError(
+                "tensor shape and layout rank mismatch: "
+                f"shape={shape}, layout={layout}, shape rank={len(shape)}, "
+                f"layout rank={layout.rank}"
+            )
 
     def to_ir(self, builder: ir.builder) -> ir.type:
         elem_ty = self.element_ty.to_ir(builder)
-        layout = self.layout._to_ir(builder)
+        layout = None if self.layout is None else self.layout._to_ir(builder)
         return builder.get_distributed_ty(elem_ty, self.shape, layout)
 
     def mangle(self) -> str:
         elt = self.scalar.mangle()
         shape = "_".join(map(str, self.shape))
-        layout = self.layout.mangle()
+        layout = "RAW" if self.layout is None else self.layout.mangle()
         return f"{elt}S{shape}SL{layout}L"
 
     def with_element_ty(self, scalar_ty: dtype) -> block_type:
@@ -217,6 +237,203 @@ class shared_memory_descriptor_type(base_type):
         return f"MD{self.element_ty.mangle()}S{shape_str}SL{self.layout.mangle()}LAS{self.alloc_shape}ASMD"
 
 
+class storage_kind(enum.Enum):
+    smem = "smem"
+
+
+class reuse_group_type(enum.Enum):
+    """Relationship between children in a storage-alias overlap tree."""
+
+    shared = "shared"
+    distinct = "distinct"
+
+
+class reuse_group:
+    """Define TLX-style overlap relationships between aliased buffers."""
+
+    def __init__(self, *args, group_type=reuse_group_type.shared,
+                 group_size=1):
+        if not args:
+            raise ValueError("reuse_group requires at least one element")
+        group_size = _unwrap_if_constexpr(group_size)
+        if not isinstance(group_size, int) or group_size < 1:
+            raise ValueError(
+                f"group_size must be a positive integer, got {group_size}"
+            )
+        args = builtins.tuple(
+            _unwrap_if_constexpr(element) for element in args
+        )
+        for element in args:
+            if not isinstance(element, (reuse_group, shared_memory_descriptor)):
+                raise TypeError(
+                    "reuse_group elements must be shared_memory_descriptor or "
+                    f"reuse_group, got {type(element).__name__}"
+                )
+        self._args = args
+        self._group_type = group_type
+        self._group_size = group_size
+
+    @property
+    def args(self):
+        return self._args
+
+    @property
+    def group_type(self):
+        return self._group_type
+
+    @property
+    def group_size(self):
+        return self._group_size
+
+    def to_ir(self, builder):
+        elements = [
+            element.to_ir(builder)
+            if isinstance(element, reuse_group)
+            else element.handle
+            for element in self._args
+        ]
+        return builder.create_reuse_group(
+            elements, self._group_type.value, self._group_size
+        )
+
+    def _flatten_ir(self, handles) -> None:
+        for element in self._args:
+            element._flatten_ir(handles)
+
+    def __repr__(self):
+        suffix = (
+            "" if self._group_size == 1
+            else f", group_size={self._group_size}"
+        )
+        return (
+            f"reuse_group({self._args}, "
+            f"group_type={self._group_type.value}{suffix})"
+        )
+
+
+class reuse_group_ir_type(base_type):
+    """MLIR type wrapper for a lowered reuse-group tree node."""
+
+    def __init__(self, group_kind):
+        self._group_kind = group_kind
+
+    @property
+    def group_kind(self):
+        return self._group_kind
+
+    def mangle(self):
+        return f"reuse_group_{self._group_kind.value}"
+
+    def __repr__(self):
+        return f"reuse_group_ir_type(group_kind={self._group_kind.value})"
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, reuse_group_ir_type)
+            and self._group_kind == other._group_kind
+        )
+
+
+class storage_alias_spec_type(base_type):
+    """Type of an explicit Shared-storage alias specification."""
+
+    def __init__(self, storage, buffer_size_bytes=None):
+        self._storage = storage
+        self._buffer_size_bytes = buffer_size_bytes
+
+    @property
+    def storage(self):
+        return self._storage
+
+    @property
+    def buffer_size_bytes(self):
+        return self._buffer_size_bytes
+
+    def to_ir(self, builder: GluonOpBuilder):
+        return builder.get_storage_alias_spec_type(
+            self._storage.value, self._buffer_size_bytes
+        )
+
+    def _flatten_ir_types(self, builder: GluonOpBuilder, out: List[ir.type]):
+        out.append(self.to_ir(builder))
+
+    def _unflatten_ir(self, handles, cursor):
+        return (
+            _storage_alias_spec(
+                handles[cursor], self._storage, self._buffer_size_bytes
+            ),
+            cursor + 1,
+        )
+
+    def mangle(self) -> str:
+        size = (
+            ""
+            if self._buffer_size_bytes is None
+            else f"_{self._buffer_size_bytes}"
+        )
+        return f"storage_alias_spec_{self._storage.value}{size}"
+
+    def __repr__(self):
+        size = (
+            f", size={self._buffer_size_bytes}"
+            if self._buffer_size_bytes
+            else ""
+        )
+        return f"storage_alias_spec_type(storage={self._storage.value}{size})"
+
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, storage_alias_spec_type)
+            and self._storage == other._storage
+            and self._buffer_size_bytes == other._buffer_size_bytes
+        )
+
+
+class _storage_alias_spec(base_value):
+    """SSA handle shared by logical allocations in one physical alias class."""
+
+    def __init__(self, handle, storage, buffer_size_bytes=None):
+        self._handle = handle
+        self._storage = storage
+        self._buffer_size_bytes = buffer_size_bytes
+        self.type = storage_alias_spec_type(storage, buffer_size_bytes)
+
+    @property
+    def handle(self):
+        return self._handle
+
+    @property
+    def storage(self):
+        return self._storage
+
+    @property
+    def buffer_size_bytes(self):
+        return self._buffer_size_bytes
+
+    def _flatten_ir(self, handles: List[ir.value]) -> None:
+        handles.append(self._handle)
+
+    @builtin
+    def set_buffer_overlap(self, overlap_def, _semantic=None) -> None:
+        overlap_def = _unwrap_if_constexpr(overlap_def)
+        if not isinstance(overlap_def, reuse_group):
+            raise TypeError(
+                "overlap_def must be a reuse_group, got "
+                f"{type(overlap_def).__name__}"
+            )
+        _semantic.builder.create_set_buffer_overlap(
+            self._handle, overlap_def.to_ir(_semantic.builder)
+        )
+
+    def __repr__(self):
+        size = (
+            f", size={self._buffer_size_bytes}"
+            if self._buffer_size_bytes
+            else ""
+        )
+        return f"storage_alias_spec(storage={self._storage.value}{size})"
+
+
 class shared_memory_descriptor(base_value):
     """
     Represents a handle to a shared memory allocation in Gluon IR.
@@ -253,12 +470,13 @@ class shared_memory_descriptor(base_value):
         return str(self.type)
 
     @builtin
-    def load(self, layout, _semantic: GluonSemantic = None) -> tensor:
+    def load(self, layout=None, _semantic: GluonSemantic = None) -> tensor:
         """
         Load a tensor from shared memory.
 
         Args:
-            layout (DistributedLayout): The destination layout of the tensor.
+            layout (DistributedLayout, optional): The destination register
+                layout. It may be omitted by the MetaX layout-inference path.
 
         Returns:
             tensor: A Gluon tensor containing the loaded data.
@@ -338,23 +556,26 @@ class shared_memory_descriptor(base_value):
         return _semantic.memdesc_reshape(self, shape)
 
     @builtin
-    def _reinterpret(self, dtype, shape, layout, _semantic: GluonSemantic = None) -> shared_memory_descriptor:
+    def _reinterpret(
+        self, dtype, shape=None, _semantic: GluonSemantic = None
+    ) -> shared_memory_descriptor:
         """
-        Reinterpret the shared memory descriptor as a different dtype, shape, or layout.
+        Reinterpret the shared memory descriptor as a different dtype or shape.
 
         Args:
             dtype (dtype): The new data type.
-            shape (List[int]): The new shape.
-            layout (SharedLayout): The new layout.
+            shape (List[int], optional): The new shape. Defaults to the source
+                shape.
 
         Returns:
-            shared_memory_descriptor: Descriptor with updated type and layout.
+            shared_memory_descriptor: Descriptor with the requested type and
+                shape, preserving the source Shared layout.
         """
         dtype = _unwrap_if_constexpr(dtype)
-        shape = [_unwrap_if_constexpr(s) for s in shape]
-        layout = _unwrap_if_constexpr(layout)
-
-        return _semantic.memdesc_reinterpret(self, dtype, shape, layout)
+        shape = self.shape if shape is None else [
+            _unwrap_if_constexpr(s) for s in shape
+        ]
+        return _semantic.memdesc_reinterpret(self, dtype, shape)
 
     @builtin
     def _keep_alive(self, _semantic: GluonSemantic = None) -> None:
@@ -401,6 +622,13 @@ def convert_layout(value, layout, assert_trivial=False, _semantic=None):
 
 
 @builtin
+def set_auto_layout(value, layout, _semantic=None):
+    """Set an AutoLayout tensor to a concrete distributed layout."""
+    layout = _unwrap_if_constexpr(layout)
+    return _semantic.set_auto_layout(value, layout)
+
+
+@builtin
 def full(shape, value, dtype, layout=None, _semantic=None):
     """
     Create a tensor filled with a scalar value, with specified shape, dtype, and layout.
@@ -442,6 +670,139 @@ def histogram(input, num_bins, mask=None, layout=None, _semantic=None, _generato
     return _semantic.histogram(input, num_bins, mask, layout)
 
 
+def _normalize_static_int_list(name, values):
+    from ._semantic import _check
+
+    values = _unwrap_if_constexpr(values)
+    if not isinstance(values, (list, tuple)):
+        try:
+            values = list(values)
+        except TypeError:
+            _check(False, lambda: f"{name} must be a list or tuple")
+    normalized = [_unwrap_if_constexpr(value) for value in values]
+    for index, value in enumerate(normalized):
+        _check(
+            isinstance(value, int),
+            lambda index=index, value=value: (
+                f"{name}[{index}] must be a constant int, got {value}"
+            ),
+        )
+    return normalized
+
+
+@builtin
+def slice(source, shape, offsets, _semantic=None):
+    """Extract a statically positioned tile from a distributed tensor."""
+    from ._semantic import _check
+
+    shape = _normalize_static_int_list("shape", shape)
+    offsets = _normalize_static_int_list("offsets", offsets)
+    _check(isinstance(source, tensor), lambda: "source must be a tensor")
+    _check(isinstance(source.type, distributed_type), lambda: "source must have a distributed_type")
+    source_shape = _normalize_static_int_list("source.shape", source.shape)
+    _check(
+        len(shape) == len(source_shape),
+        lambda: (
+            f"shape rank must match source rank, got shape={shape}, "
+            f"source.shape={source_shape}"
+        ),
+    )
+    _check(
+        len(offsets) == len(source_shape),
+        lambda: (
+            f"offset rank must match source rank, got offsets={offsets}, "
+            f"source.shape={source_shape}"
+        ),
+    )
+    for index, (size, offset, extent) in enumerate(zip(shape, offsets, source_shape)):
+        _check(
+            size > 0,
+            lambda index=index, size=size: (
+                f"shape[{index}] must be positive, got {size}"
+            ),
+        )
+        _check(
+            offset >= 0,
+            lambda index=index, offset=offset: (
+                f"offsets[{index}] must be non-negative, got {offset}"
+            ),
+        )
+        _check(
+            offset + size <= extent,
+            lambda index=index, offset=offset, size=size, extent=extent: (
+                f"slice dim {index} out of bounds: offset {offset} + size "
+                f"{size} exceeds extent {extent}"
+            ),
+        )
+    ret_ty = distributed_type(source.dtype, shape, source.type.layout)
+    handle = _semantic.builder.create_extract_slice(
+        ret_ty.to_ir(_semantic.builder), source.handle, offsets
+    )
+    return tensor(handle, ret_ty)
+
+
+@builtin
+def slice_update(base, update, offsets, _semantic=None):
+    """Return ``base`` with a statically positioned tensor tile replaced."""
+    from ._semantic import _check
+
+    offsets = _normalize_static_int_list("offsets", offsets)
+    _check(isinstance(base, tensor), lambda: "base must be a tensor")
+    _check(isinstance(update, tensor), lambda: "update must be a tensor")
+    _check(isinstance(base.type, distributed_type), lambda: "base must have a distributed_type")
+    _check(isinstance(update.type, distributed_type), lambda: "update must have a distributed_type")
+    _check(
+        base.type.layout is None and update.type.layout is None,
+        lambda: (
+            "slice_update does not support explicit register layouts in the "
+            "raw Gluon frontend"
+        ),
+    )
+    _check(base.dtype == update.dtype, lambda: f"base/update dtype mismatch: {base.dtype} vs {update.dtype}")
+    base_shape = _normalize_static_int_list("base.shape", base.shape)
+    update_shape = _normalize_static_int_list("update.shape", update.shape)
+    _check(
+        len(offsets) == len(base_shape),
+        lambda: (
+            f"offset rank must match base rank, got offsets={offsets}, "
+            f"base.shape={base_shape}"
+        ),
+    )
+    _check(
+        len(update_shape) == len(base_shape),
+        lambda: (
+            f"update rank must match base rank, got update.shape={update_shape}, "
+            f"base.shape={base_shape}"
+        ),
+    )
+    for index, (size, offset, extent) in enumerate(
+        zip(update_shape, offsets, base_shape)
+    ):
+        _check(
+            size > 0,
+            lambda index=index, size=size: (
+                f"update.shape[{index}] must be positive, got {size}"
+            ),
+        )
+        _check(
+            offset >= 0,
+            lambda index=index, offset=offset: (
+                f"offsets[{index}] must be non-negative, got {offset}"
+            ),
+        )
+        _check(
+            offset + size <= extent,
+            lambda index=index, offset=offset, size=size, extent=extent: (
+                f"slice_update dim {index} out of bounds: offset {offset} + "
+                f"size {size} exceeds extent {extent}"
+            ),
+        )
+    handle = _semantic.builder.create_insert_slice(
+        base.type.to_ir(_semantic.builder), base.handle, update.handle, offsets
+    )
+    return tensor(handle, base.type)
+
+
 @builtin
 def allocate_shared_memory(element_ty, shape, layout, value=None, _semantic=None) -> shared_memory_descriptor:
     """
@@ -456,27 +817,104 @@ def allocate_shared_memory(element_ty, shape, layout, value=None, _semantic=None
     Returns:
         shared_memory_descriptor: Descriptor for the allocated memory.
     """
-    element_ty = _unwrap_if_constexpr(element_ty)
-    shape = _unwrap_if_constexpr(shape)
-    shape = [_unwrap_if_constexpr(s) for s in shape]
-    layout = _unwrap_if_constexpr(layout)
-    return _semantic.allocate_shared(element_ty, shape, layout, value)
+    return _allocate_shared_memory(
+        element_ty,
+        shape,
+        layout,
+        value,
+        num_buffers=1,
+        reuse=None,
+        include_buffer_dim=False,
+        _semantic=_semantic,
+    )
+
+
+def _default_shared_layout(rank):
+    # MemDescType requires a concrete Shared encoding even before a dot use
+    # imposes S0. This generic encoding remains valid for ordinary Shared
+    # storage and may later be retagged by a concrete require_layout.
+    return SwizzledSharedLayout(1, 1, 1, list(reversed(range(rank))))
 
 
 @builtin
-def set_auto_layout(value, layout, _semantic=None):
-    """
-    Set a tensor with AutoLayout to a concrete layout
+def storage_alias_spec(
+    storage=storage_kind.smem,
+    buffer_size_bytes: Optional[constexpr] = None,
+    _semantic=None,
+) -> _storage_alias_spec:
+    """Create a TLX-style explicit Shared-storage alias specification."""
+    storage = _unwrap_if_constexpr(storage)
+    buffer_size_bytes = _unwrap_if_constexpr(buffer_size_bytes)
+    if storage is not storage_kind.smem:
+        raise ValueError("stage-one Gluon storage aliases support only smem")
+    if buffer_size_bytes is not None:
+        if not isinstance(buffer_size_bytes, int):
+            raise TypeError("buffer_size_bytes must be a compile-time integer")
+        if buffer_size_bytes <= 0:
+            raise ValueError("buffer_size_bytes must be positive")
+    handle = _semantic.builder.create_storage_alias_spec(
+        storage.value, buffer_size_bytes
+    )
+    return _storage_alias_spec(handle, storage, buffer_size_bytes)
 
-    Args:
-        value (tensor): The input tensor.
-        layout (DistribtedLayout): The target layout.
 
-    Returns:
-        tensor: The tensor with the new layout.
+@builtin
+def local_alloc(
+    element_ty,
+    shape,
+    num_buffers=1,
+    layout=None,
+    reuse=None,
+    _semantic=None,
+) -> shared_memory_descriptor:
+    """Allocate a TLX-style buffered Shared descriptor.
+
+    The returned descriptor always has shape ``[num_buffers] + shape``. Select
+    a logical buffer with ``index()``, including when ``num_buffers == 1``.
+    Passing ``reuse`` associates this logical allocation with an explicit
+    storage-alias specification; it does not change the descriptor shape.
     """
     layout = _unwrap_if_constexpr(layout)
-    return _semantic.set_auto_layout(value, layout)
+    return _allocate_shared_memory(
+        element_ty,
+        shape,
+        layout,
+        value=None,
+        num_buffers=num_buffers,
+        reuse=reuse,
+        include_buffer_dim=True,
+        _semantic=_semantic,
+    )
+
+
+def _allocate_shared_memory(element_ty, shape, layout, value, num_buffers,
+                            _semantic, reuse=None,
+                            include_buffer_dim=False) -> shared_memory_descriptor:
+    """Build one shared allocation after public APIs choose its policy."""
+    element_ty = _unwrap_if_constexpr(element_ty)
+    shape = _unwrap_if_constexpr(shape)
+    shape = [_unwrap_if_constexpr(s) for s in shape]
+    num_buffers = _unwrap_if_constexpr(num_buffers)
+    layout = _unwrap_if_constexpr(layout)
+    if not isinstance(num_buffers, int) or num_buffers < 1:
+        raise ValueError(
+            f"num_buffers must be a positive compile-time integer, got {num_buffers}"
+        )
+    # Match TLX local_alloc exactly: dimension zero is always the buffer index,
+    # including the single-buffer case. The lower-level allocation API keeps
+    # its ordinary memdesc shape and is not part of this pipeline abstraction.
+    alloc_shape = [num_buffers] + shape if include_buffer_dim else shape
+    if layout is None:
+        # MemDescType treats a leading pipeline-buffer dimension as physical
+        # storage, not a Shared coordinate.  Its verifier therefore permits a
+        # Shared encoding one rank smaller than the descriptor shape.  Keeping
+        # the concrete default at the logical shape rank also lets
+        # memdesc_index retain the same legal encoding after selecting a
+        # buffer.
+        layout = _default_shared_layout(len(shape))
+    return _semantic.allocate_shared(
+        element_ty, alloc_shape, layout, value, reuse=reuse
+    )
 
 
 @builtin
@@ -566,6 +1004,44 @@ def to_linear_layout(layout, shape, _semantic=None):
     layout = _unwrap_if_constexpr(layout)
     shape = _unwrap_shape(shape)
     return _semantic.to_linear_layout(layout, shape)
+
+
+@builtin
+def dot(input, other, acc=None, input_precision=None, max_num_imprecise_acc=None, out_dtype=float32, _semantic=None):
+    input_precision = _unwrap_if_constexpr(input_precision)
+    max_num_imprecise_acc = _unwrap_if_constexpr(max_num_imprecise_acc)
+    out_dtype = _unwrap_if_constexpr(out_dtype)
+    acc = _unwrap_if_constexpr(acc)
+
+    from ._semantic import _check
+
+    _check(isinstance(input, tensor), lambda: "input must be a tensor")
+    _check(isinstance(other, tensor), lambda: "other must be a tensor")
+    _check(
+        isinstance(input.type, distributed_type) and
+        isinstance(other.type, distributed_type),
+        lambda: "dot operands must have distributed tensor types",
+    )
+    if acc is not None:
+        _check(isinstance(acc, tensor), lambda: "dot accumulator must be a tensor")
+        _check(
+            isinstance(acc.type, distributed_type),
+            lambda: "dot accumulator must have a distributed tensor type",
+        )
+
+    if acc is None:
+        _check(
+            input.type.layout is None and other.type.layout is None,
+            lambda: "explicit-layout dot requires an explicit accumulator",
+        )
+        acc_shape = list(input.shape[:-2]) + [input.shape[-2], other.shape[-1]]
+        acc = _semantic.full(acc_shape, 0, out_dtype, None)
+
+    result = _semantic.dot(input, other, acc, input_precision=input_precision,
+                           max_num_imprecise_acc=max_num_imprecise_acc, out_dtype=out_dtype)
+    if acc is not None and isinstance(acc.type, distributed_type):
+        return tensor(result.handle, acc.type)
+    return _semantic._wrap_tensor_infer_layout(result)
 
 
 @builtin

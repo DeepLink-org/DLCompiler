@@ -264,6 +264,85 @@ class DotOperandLayout(DistributedLayout):
 
 
 @dataclass(frozen=True, eq=True)
+class MACAMmaLayout(DistributedLayout):
+    """Distributed layout for MetaX MACA MMA operations."""
+
+    version_major: int
+    version_minor: int
+    warps_per_cta: List[int]
+    elements_mnk: List[int]
+    col_major: int = 0
+    is_a_trans: bool = False
+    is_b_trans: bool = False
+    elements_stride: List[int] = field(default_factory=lambda: [1, 1])
+    cga_layout: List[List[int]] = field(default_factory=list)
+
+    def __post_init__(self):
+        for name in (
+            "version_major",
+            "version_minor",
+            "warps_per_cta",
+            "elements_mnk",
+            "col_major",
+            "is_a_trans",
+            "is_b_trans",
+            "elements_stride",
+            "cga_layout",
+        ):
+            super().__setattr__(name, _unwrap_if_constexpr(getattr(self, name)))
+        assert self.warps_per_cta
+        assert len(self.elements_mnk) == 3
+        assert len(self.elements_stride) == 2
+        assert all(
+            len(basis) == self.rank for basis in self.cga_layout
+        ), "cga_layout basis rank mismatch"
+
+    def _to_ir(self, builder):
+        return builder.get_maca_mma_layout(
+            self.version_major,
+            self.version_minor,
+            self.warps_per_cta,
+            self.elements_mnk,
+            self.col_major,
+            self.is_a_trans,
+            self.is_b_trans,
+            self.elements_stride,
+            self.cga_layout,
+        )
+
+    def mangle(self) -> str:
+        def stringify(values):
+            return "_".join(map(str, values))
+
+        cga_layout = stringify(
+            "~".join(map(str, basis)) for basis in self.cga_layout
+        )
+        return (
+            f"MACA_{self.version_major}_{self.version_minor}_"
+            f"{stringify(self.warps_per_cta)}_{stringify(self.elements_mnk)}_"
+            f"{self.col_major}_{self.is_a_trans}_{self.is_b_trans}_"
+            f"{stringify(self.elements_stride)}_{cga_layout}_MACA"
+        )
+
+    def __hash__(self):
+        return hash((
+            self.version_major,
+            self.version_minor,
+            tuple(self.warps_per_cta),
+            tuple(self.elements_mnk),
+            self.col_major,
+            self.is_a_trans,
+            self.is_b_trans,
+            tuple(self.elements_stride),
+            tuple(map(tuple, self.cga_layout)),
+        ))
+
+    @property
+    def rank(self):
+        return len(self.warps_per_cta)
+
+
+@dataclass(frozen=True, eq=True)
 class NVMMADistributedLayout(DistributedLayout):
     """
     Represents a layout for NVIDIA MMA (tensor core) operations.
@@ -315,6 +394,10 @@ class SharedLayout:
     @property
     def type(self):
         return constexpr_type(self)
+
+    @property
+    def rank(self):
+        raise NotImplementedError("SharedLayout subclasses must define rank")
 
 
 @constexpr_function
@@ -481,6 +564,10 @@ class SwizzledSharedLayout(SharedLayout):
         return hash(
             (self.vec, self.per_phase, self.max_phase, tuple(self.order), tuple(tuple(vec) for vec in self.cga_layout)))
 
+    @property
+    def rank(self):
+        return len(self.order)
+
 
 @dataclass(frozen=True, eq=True)
 class PaddedSharedLayout(SharedLayout):
@@ -606,6 +693,10 @@ class PaddedSharedLayout(SharedLayout):
         return hash((tuple(map(tuple, self.interval_padding_pairs)), tuple(map(tuple, self.offset_bases)),
                      tuple(map(tuple, self.block_bases)), tuple(self.shape)))
 
+    @property
+    def rank(self):
+        return len(self.shape)
+
 
 @dataclass(frozen=True)
 class SharedLinearLayout(SharedLayout):
@@ -642,6 +733,10 @@ class SharedLinearLayout(SharedLayout):
             tuple(map(tuple, self.block_bases)),
             self.alignment,
         ))
+
+    @property
+    def rank(self):
+        return len(self.offset_bases[0])
 
 
 # Python impl of LinearEncodingAttr::basesPerDim

@@ -49,6 +49,7 @@ from ._core import (
     convert_layout,
     device_assert,
     device_print,
+    dot,
     dot_fma,
     expand_dims,
     full,
@@ -59,6 +60,12 @@ from ._core import (
     histogram,
     inline_asm_elementwise,
     join,
+    local_alloc,
+    storage_alias_spec,
+    storage_alias_spec_type,
+    storage_kind,
+    reuse_group,
+    reuse_group_type,
     load,
     map_elementwise,
     max_constancy,
@@ -75,6 +82,8 @@ from ._core import (
     distributed_type,
     shared_memory_descriptor_type,
     set_auto_layout,
+    slice,
+    slice_update,
     split,
     static_assert,
     static_print,
@@ -93,6 +102,7 @@ from ._layouts import (
     SliceLayout,
     DistributedLinearLayout,
     DotOperandLayout,
+    MACAMmaLayout,
     NVMMADistributedLayout,
     NVMMASharedLayout,
     SwizzledSharedLayout,
@@ -134,4 +144,5 @@ from ._standard import (
 
 from . import nvidia
 from . import amd
+from . import metax
 from . import extra

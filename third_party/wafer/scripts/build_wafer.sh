@@ -1,0 +1,142 @@
+#!/bin/bash
+
+WAFER_DEPS_ROOT=${WAFER_DEPS_ROOT:-}
+WAFER_RT_THREAD_SMP_ROOT=${WAFER_RT_THREAD_SMP_ROOT:-}
+
+
+set -e
+
+script_path=$(realpath "$0")
+script_dir=$(dirname "$script_path")
+project_dir=$(realpath "$script_dir/../../..")
+
+if [ -z "${WORKSPACE+x}" ]; then
+    WORKSPACE=$(realpath "$project_dir/..")
+fi
+
+WAFER_DEPS_ROOT=$WORKSPACE/wafer_deps
+LLVM=$WORKSPACE/llvm-a66376b0-ubuntu-x64
+TRITON=$project_dir
+
+if [ ! -d $WAFER_DEPS_ROOT ] || [ ! -d $LLVM ]; then
+    WORKSPACE="${HOME}/.triton/wafer/"
+    WAFER_DEPS_ROOT=$WORKSPACE/wafer_deps
+    LLVM=$WORKSPACE/llvm-a66376b0-ubuntu-x64
+fi
+
+if [ ! -d $WAFER_DEPS_ROOT ]; then
+    echo "Error: $WAFER_DEPS_ROOT not exist!" 1>&2
+    exit 1
+fi
+
+if [ ! -d $LLVM ]; then
+    echo "Error: $LLVM not exist!" 1>&2
+    exit 1
+fi
+
+# Default values
+BUILD_TYPE="release"
+ACTION="install"
+SCRIPT_NAME=$(basename "$0")
+
+# Function to display usage
+usage() {
+    echo "Usage: $SCRIPT_NAME [-t build_type] [-a action]"
+    echo "Options:"
+    echo "  -t build_type  Specify build type: debug or release (default: release)"
+    echo "  -a action      Specify action: install or wheel (default: install)"
+    echo "  -h             Display this help message"
+    exit 1
+}
+
+# Process command-line options with getopts
+while getopts ":t:a:h" opt; do
+    case $opt in
+        t)
+            BUILD_TYPE="$OPTARG"
+            # Convert to lowercase for case-insensitive comparison
+            BUILD_TYPE=$(echo "$BUILD_TYPE" | tr '[:upper:]' '[:lower:]')
+            # Validate build_type
+            if [[ "$BUILD_TYPE" != "debug" && "$BUILD_TYPE" != "release" ]]; then
+                echo "Error: Invalid build type '$BUILD_TYPE'. Must be 'debug' or 'release'." >&2
+                usage
+            fi
+            ;;
+        a)
+            ACTION="$OPTARG"
+            ACTION=$(echo "$ACTION" | tr '[:upper:]' '[:lower:]')
+            # Validate action
+            if [[ "$ACTION" != "install" && "$ACTION" != "wheel" ]]; then
+                echo "Error: Invalid action '$ACTION'. Must be 'install' or 'wheel'." >&2
+                usage
+            fi
+            ;;
+        h)
+            usage
+            ;;
+        \?)
+            echo "Error: Invalid option -$OPTARG" >&2
+            usage
+            ;;
+        :)
+            echo "Error: Option -$OPTARG requires an argument." >&2
+            usage
+            ;;
+    esac
+done
+
+# Shift off the options and optional arguments
+shift $((OPTIND - 1))
+
+echo "Build configuration:"
+echo "  Build Type: $BUILD_TYPE"
+echo "  Action: $ACTION"
+
+build_triton() {
+    if [ "$BUILD_TYPE" == "debug" ]; then
+        export DEBUG=ON
+    else
+        export REL_WITH_DBG_INFO=ON
+    fi
+
+    export TRITON_BUILD_WITH_CLANG_LLD=true
+    export TRITON_BUILD_WITH_CCACHE=true
+    export TRITON_OFFLINE_BUILD=ON
+    export TRITON_BUILD_PROTON=OFF
+
+    echo "export TRITON_OFFLINE_BUILD=$TRITON_OFFLINE_BUILD"
+    echo "export TRITON_BUILD_WITH_CLANG_LLD=$TRITON_BUILD_WITH_CLANG_LLD"
+    echo "export TRITON_BUILD_WITH_CCACHE=$TRITON_BUILD_WITH_CCACHE"
+    echo "export TRITON_BUILD_PROTON=$TRITON_BUILD_PROTON"
+
+    cd $TRITON/python
+    build_opt=install
+
+    if [ "$ACTION" == "wheel" ]; then
+        build_opt=wheel
+    fi
+
+    python3 -m pip $build_opt . --no-index --no-deps --no-build-isolation -v --verbose
+}
+
+if [ -f $TRITON/.venv/bin/activate ]; then
+    source $TRITON/.venv/bin/activate
+fi
+
+export LLVM_SYSPATH=$LLVM
+export WAFER_DEPS_ROOT=$WAFER_DEPS_ROOT
+export WAFER_RT_THREAD_SMP_ROOT=$WAFER_DEPS_ROOT/tx8-yoc-rt-thread-smp
+export FLAGTREE_BACKEND=wafer
+
+# debug
+# export USE_HOST_PROFILE=1
+# export NO_INTRNISIC_RUN=1
+
+echo "export WAFER_DEPS_ROOT=$WAFER_DEPS_ROOT"
+echo "export LLVM_SYSPATH=$LLVM_SYSPATH"
+
+# synchronous temporary solution: add waitfinish after every cintrinsic exec
+export ENABLE_SYNCHRONOUS_INTRINSIC=1
+echo "export ENABLE_SYNCHRONOUS_INTRINSIC=$ENABLE_SYNCHRONOUS_INTRINSIC"
+
+build_triton

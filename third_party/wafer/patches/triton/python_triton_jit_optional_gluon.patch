@@ -1,0 +1,19 @@
+diff --git a/python/triton/runtime/jit.py b/python/triton/runtime/jit.py
+--- a/python/triton/runtime/jit.py
++++ b/python/triton/runtime/jit.py
+@@ -348,7 +348,14 @@ specialize_impl_cache = []
+ def create_specialize_impl(specialize_extra):
+ 
+     from ..language import constexpr
+-    from triton.experimental.gluon.nvidia.hopper import TensorDescriptor as GluonTensorDescriptor
++    try:
++        from triton._C.libtriton import gluon_ir  # noqa: F401
++    except ImportError:
++        # Wafer builds can omit Gluon IR. Ordinary JIT argument binding must
++        # still work without importing Gluon's Python semantic module.
++        GluonTensorDescriptor = ()
++    else:
++        from triton.experimental.gluon.nvidia.hopper import TensorDescriptor as GluonTensorDescriptor
+ 
+     def specialize_impl(arg, is_const=False, specialize_value=True, align=True):
+         if arg is None:

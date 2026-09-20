@@ -1,0 +1,33 @@
+//===------------------------ int8_tf32.c ---------------------------------===//
+// Copyright (C) 2020-2025 Terapines Technology (Wuhan) Co., Ltd
+// All rights reserved.
+//
+//===----------------------------------------------------------------------===//
+//
+// Runtime API of MLIR operation tx::INT8_TF32 see WaferOps.td for detail.
+//
+//===----------------------------------------------------------------------===//
+
+#include "wafer.h"
+
+void __INT8_TF32(uint64_t *src, uint64_t *dst, uint32_t zp,
+                 uint32_t elem_count) {
+  INTRNISIC_RUN_SWITCH;
+  // Create command buffer.
+  TsmConvert *cmd = g_intrinsic()->convert_pointer;
+  TsmConvertInstr inst = {I_CGRA,
+                          {
+                              0,
+                          },
+                          {
+                              0,
+                          }};
+
+  cmd->INT8_TF32(&inst, (uint64_t)src, zp, (uint64_t)dst, elem_count);
+
+  // Dispatch the command to accelerator
+  TsmExecute(&inst);
+  SYNCHRONOUS_INTRINSIC_SWITCH;
+
+  // Destroy the command buffer.
+}

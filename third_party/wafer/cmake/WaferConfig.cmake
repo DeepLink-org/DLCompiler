@@ -1,0 +1,5 @@
+foreach(name WAFER_DEPS_ROOT WAFER_SDK_INCLUDE_DIR WAFER_RT_THREAD_SMP_ROOT WAFER_BSP_INCLUDE_DIR)
+  if(NOT DEFINED ${name} AND DEFINED ENV{${name}})
+    set(${name} "$ENV{${name}}")
+  endif()
+endforeach()

@@ -1,0 +1,51 @@
+diff --git a/python/triton/runtime/cache.py b/python/triton/runtime/cache.py
+index 0442f00..fd14838 100644
+--- a/python/triton/runtime/cache.py
++++ b/python/triton/runtime/cache.py
+@@ -268,9 +268,20 @@ def make_so_cache_key(version_hash, signature, constants, ids, **kwargs):
+     return _base32(key)
+ 
+ 
++def _module_files(path, prefix):
++    """Find package files without executing vendor package initializers."""
++    import pkgutil
++
++    for lib in pkgutil.iter_modules([path], prefix=prefix):
++        spec = lib.module_finder.find_spec(lib.name)
++        yield spec.origin
++        if lib.ispkg:
++            for child_path in spec.submodule_search_locations:
++                yield from _module_files(child_path, lib.name + ".")
++
++
+ @functools.lru_cache()
+ def triton_key():
+-    import pkgutil
+     TRITON_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+     contents = []
+     # frontend
+@@ -282,8 +293,8 @@ def triton_key():
+         (os.path.join(TRITON_PATH, "backends"), "triton.backends."),
+     ]
+     for path, prefix in path_prefixes:
+-        for lib in pkgutil.walk_packages([path], prefix=prefix):
+-            with open(lib.module_finder.find_spec(lib.name).origin, "rb") as f:
++        for filename in _module_files(path, prefix):
++            with open(filename, "rb") as f:
+                 contents += [hashlib.sha256(f.read()).hexdigest()]
+ 
+     # backend
+@@ -298,8 +309,11 @@ def triton_key():
+     contents.append(libtriton_hash.hexdigest())
+     # language
+     language_path = os.path.join(TRITON_PATH, 'language')
+-    for lib in pkgutil.walk_packages([language_path], prefix="triton.language."):
+-        with open(lib.module_finder.find_spec(lib.name).origin, "rb") as f:
++    # walk_packages imports packages to discover their children. CANN's import
++    # replaces tensor members and math functions, including in Wafer kernels.
++    # Hash every vendor's files, but leave importing them to target selection.
++    for filename in _module_files(language_path, "triton.language."):
++        with open(filename, "rb") as f:
+             contents += [hashlib.sha256(f.read()).hexdigest()]
+     return f'{__version__}' + '-'.join(contents)
+ 

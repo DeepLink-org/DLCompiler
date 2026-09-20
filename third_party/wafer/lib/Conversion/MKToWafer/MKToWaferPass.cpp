@@ -1,0 +1,123 @@
+//===--------------------- MKToWaferPass.cpp -------------------------------===//
+//
+// Copyright (C) 2020-2025 Terapines Technology (Wuhan) Co., Ltd
+// All rights reserved.
+//
+//===----------------------------------------------------------------------===//
+
+#include "magic-kernel/Dialect/IR/MagicKernelDialect.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "triton-shared/Utils/Utils.h"
+#include "wafer/Conversion/MKToWafer/MKToWafer.h"
+#include "wafer/Dialect/IR/WaferDialect.h"
+#include "llvm/Support/Debug.h"
+#include <memory>
+#include <mlir/IR/DialectRegistry.h>
+#include <mlir/Transforms/Passes.h>
+
+#define DEBUG_TYPE "mk-to-wafer"
+
+using namespace mlir;
+
+namespace mlir {
+namespace triton {
+#define GEN_PASS_DEF_MKTOWAFER
+#include "wafer/Conversion/MKToWafer/Passes.h.inc"
+} // namespace triton
+} // namespace mlir
+
+namespace {
+
+class MKToWaferPass : public triton::impl::MKToWaferBase<MKToWaferPass> {
+  using MKToWaferBase<MKToWaferPass>::MKToWaferBase;
+
+public:
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<linalg::LinalgDialect, memref::MemRefDialect,
+                    arith::ArithDialect, mk::MagicKernelDialect,
+                    wafer::WaferDialect, LLVM::LLVMDialect>();
+  }
+
+  void runOnOperation() override {
+    auto moduleOp = getOperation();
+    auto *ctx = &getContext();
+
+    // If disable precision priority mode, we need to legalize integer
+    // operations to float operations.
+    RewritePatternSet canonicalizePatterns(ctx);
+    triton::populateMKToWaferCanonicalizationPatterns(canonicalizePatterns);
+
+    if (failed(
+            applyPatternsGreedily(moduleOp, std::move(canonicalizePatterns)))) {
+      signalPassFailure();
+    }
+
+    // Use to memory::CopyOp to wafer dialect op
+    moduleOp->walk([&](Operation *op) {
+      if (isa<memref::CopyOp>(op)) {
+        auto copyOp = cast<memref::CopyOp>(op);
+        op->setAttr("srcSpm",
+                    BoolAttr::get(ctx, triton::isOperandMemorySpaceSPM(
+                                           copyOp.getSource())));
+        op->setAttr("dstSpm",
+                    BoolAttr::get(ctx, triton::isOperandMemorySpaceSPM(
+                                           copyOp.getTarget())));
+      }
+    });
+
+    RewritePatternSet patterns(&getContext());
+    ConversionTarget target(getContext());
+
+    // Register illegal ops for Dialect Conversion
+    target.addIllegalDialect<linalg::LinalgDialect,
+                             bufferization::BufferizationDialect,
+                             mk::MagicKernelDialect>();
+
+    target.addLegalDialect<
+        func::FuncDialect, arith::ArithDialect, math::MathDialect,
+        affine::AffineDialect, scf::SCFDialect, memref::MemRefDialect,
+        cf::ControlFlowDialect, wafer::WaferDialect, LLVM::LLVMDialect>();
+
+    target.addIllegalOp<memref::CopyOp>();
+
+    target.addLegalOp<ModuleOp, linalg::YieldOp, mk::BitcastOp>();
+
+    target.addLegalOp<mk::AssertOp>();
+
+    triton::populateMKToWaferConversionPatterns(patterns);
+
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+
+    // linalg::linalgOpToLoops will generate memref::LoadOp/memref::StoreOp
+    // before and after the arith calculation.
+    // Use to check whether add spm mapping offset in
+    // memref::LoadOp/memref::StoreOp lowering
+    moduleOp->walk([&](Operation *op) {
+      if (isa<memref::LoadOp, memref::StoreOp>(op)) {
+        bool isSpm = isa<memref::LoadOp>(op)
+                         ? triton::isOperandMemorySpaceSPM(op->getOperand(0))
+                         : triton::isOperandMemorySpaceSPM(op->getOperand(1));
+
+        op->setAttr("isSpm",
+                    IntegerAttr::get(IntegerType::get(op->getContext(), 32),
+                                     llvm::APInt(32, isSpm)));
+      }
+    });
+  }
+};
+
+} // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>> triton::createMKToWaferPass() {
+  return std::make_unique<MKToWaferPass>();
+}

@@ -1,0 +1,242 @@
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+import pytest
+import triton
+import triton.language as tl
+import torch
+import torch_txda  # noqa: F401
+import test_common
+
+
+@triton.jit
+def triton_load_store(
+    in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
+    xoffset = tl.program_id(0) * XBLOCK
+    for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
+        x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
+        xmask = x_index < xnumel
+        tmp0 = tl.load(in_ptr0 + x_index, xmask)
+        tmp2 = tmp0
+        tl.store(out_ptr0 + x_index, tmp2, xmask)
+
+
+# require: all data (4d and 5d) can be placed into but without ub overflow
+@triton.jit
+def triton_load_store_multi_d(
+    in_ptr0,
+    out_ptr0,
+    BLOCK_0: tl.constexpr,
+    BLOCK_1: tl.constexpr,
+    BLOCK_2: tl.constexpr,
+    BLOCK_3: tl.constexpr,
+    BLOCK_4: tl.constexpr,
+    SHAPE_0: tl.constexpr,
+    SHAPE_1: tl.constexpr,
+    SHAPE_2: tl.constexpr,
+    SHAPE_3: tl.constexpr,
+    SHAPE_4: tl.constexpr,
+    STRIDE_0: tl.constexpr,
+    STRIDE_1: tl.constexpr,
+    STRIDE_2: tl.constexpr,
+    STRIDE_3: tl.constexpr,
+    STRIDE_4: tl.constexpr,
+):
+    offsets = tl.program_id(0)
+
+    offsets = offsets + tl.arange(0, BLOCK_0) * STRIDE_0
+    masks = tl.arange(0, BLOCK_0) < SHAPE_0
+    if (BLOCK_1 * BLOCK_2 * BLOCK_3 * BLOCK_4) > 1:
+        offsets = offsets[:, None] + tl.arange(0, BLOCK_1)[None, :] * STRIDE_1
+        masks = masks[:, None] & (tl.arange(0, BLOCK_1)[None, :] < SHAPE_1)
+    if (BLOCK_2 * BLOCK_3 * BLOCK_4) > 1:
+        offsets = offsets[:, :, None] + tl.arange(0, BLOCK_2)[None, None, :] * STRIDE_2
+        masks = masks[:, :, None] & (tl.arange(0, BLOCK_2)[None, None, :] < SHAPE_2)
+    if (BLOCK_3 * BLOCK_4) > 1:
+        offsets = (
+            offsets[:, :, :, None]
+            + tl.arange(0, BLOCK_3)[None, None, None, :] * STRIDE_3
+        )
+        masks = masks[:, :, :, None] & (
+            tl.arange(0, BLOCK_3)[None, None, None, :] < SHAPE_3
+        )
+    if BLOCK_4 > 1:
+        offsets = (
+            offsets[:, :, :, :, None]
+            + tl.arange(0, BLOCK_4)[None, None, None, None, :] * STRIDE_4
+        )
+        masks = masks[:, :, :, :, None] & (
+            tl.arange(0, BLOCK_4)[None, None, None, None, :] < SHAPE_4
+        )
+
+    tmp_in = tl.load(in_ptr0 + offsets, masks)
+    tmp_out = tmp_in
+    tl.store(out_ptr0 + offsets, tmp_out, masks)
+
+
+@triton.jit
+def triton_load_store_sle_mask(
+    in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
+    xoffset = tl.program_id(0) * XBLOCK
+    for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
+        x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
+        xmask = x_index <= xnumel
+        tmp0 = tl.load(in_ptr0 + x_index, xmask)
+        tmp2 = tmp0
+        tl.store(out_ptr0 + x_index, tmp2, xmask)
+
+
+@triton.jit
+def triton_load_store_sge_mask(
+    in_ptr0, out_ptr0, xnumel, XBLOCK: tl.constexpr, XBLOCK_SUB: tl.constexpr
+):
+    xoffset = tl.program_id(0) * XBLOCK
+    for xoffset_sub in range(0, XBLOCK, XBLOCK_SUB):
+        x_index = xoffset + xoffset_sub + tl.arange(0, XBLOCK_SUB)[:]
+        xmask = xnumel + 2 >= x_index + 1
+        tmp0 = tl.load(in_ptr0 + x_index, xmask)
+        tmp2 = tmp0
+        tl.store(out_ptr0 + x_index, tmp2, xmask)
+
+
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float16", (2, 4096, 8), 2, 32768, 1024],
+        ["int8", (2, 4096, 8), 2, 32768, 1024],
+        ["float32", (8, 8, 4), 2, 128, 64],
+        ["float16", (8, 8, 4), 2, 128, 64],
+        ["int8", (8, 8, 4), 2, 128, 64],
+    ],
+)
+def test_load_store(param_list):
+    # 生成数据
+    dtype, shape, ncore, xblock, xblock_sub = param_list
+    x0 = test_common.generate_tensor(shape, dtype).cpu()
+    # torch结果
+    y_ref = x0
+    # triton结果
+    y_cal = test_common.generate_tensor(shape, dtype).cpu()
+    x0_txda = x0.to("txda")
+    y_cal_txda = y_cal.to("txda")
+    triton_load_store[(ncore,)](x0_txda, y_cal_txda, x0_txda.numel(), xblock, xblock_sub)
+    with torch.no_grad():
+        y_cal.copy_(y_cal_txda.cpu())
+    # 比较结果
+    test_common.validate_cmp(dtype, y_cal, y_ref)
+
+
+#  因为ascend的arrange op 支持任意的正整数，但是triton只能是2的指数倍，不然会报 ValueError: arange's range must be a power of 2 ，因此调整数字
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (8, 4, 16, 16)],
+        ["float16", (8, 4, 16, 16)],
+        ["int8", (8, 4, 16, 16)],
+        ["float32", (8, 8, 4, 4)],
+        ["float16", (8, 8, 4, 4)],
+        ["int8", (8, 8, 4, 4)],
+        ["float32", (4, 8, 2, 16, 16)],
+        ["float16", (4, 8, 2, 16, 16)],
+        ["int8", (8, 8, 8, 16, 16)],
+        ["float32", (16, 8, 8, 4, 4)],
+        ["float16", (16, 8, 8, 4, 4)],
+        ["int8", (16, 8, 8, 4, 4)],
+    ],
+)
+def test_load_store_multi_d(param_list):
+    # 生成数据
+    dtype, shape = param_list
+    x0 = test_common.generate_tensor(shape, dtype).cpu()
+    # torch结果
+    y_expect = x0
+    y_actual = test_common.generate_tensor(shape, dtype).cpu()
+    # triton结果
+    blocks = list(x0.size())
+    shapes = list(x0.stride())
+    while len(blocks) < 5:
+        blocks.append(1)
+        shapes.append(1)
+    x0_txda = x0.to("txda")
+    y_actual_txda = y_actual.to("txda")
+    triton_load_store_multi_d[(1,)](x0_txda, y_actual_txda, *blocks, *blocks, *shapes)
+    with torch.no_grad():
+        y_actual.copy_(y_actual_txda.cpu())
+    # 比较结果
+    test_common.validate_cmp(dtype, y_actual, y_expect)
+
+
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float16", (2, 4096, 8), 2, 32768, 1024],
+        ["int8", (2, 4096, 8), 2, 32768, 1024],
+        ["float32", (8, 8, 4), 2, 128, 64],
+        ["float16", (8, 8, 4), 2, 128, 64],
+        ["int8", (8, 8, 4), 2, 128, 64],
+    ],
+)
+def test_load_store_sle_mask(param_list):
+    # 生成数据
+    dtype, shape, ncore, xblock, xblock_sub = param_list
+    x0 = test_common.generate_tensor(shape, dtype).cpu()
+    # torch结果
+    y_ref = x0
+    # triton结果
+    y_cal = test_common.generate_tensor(shape, dtype).cpu()
+    x0_txda = x0.to("txda")
+    y_cal_txda = y_cal.to("txda")
+    triton_load_store_sle_mask[(ncore,)](x0_txda, y_cal_txda, x0_txda.numel() - 1, xblock, xblock_sub)
+    with torch.no_grad():
+        y_cal.copy_(y_cal_txda.cpu())
+    # 比较结果
+    test_common.validate_cmp(dtype, y_cal, y_ref)
+
+
+@pytest.mark.parametrize(
+    "param_list",
+    [
+        ["float32", (2, 4096, 8), 2, 32768, 1024],
+        ["float16", (2, 4096, 8), 2, 32768, 1024],
+        ["int8", (2, 4096, 8), 2, 32768, 1024],
+        ["float32", (8, 8, 4), 2, 128, 64],
+        ["float16", (8, 8, 4), 2, 128, 64],
+        ["int8", (8, 8, 4), 2, 128, 64],
+    ],
+)
+def test_load_store_sge_mask(param_list):
+    # 生成数据
+    dtype, shape, ncore, xblock, xblock_sub = param_list
+    x0 = test_common.generate_tensor(shape, dtype).cpu()
+    # torch结果
+    y_ref = x0
+    # triton结果
+    y_cal = test_common.generate_tensor(shape, dtype).cpu()
+    x0_txda = x0.to("txda")
+    y_cal_txda = y_cal.to("txda")
+    triton_load_store_sge_mask[(ncore,)](x0_txda, y_cal_txda, x0_txda.numel() - 1, xblock, xblock_sub)
+    with torch.no_grad():
+        y_cal.copy_(y_cal_txda.cpu())
+    # 比较结果
+    test_common.validate_cmp(dtype, y_cal, y_ref)

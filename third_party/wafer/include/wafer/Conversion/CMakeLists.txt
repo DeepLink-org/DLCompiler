@@ -1,0 +1,7 @@
+add_subdirectory(LinalgTiling)
+add_subdirectory(LinalgFusion)
+add_subdirectory(MKToWafer)
+add_subdirectory(WaferToLLVM)
+add_subdirectory(WaferMemrefToLLVM)
+add_subdirectory(AllocateSharedMemory)
+add_subdirectory(ExportKernelSymbols)

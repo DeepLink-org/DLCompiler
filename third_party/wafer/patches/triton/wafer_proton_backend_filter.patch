@@ -1,0 +1,82 @@
+diff --git a/third_party/proton/Dialect/CMakeLists.txt b/third_party/proton/Dialect/CMakeLists.txt
+index 9ef6bdc31a..38ce14fcc2 100644
+--- a/third_party/proton/Dialect/CMakeLists.txt
++++ b/third_party/proton/Dialect/CMakeLists.txt
+@@ -3,6 +3,20 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
+ add_subdirectory(include)
+ add_subdirectory(lib)
+ if(TRITON_BUILD_PYTHON_MODULE)
+-  add_triton_plugin(TritonProton ${CMAKE_CURRENT_SOURCE_DIR}/triton_proton.cc LINK_LIBS ProtonToProtonGPU ProtonGPUToLLVM ProtonAMDGPUToLLVM ProtonNVIDIAGPUToLLVM ProtonAnalysis)
++  set(PROTON_BACKEND_LIBS)
++  set(PROTON_AMD_ENABLED 0)
++  set(PROTON_NVIDIA_ENABLED 0)
++  if("nvidia" IN_LIST TRITON_CODEGEN_BACKENDS)
++    list(APPEND PROTON_BACKEND_LIBS ProtonNVIDIAGPUToLLVM)
++    set(PROTON_NVIDIA_ENABLED 1)
++  endif()
++  if("amd" IN_LIST TRITON_CODEGEN_BACKENDS)
++    list(APPEND PROTON_BACKEND_LIBS ProtonAMDGPUToLLVM)
++    set(PROTON_AMD_ENABLED 1)
++  endif()
++  add_triton_plugin(TritonProton ${CMAKE_CURRENT_SOURCE_DIR}/triton_proton.cc LINK_LIBS ProtonToProtonGPU ProtonGPUToLLVM ${PROTON_BACKEND_LIBS} ProtonAnalysis)
++  target_compile_definitions(TritonProton PRIVATE
++    TRITON_PROTON_ENABLE_AMD=${PROTON_AMD_ENABLED}
++    TRITON_PROTON_ENABLE_NVIDIA=${PROTON_NVIDIA_ENABLED})
+   target_link_libraries(TritonProton PRIVATE Python3::Module pybind11::headers)
+ endif()
+diff --git a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/CMakeLists.txt b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/CMakeLists.txt
+index e3d89b8c59..1a06f25498 100644
+--- a/third_party/proton/Dialect/lib/ProtonGPUToLLVM/CMakeLists.txt
++++ b/third_party/proton/Dialect/lib/ProtonGPUToLLVM/CMakeLists.txt
+@@ -13,5 +13,9 @@ add_triton_library(ProtonGPUToLLVM
+     ProtonAnalysis
+ )
+ 
+-add_subdirectory(ProtonNvidiaGPUToLLVM)
+-add_subdirectory(ProtonAMDGPUToLLVM)
++if("nvidia" IN_LIST TRITON_CODEGEN_BACKENDS)
++    add_subdirectory(ProtonNvidiaGPUToLLVM)
++endif()
++if("amd" IN_LIST TRITON_CODEGEN_BACKENDS)
++    add_subdirectory(ProtonAMDGPUToLLVM)
++endif()
+diff --git a/third_party/proton/Dialect/triton_proton.cc b/third_party/proton/Dialect/triton_proton.cc
+index 00ecb3d9c7..5f8694055d 100644
+--- a/third_party/proton/Dialect/triton_proton.cc
++++ b/third_party/proton/Dialect/triton_proton.cc
+@@ -1,7 +1,11 @@
+ #include "Analysis/ScopeIdAllocation.h"
+ #include "Conversion/ProtonGPUToLLVM/Passes.h"
++#if TRITON_PROTON_ENABLE_AMD
+ #include "Conversion/ProtonGPUToLLVM/ProtonAMDGPUToLLVM/Passes.h"
++#endif
++#if TRITON_PROTON_ENABLE_NVIDIA
+ #include "Conversion/ProtonGPUToLLVM/ProtonNvidiaGPUToLLVM/Passes.h"
++#endif
+ #include "Conversion/ProtonToProtonGPU/Passes.h"
+ #include "Dialect/Proton/IR/Dialect.h"
+ #include "Dialect/ProtonGPU/IR/Dialect.h"
+@@ -96,17 +100,23 @@ void init_triton_proton(py::module &&m) {
+               profileScratchSize, profileScratchAlignment, clkExt));
+         });
+ 
++#if TRITON_PROTON_ENABLE_NVIDIA
+   ADD_PASS_WRAPPER_0("add_convert_proton_nvidia_gpu_to_llvm",
+                      proton::gpu::createConvertProtonNvidiaGPUToLLVMPass);
++#endif
++#if TRITON_PROTON_ENABLE_AMD
+   ADD_PASS_WRAPPER_1("add_convert_proton_amd_gpu_to_llvm",
+                      proton::gpu::createConvertProtonAMDGPUToLLVMPass,
+                      const std::string &);
++#endif
+   ADD_PASS_WRAPPER_0("add_allocate_proton_shared_memory",
+                      proton::gpu::createAllocateProtonSharedMemoryPass);
+   ADD_PASS_WRAPPER_0("add_allocate_proton_global_scratch_buffer",
+                      proton::gpu::createAllocateProtonGlobalScratchBufferPass);
+   ADD_PASS_WRAPPER_0("add_schedule_buffer_store",
+                      proton::gpu::createScheduleBufferStorePass);
++#if TRITON_PROTON_ENABLE_AMD
+   ADD_PASS_WRAPPER_0("add_sched_barriers",
+                      proton::gpu::createAddSchedBarriersPass);
++#endif
+ }

@@ -170,6 +170,26 @@ class DICPDriver(DriverBase):
             from .ascend_autotune_hooks import hook_autotune_for_ascend
 
             hook_autotune_for_ascend()
+        elif backend == "wafer":
+            from .wafer_runtime import (
+                SimulatorUtils,
+                WaferLauncher,
+                WaferUtils,
+                get_runtime,
+            )
+
+            self.target = "wafer"
+            if os.getenv("USE_SIM_MODE", "0").lower() in ("1", "true", "yes"):
+                self.utils = SimulatorUtils()
+                self.get_current_device = lambda: 0
+                self.set_current_device = lambda device: None
+            else:
+                self.utils = WaferUtils()
+                self.get_current_device = lambda: get_runtime().current_device()
+                self.set_current_device = lambda device: get_runtime().set_device(
+                    device
+                )
+            self.launcher_cls = WaferLauncher
         elif backend == "nvidia":
             from triton.backends.nvidia.driver import CudaLauncher, CudaUtils
 
@@ -197,6 +217,8 @@ class DICPDriver(DriverBase):
 
     @classmethod
     def is_active(self):
+        if get_current_backend() == "wafer":
+            return True
         try:
             current_backend = get_current_backend()
             if current_backend == "ascend":
@@ -257,12 +279,21 @@ class DICPDriver(DriverBase):
             return ("maca", 0)
         elif self.target == "ascend":
             return ("ascend", 0)
+        elif self.target == "wafer":
+            return ("wafer", 0)
         elif self.target == "nvidia":
             capability = torch.cuda.get_device_capability(self.get_current_device())
             return ("cuda", capability)
         return ("dicp", 0)
 
     def get_current_stream(self, device):
+        if self.target == "wafer":
+            if os.getenv("USE_SIM_MODE", "0").lower() in ("1", "true", "yes"):
+                return None
+            from .wafer_runtime import get_runtime
+
+            stream = get_runtime().current_stream(device)
+            return None if stream is None else stream.txda_stream
         import torch
 
         if self.target == "mlu":
@@ -286,6 +317,8 @@ class DICPDriver(DriverBase):
         return None
 
     def get_current_device(self):
+        if self.target == "wafer":
+            return 0
         import torch
 
         # dicp doesn't have a device to return. Return something.
@@ -338,6 +371,8 @@ class DICPDriver(DriverBase):
             arch = self.utils.get_arch()
             warp_size = 0
             return GPUTarget(backend, arch, warp_size)
+        elif self.target == "wafer":
+            return GPUTarget("wafer", "wafer", 32)
         elif self.target == "nvidia":
             device = self.get_current_device()
             capability = torch.cuda.get_device_capability(device)
@@ -350,7 +385,14 @@ class DICPDriver(DriverBase):
         return args
 
     def get_device_interface(self):
-        if self.target == "ascend":
+        if self.target == "wafer":
+            from .wafer_runtime import get_runtime
+
+            runtime = get_runtime()
+            if not hasattr(runtime, "Event") or not hasattr(runtime, "synchronize"):
+                raise RuntimeError("Wafer benchmarking requires torch_txda Event and synchronize support")
+            return runtime
+        elif self.target == "ascend":
             import torch
 
             return torch.npu
@@ -362,7 +404,11 @@ class DICPDriver(DriverBase):
             assert False, f"Not implemented for {self.target}"
 
     def get_empty_cache_for_benchmark(self):
-        if self.target == "ascend":
+        if self.target == "wafer":
+            # no device cache flush.
+            # None distinguishes this policy from other backends' zeroable tensor.
+            return None
+        elif self.target == "ascend":
             import torch
 
             cache_size = 192 * 1024 * 1024
@@ -383,6 +429,12 @@ class DICPDriver(DriverBase):
 
         if self.is_cpu_verify:
             return self._cpu_driver.get_active_torch_device()
+        if self.target == "wafer" and os.getenv("USE_SIM_MODE", "0").lower() not in (
+            "1",
+            "true",
+            "yes",
+        ):
+            return torch.device("txda", self.get_current_device())
         return torch.device("cpu")
 
     def map_python_to_cpp_type(self, ty: str) -> str:
@@ -407,4 +459,5 @@ class DICPDriver(DriverBase):
 
     @classmethod
     def clear_cache(self, cache):
-        cache.zero_()
+        if cache is not None:
+            cache.zero_()

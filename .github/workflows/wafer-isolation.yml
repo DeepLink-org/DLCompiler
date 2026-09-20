@@ -1,0 +1,46 @@
+name: Wafer isolated build and offline checks
+
+# Separate, opt-in job: the Ascend workflow and its runner stay independent.
+# The configured runner needs the pinned LLVM, Wafer SDK, Python build tools
+# and pytest. This workflow submits no work to a Wafer device.
+on:
+  workflow_dispatch:
+
+jobs:
+  WaferOffline:
+    if: vars.WAFER_CI_RUNNER != ''
+    runs-on: ${{ vars.WAFER_CI_RUNNER }}
+    env:
+      LLVM_SYSPATH: ${{ vars.WAFER_CI_LLVM_SYSPATH }}
+      WAFER_DEPS_ROOT: ${{ vars.WAFER_CI_DEPS_ROOT }}
+      WAFER_BUILD_DIR: ${{ github.workspace }}/.wafer-build
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+      DICP_BACKEND: wafer
+      USE_SIM_MODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build both compiler trees
+        run: bash scripts/wafer/compile_wafer.sh
+      - name: Assemble and install an isolated wheel
+        run: |
+          python setup_on_wafer.py --build-dir "$WAFER_BUILD_DIR" --wheel-dir "$WAFER_BUILD_DIR/wheel"
+          python -m venv --system-site-packages "$WAFER_BUILD_DIR/venv"
+          "$WAFER_BUILD_DIR/venv/bin/python" -m pip install --no-deps --force-reinstall "$WAFER_BUILD_DIR"/wheel/triton-*.whl
+      - name: Check frontend, patch profiles, tools and loader contracts
+        run: |
+          cd "$RUNNER_TEMP"
+          "$WAFER_BUILD_DIR/venv/bin/python" -m pytest -q \
+            "$GITHUB_WORKSPACE/test/wafer/test_frontend_isolation.py" \
+            "$GITHUB_WORKSPACE/test/wafer/test_tle_frontend.py" \
+            "$GITHUB_WORKSPACE/test/wafer/test_external_interfaces.py" \
+            "$GITHUB_WORKSPACE/test/wafer/test_scalar_copy.py" \
+            "$GITHUB_WORKSPACE/test/wafer/test_loader_isolation.py" \
+            "$GITHUB_WORKSPACE/test/wafer/test_commonir_abi.py" \
+            "$GITHUB_WORKSPACE/test/wafer/test_patch_profiles.py"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wafer-build-identity
+          path: .wafer-build/wafer-build.json

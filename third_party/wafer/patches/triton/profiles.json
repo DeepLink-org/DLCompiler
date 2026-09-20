@@ -1,0 +1,32 @@
+{
+  "triton_commit": "c3c476f357f1e9768ea4e45aa5c17528449ab9ef",
+  "profiles": {
+    "ascend": [
+      "patch/triton/CMakeLists_txt.patch",
+      "patch/triton/lib_Dialect_Triton_IR_Ops_cpp.patch",
+      "patch/triton/lib_Dialect_Triton_IR_Traits_cpp.patch",
+      "patch/triton/python_src_ir_cc.patch",
+      "patch/triton/python_src_ir_h.patch",
+      "patch/triton/python_triton__utils_py.patch",
+      "patch/triton/python_triton_backends_compiler_py.patch",
+      "patch/triton/python_triton_compiler_code_generator_py.patch",
+      "patch/triton/python_triton_compiler_compiler_py.patch",
+      "patch/triton/python_triton_language_semantic_py.patch",
+      "patch/triton/setup_py.patch",
+      "patch/triton/unittest_googletest_cmake.patch"
+    ],
+    "wafer-tools": [
+      "third_party/wafer/patches/triton/wafer_builder_optional_gluon.patch",
+      "third_party/wafer/patches/triton/wafer_proton_backend_filter.patch",
+      "third_party/wafer/patches/triton/python_triton_compiler_optional_gluon_py.patch",
+      "third_party/wafer/patches/triton/python_triton_jit_optional_gluon.patch"
+    ],
+    "wafer-frontend": [
+      "third_party/wafer/patches/triton/wafer_builder_optional_gluon.patch",
+      "third_party/wafer/patches/triton/wafer_proton_backend_filter.patch",
+      "third_party/wafer/patches/triton/python_triton_compiler_optional_gluon_py.patch",
+      "third_party/wafer/patches/triton/python_triton_jit_optional_gluon.patch",
+      "third_party/wafer/patches/triton/cache_without_vendor_imports.patch"
+    ]
+  }
+}

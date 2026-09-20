@@ -1,0 +1,49 @@
+diff --git a/python/triton/compiler/code_generator.py b/python/triton/compiler/code_generator.py
+index 176b6b5150..19dc08d6d7 100644
+--- a/python/triton/compiler/code_generator.py
++++ b/python/triton/compiler/code_generator.py
+@@ -12,7 +12,11 @@ from types import ModuleType
+ from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, Iterable, List
+ 
+ from .. import knobs, language
+-from .._C.libtriton import ir, gluon_ir
++from .._C.libtriton import ir
++try:
++    from .._C.libtriton import gluon_ir
++except ImportError:
++    gluon_ir = None
+ from ..language import constexpr, str_to_ty, tensor, tuple as tl_tuple
+ from ..language.core import _unwrap_if_constexpr, base_value, base_type
+ # ideally we wouldn't need any runtime component
+@@ -300,6 +304,9 @@ class CodeGenerator(ast.NodeVisitor):
+         self.context = context
+         self.is_gluon = is_gluon
+         if is_gluon:
++            if gluon_ir is None:
++                raise RuntimeError("Gluon kernels are not supported in this build: the gluon_ir "
++                                   "bindings were not compiled. Rebuild Triton with Gluon enabled.")
+             from triton.experimental.gluon.language._semantic import GluonSemantic
+             self.builder = gluon_ir.GluonOpBuilder(context)
+             self.semantic = GluonSemantic(self.builder)
+@@ -1569,15 +1576,18 @@ class CodeGenerator(ast.NodeVisitor):
+ 
+         return ret
+ 
+-    from ..experimental.gluon import language as ttgl
+     statically_implemented_functions: Dict[object, Callable[[ast.Call], Any]] = {
+         language.core.static_assert: execute_static_assert,
+         language.core.static_print: static_executor(print),
+-        ttgl.static_assert: execute_static_assert,
+-        ttgl.static_print: static_executor(print),
+         int: static_executor(int),
+         len: static_executor(len),
+     }
++    if gluon_ir is not None:
++        from ..experimental.gluon import language as ttgl
++        statically_implemented_functions.update({
++            ttgl.static_assert: execute_static_assert,
++            ttgl.static_print: static_executor(print),
++        })
+ 
+ 
+ def ast_to_ttir(fn, src, context, options, codegen_fns, module_map, module=None):

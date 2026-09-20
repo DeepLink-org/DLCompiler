@@ -1,0 +1,33 @@
+//===------------------------ recip.c--------------------------------------===//
+//
+// Copyright (C) 2020-2025 Terapines Technology (Wuhan) Co., Ltd
+// All rights reserved.
+//
+//===----------------------------------------------------------------------===//
+//
+// Runtime API of MLIR operation tx::recipVVOp see WaferOps.td for detail.
+//
+//===----------------------------------------------------------------------===//
+
+#include "wafer.h"
+
+void __RecipVV(uint64_t *src, uint64_t *dst, uint32_t elem_count,
+               uint16_t fmt) {
+  INTRNISIC_RUN_SWITCH;
+  // Create command buffer.
+  TsmArith *cmd = g_intrinsic()->arith_pointer;
+  TsmArithInstr inst = {I_CGRA,
+                        {
+                            0,
+                        },
+                        {
+                            0,
+                        }};
+
+  cmd->RecipVV(&inst, (uint64_t)src, (uint64_t)dst, elem_count,
+               (Data_Format)fmt);
+
+  // Dispatch the command to accelerator
+  TsmExecute(&inst);
+  TsmWaitfinish();
+}

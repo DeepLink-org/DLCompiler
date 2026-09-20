@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: destroyed-symlinks
+      - id: check-yaml
+      - id: check-toml
+      - id: check-ast
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: debug-statements
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v16.0.6
+    hooks:
+      - id: clang-format
+        files: |
+          (?x)^(
+            include/incubated/.*\.(h|hpp|cc|cpp)|
+            include/mlir-ext/.*\.(h|hpp|cc|cpp)|
+            include/npu/.*\.(h|hpp|cc|cpp)|
+            lib/UtilsIncubated/.*\.(h|hpp|cc|cpp)|
+            lib/Dialect/(MathExt|TritonAscend|TritonStructuredIncubated)/.*\.(h|hpp|cc|cpp)|
+            lib/Conversion/(DiscreteMaskAccessConversion|NoBufferize_FlagTree|TritonToAnnotation|TritonToLinalgIncubated|TritonToStructuredIncubated|TritonToUnstructureIncubated)/.*\.(h|hpp|cc|cpp)|
+            .*_FlagTree\.(h|hpp|cc|cpp)
+          )$
+        stages: [pre-commit, pre-push, manual]

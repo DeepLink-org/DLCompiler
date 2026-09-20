@@ -1,0 +1,8 @@
+add_subdirectory(TritonTilingExt)
+add_subdirectory(TPtr)
+add_subdirectory(MathExt)
+add_subdirectory(TritonStructured)
+if (FLIR_BUILD_INCUBATED)
+  add_subdirectory(TritonAscend)
+  add_subdirectory(TritonStructuredIncubated)
+endif()

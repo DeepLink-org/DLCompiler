@@ -1,0 +1,7 @@
+# Wafer-only build/packaging tools; leave the original DLCompiler requirements intact.
+setuptools>=40.8.0
+wheel
+cmake>=3.20,<4.0
+ninja>=1.11.1
+pybind11>=2.13.1
+nanobind>=2.4

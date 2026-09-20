@@ -1,0 +1,6 @@
+add_subdirectory(LinalgToMK)
+add_subdirectory(CoreDialectsToMK)
+add_subdirectory(LegalizeTensorFormLoops)
+add_subdirectory(TLEToMK)
+
+add_subdirectory(MKPipeline)

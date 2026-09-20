@@ -126,12 +126,17 @@ class DICPBackend(BaseBackend):
         elif self.driver.target == "maca":
             self.capability = 80
             self.binary_ext = "mcfatbin"
+        elif self.driver.target == "wafer":
+            from triton.backends.dicp_triton.wafer import WaferBackend
+
+            self._wafer_backend = WaferBackend(target)
+            self.binary_ext = self._wafer_backend.binary_ext
         else:
             raise RuntimeError(f"Target '{self.driver.target}' is not supported.")
 
     @staticmethod
     def supports_target(target: GPUTarget):
-        return target.backend in ["ascend", "mlu", "maca", "cpu"]
+        return target.backend in ["ascend", "mlu", "maca", "cpu", "wafer"]
 
     @staticmethod
     def make_ttir(mod, metadata, opt):
@@ -152,7 +157,9 @@ class DICPBackend(BaseBackend):
     def add_stages(self, stages, options, language=None):
         if self.driver.is_cpu_verify:
             return self._cpu_backend.add_stages(stages, options, language)
-        if self.driver.target == "ascend":
+        if self.driver.target == "wafer":
+            return self._wafer_backend.add_stages(stages, options, language)
+        elif self.driver.target == "ascend":
             from triton.backends.dicp_triton.npu import (
                 make_ttir,
                 ttir_to_linalg_dicp,
@@ -245,7 +252,9 @@ class DICPBackend(BaseBackend):
     def load_dialects(self, ctx):
         if self.driver.is_cpu_verify:
             return self._cpu_backend.load_dialects(ctx)
-        if self.driver.target == "mlu":
+        if self.driver.target == "wafer":
+            return self._wafer_backend.load_dialects(ctx)
+        elif self.driver.target == "mlu":
             from triton._C.libtriton import mlu
 
             mlu.load_dialects(ctx)
@@ -263,7 +272,9 @@ class DICPBackend(BaseBackend):
     def parse_options(self, options: dict) -> Any:
         if self.driver.is_cpu_verify:
             return self._cpu_backend.parse_options(options)
-        if self.target.backend == "ascend":
+        if self.target.backend == "wafer":
+            return self._wafer_backend.parse_options(options)
+        elif self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import NPUOptions
 
             args = {
@@ -340,6 +351,8 @@ class DICPBackend(BaseBackend):
         codegen_fns = dict()
         if self.driver.is_cpu_verify:
             return self._cpu_backend.get_codegen_implementation(options)
+        elif self.target.backend == "wafer":
+            return self._wafer_backend.get_codegen_implementation(options)
         elif self.target.backend == "ascend":
             from triton.backends.dicp_triton.npu import min_dot_size
 
@@ -366,7 +379,9 @@ class DICPBackend(BaseBackend):
     def pack_metadata(self, metadata):
         if self.driver.is_cpu_verify:
             return self._cpu_backend.pack_metadata(metadata)
-        if self.target.backend == "ascend":
+        if self.target.backend == "wafer":
+            return self._wafer_backend.pack_metadata(metadata)
+        elif self.target.backend == "ascend":
 
             KERNEL_NAME_MAX_LEN = 49
             kernel_name_orig = metadata.kernel_name
@@ -395,7 +410,9 @@ class DICPBackend(BaseBackend):
     def hash(self):
         if self.driver.is_cpu_verify:
             return self._cpu_backend.hash()
-        if self.target.backend == "mlu":
+        if self.target.backend == "wafer":
+            return self._wafer_backend.hash()
+        elif self.target.backend == "mlu":
             from triton.backends.dicp_triton.mlu import get_cnas_version
 
             version = get_cnas_version()
@@ -405,7 +422,9 @@ class DICPBackend(BaseBackend):
         return str(version_key)
 
     def get_module_map(self) -> Dict[str, ModuleType]:
-        if self.target.backend == "mlu":
+        if self.target.backend == "wafer":
+            return self._wafer_backend.get_module_map()
+        elif self.target.backend == "mlu":
             from triton.language.extra.mlu import libdevice
 
             return {"triton.language.extra.libdevice": libdevice}
